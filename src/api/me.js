@@ -4,6 +4,7 @@ import { json } from '../lib/http.js';
 import { db } from '../lib/db.js';
 import { userBusinesses, isExpired } from '../lib/auth.js';
 import { APP, visibleModules } from '../lib/modules.js';
+import { distritoDe } from '../lib/rotaract.js';
 
 export const TEMAS = ['azul', 'indigo', 'violeta', 'rosa', 'rojo', 'naranja', 'verde', 'turquesa', 'grafito'];
 
@@ -21,6 +22,7 @@ export function routes(r) {
       user: { id: s.user_id, email: s.email, name: s.name },
       business: { id: c.businessId, name: s.business_name, slug: s.business_slug, paidUntil: s.paid_until, readOnly: isExpired(s.paid_until) },
       role: c.role,
+      distrito: await distritoDe(c.env, c.businessId),   // { codigo, es_distrito }: el perfil del distrito ve /staff/distrito.html
       settings: await businessSettings(c.env, c.businessId),
       modules: mods.map((m) => ({ id: m.id, nombre: m.nombre, icono: m.icono, ruta: m.menu?.ruta, oculto: !!m.menu?.oculto, tipo: m.tipo, orden: m.menu?.orden ?? 99, widgets: m.widgets || [], configurar: m.permisos?.configurar || 'admin' })),
       businesses: (await userBusinesses(c.env, s.user_id)).map((b) => ({ id: b.id, name: b.name })),

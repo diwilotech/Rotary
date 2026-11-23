@@ -63,8 +63,9 @@ export async function cartera(c, socioId = null) {
 // periodos desde su ingreso (el más viejo primero), así un pago de varios meses llena varias casillas.
 // Casilla: pagado | parcial | debe (vencido) | pendiente (aún no vence) | na (sin periodo o antes de su ingreso).
 export const anioRotarioDe = (iso) => { const [y, m] = String(iso).slice(0, 7).split('-').map(Number); return m >= 7 ? y : y - 1; };
+export const mesesDelAnio = (anio) => Array.from({ length: 12 }, (_, i) => { const m = ((6 + i) % 12) + 1; return `${anio + (m < 7 ? 1 : 0)}-${String(m).padStart(2, '0')}`; });
 export async function anioRotario(c, anio, socioId = null) {
-  const hoy = today(), meses = Array.from({ length: 12 }, (_, i) => { const m = ((6 + i) % 12) + 1; return `${anio + (m < 7 ? 1 : 0)}-${String(m).padStart(2, '0')}`; });
+  const hoy = today(), meses = mesesDelAnio(anio);
   const [socios, periodos, pagos, pend] = await Promise.all([
     all(c.env, `SELECT id, nombre, cargo, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND paga_cuota = 1 AND estado = 'activo' ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
     all(c.env, 'SELECT mes, monto, vence FROM ro_periodos WHERE business_id = ? ORDER BY mes', c.businessId),
@@ -89,6 +90,70 @@ export async function anioRotario(c, anio, socioId = null) {
   });
   const anios = [...new Set([anioRotarioDe(hoy), ...periodos.map((p) => anioRotarioDe(p.mes))])].sort();
   return { anio, nombre: `${anio}-${anio + 1}`, actual: anioRotarioDe(hoy), anios, meses: totales, rows };
+}
+
+/* ---------------- Distrito ---------------- */
+// Código de distrito del negocio (lo pone Diwilo; por defecto DISTRITO_DEFECTO) y si el negocio ES el distrito.
+export async function distritoDe(env, businessId) {
+  const r = await one(env, 'SELECT distrito, es_distrito FROM ro_club_config WHERE business_id = ?', businessId);
+  return { codigo: r?.distrito || env.DISTRITO_DEFECTO || '4271', es_distrito: !!r?.es_distrito };
+}
+// Clubes del distrito: los negocios activos con ese código que no son distritos.
+export async function clubesDelDistrito(env, codigo) {
+  const def = env.DISTRITO_DEFECTO || '4271';
+  return all(env, `SELECT b.id, b.name, b.slug FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
+    WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? ORDER BY b.name`, def, codigo);
+}
+// Socios que cuentan para la cuota distrital: activos y que pagan cuota.
+export const sociosQueCuentan = async (env, bid) => (await one(env, "SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid))?.n || 0;
+// Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.
+export async function obligacionesClub(env, bid, { anio = null } = {}) {
+  const { codigo } = await distritoDe(env, bid);
+  const [cuotas, n, pagos] = await Promise.all([
+    all(env, `SELECT id, nombre, valor_socio, vence, anio, notas FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
+    sociosQueCuentan(env, bid),
+    all(env, "SELECT distrital_id, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY distrital_id", bid),
+  ]);
+  return cuotas.map((q) => {
+    const total = q.valor_socio * n, pagado = pagos.find((p) => p.distrital_id === q.id)?.total || 0;
+    return { ...q, socios: n, total, pagado, saldo: Math.max(0, total - pagado), estado: pagado >= total && total > 0 ? 'pagada' : q.vence < today() ? 'vencida' : 'pendiente' };
+  });
+}
+
+/* ---------------- Proyectado (Caja menor) ---------------- */
+// Por mes del año rotario: lo real (ingresos/egresos) y, de este mes en adelante, lo proyectado:
+// ingresos = cuotas que deben pagar los socios ese mes + otros ingresos (promedio de los últimos 6 meses);
+// egresos  = obligaciones del club (cuotas distritales sin pagar que vencen ese mes) + gasto corriente (promedio de 6 meses).
+// El saldo proyectado arranca del saldo de hoy de la Caja menor.
+export async function proyeccion(env, bid, anio) {
+  const hoy = today(), mesHoy = hoy.slice(0, 7), meses = mesesDelAnio(anio);
+  const [reales, prom, periodos, socios, oblig, s] = await Promise.all([
+    all(env, `SELECT substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos
+      FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, bid, `${meses[0]}-01`, `${anio + 1}-07-01`),
+    one(env, `SELECT SUM(CASE WHEN tipo = 'ingreso' AND pago_id IS NULL THEN monto ELSE 0 END) otros_ing, SUM(CASE WHEN tipo = 'egreso' AND distrital_id IS NULL THEN monto ELSE 0 END) gasto
+      FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= date(?, '-6 month') AND fecha < ?`, bid, `${mesHoy}-01`, `${mesHoy}-01`),
+    all(env, 'SELECT mes, monto FROM ro_periodos WHERE business_id = ?', bid),
+    all(env, "SELECT fecha_ingreso FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid),
+    obligacionesClub(env, bid),
+    saldos(env, bid),
+  ]);
+  const otros = Math.round((prom?.otros_ing || 0) / 6), gasto = Math.round((prom?.gasto || 0) / 6);
+  let saldo = s.menor;
+  const rows = meses.map((mes) => {
+    const r = reales.find((x) => x.mes === mes) || { ingresos: 0, egresos: 0 };
+    const futuro = mes >= mesHoy;
+    const per = periodos.find((p) => p.mes === mes);
+    const cuotas = futuro && per ? per.monto * socios.filter((x) => !x.fecha_ingreso || x.fecha_ingreso.slice(0, 7) <= mes).length : 0;
+    const obl = futuro ? oblig.filter((o) => o.estado !== 'pagada' && (o.vence.slice(0, 7) === mes || (mes === mesHoy && o.vence.slice(0, 7) < mesHoy))).reduce((t, o) => t + o.saldo, 0) : 0;
+    // Del mes en curso solo se proyecta lo que falta (lo ya registrado cuenta como real)
+    const ing_p = futuro ? Math.max(0, cuotas + otros - (mes === mesHoy ? r.ingresos : 0)) : 0;
+    const egr_p = futuro ? obl + Math.max(0, gasto - (mes === mesHoy ? r.egresos : 0)) : 0;
+    if (futuro) saldo += ing_p - egr_p;
+    return { mes, ingresos: r.ingresos, egresos: r.egresos, proyectado: futuro, ingresos_proy: ing_p, egresos_proy: egr_p, cuotas_socios: cuotas, otros_ingresos: futuro ? otros : 0,
+      obligaciones: obl, gasto_corriente: futuro ? gasto : 0, saldo_proy: futuro ? saldo : null };
+  });
+  return { anio, nombre: `${anio}-${anio + 1}`, actual: anioRotarioDe(hoy), saldo_hoy: s.menor, promedio: { otros_ingresos: otros, gasto_corriente: gasto }, meses: rows,
+    obligaciones: oblig.filter((o) => o.anio === anio || o.estado !== 'pagada') };
 }
 
 export async function saldos(env, businessId) {

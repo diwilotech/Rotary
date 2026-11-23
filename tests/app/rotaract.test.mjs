@@ -1,4 +1,6 @@
 // Pruebas de los módulos de CD Rotaract: rutas clave y aislamiento entre clubes.
+import { execSync } from 'node:child_process';
+const sql = (q) => execSync(`npx wrangler d1 execute control-de-rotaract-db --local --persist-to .wrangler/state --command "${q}"`, { stdio: 'ignore' });
 export default async function ({ check, newBusiness, newMember }) {
   const A = await newBusiness('Club A', { login: true });
   const B = await newBusiness('Club B', { login: true });
@@ -91,4 +93,30 @@ export default async function ({ check, newBusiness, newMember }) {
   await A.app(`/api/cuotas/pagos/${rp.data.id}/anular`, { method: 'POST', body: {} });
   check('Cuotas: anular saca el ingreso de la caja', (await A.app('/api/cajas/resumen')).data.cajas[0].saldo === 200000);
   check('Cuotas: el personal no ve la cartera (403) y B no ve pagos de A', (await staff.app('/api/cuotas/cartera')).status === 403 && (await B.app('/api/cuotas/pagos')).data.rows.length === 0);
+
+  /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
+  const D = await newBusiness('Distrito 4271', { login: true });
+  sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);
+  check('Distrito: un club no entra al tablero del distrito (403)', (await A.app('/api/distrito/tablero')).status === 403);
+  const tab = (await D.app('/api/distrito/tablero')).data;
+  check('Distrito: ve los clubes de su código y no los de otro distrito', tab.clubes.some((k) => k.id === A.id) && !tab.clubes.some((k) => k.id === B.id || k.id === D.id) && tab.meses.length === 12, JSON.stringify(tab.clubes?.map((k) => k.nombre)));
+  check('Distrito: detalle del club en solo lectura; el de otro distrito no (404)', (await D.app(`/api/distrito/clubes/${A.id}`)).data.socios?.length >= 3 && (await D.app(`/api/distrito/clubes/${B.id}`)).status === 404);
+  const vence = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
+  const qd = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota distrital prueba', valor_socio: 10000, vence } });
+  check('Distrito: un club no puede crear cuotas distritales', (await A.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'x', valor_socio: 1, vence } })).status === 403);
+  let pj = (await A.app('/api/cajas/proyectado')).data, ob = pj.obligaciones?.find((o) => o.id === qd.data.id);
+  check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * 10000 && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.obligaciones >= ob.total), JSON.stringify(ob));
+  check('Finanzas: un club de otro distrito no la ve ni la paga', !(await B.app('/api/cajas/proyectado')).data.obligaciones.length && (await B.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: 1000 } })).status === 404);
+  const pg = await A.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: ob.total } });
+  const cq = (await D.app('/api/distrito/cuotas')).data.rows.find((q) => q.id === qd.data.id)?.clubes.find((x) => x.club_id === A.id);
+  check('Finanzas: el club la paga (egreso de la caja menor) y el distrito lo ve', pg.status === 201 && cq?.estado === 'pagada' && (await A.app('/api/cajas/proyectado')).data.obligaciones.find((o) => o.id === qd.data.id)?.estado === 'pagada', JSON.stringify(cq));
+  check('Distrito: no se borra una cuota que ya pagaron (409)', (await D.app(`/api/distrito/cuotas/${qd.data.id}`, { method: 'DELETE' })).status === 409);
+  const rz = (await A.app('/api/cajas/resumen')).data;
+  check('Finanzas: los 12 meses del año rotario por caja', rz.cajas[0].meses.length === 12 && rz.cajas[0].meses[0].mes.endsWith('-07'));
+
+  /* Calendario del club (Inicio) */
+  const calA = (await A.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || [];
+  check('Inicio: el calendario junta reuniones, tareas y cuota distrital', calA.some((x) => x.tipo === 'distrital') && calA.every((x) => x.fecha >= hoy && x.fecha <= vence), JSON.stringify(calA.map((x) => x.tipo)));
+  check('Inicio: el calendario rechaza rangos largos', (await A.app('/api/club/calendario?desde=2026-01-01&hasta=2026-12-31')).status === 400);
+  check('Inicio: el distrito ve las fechas de sus cuotas', ((await D.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || []).some((x) => x.tipo === 'distrital'));
 }

@@ -3,12 +3,14 @@
 //   CRUD /api/cajas/movimientos           ?f_caja=menor|mayor   (junta)
 //   POST /api/cajas/traslado              { desde, hacia, monto, fecha, concepto }  egreso en una caja + ingreso en la otra
 //   POST /api/cajas/movimientos/:id/comprobante   (cuerpo = foto o PDF)   ·   GET …/comprobante
-//   GET  /api/cajas/resumen               saldos, mes y gasto por categoría de cada caja
+//   GET  /api/cajas/resumen?anio=2026     saldos, mes, los 12 meses del año rotario y gasto por categoría de cada caja
+//   GET  /api/cajas/proyectado?anio=2026  Caja menor: real + proyectado por mes (cuotas de socios, otros ingresos, obligaciones)
+//   POST /api/cajas/distrital/:id/pagar   paga una cuota distrital (egreso de la Caja menor)
 import { json, readJson, HttpError } from '../lib/http.js';
 import { crud, all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
-import { CAJAS, CATEGORIAS, saldos } from '../lib/rotaract.js';
+import { CAJAS, CATEGORIAS, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe } from '../lib/rotaract.js';
 
 const MOD = 'cajas';
 
@@ -68,15 +70,37 @@ export function routes(r) {
   });
 
   r.get('/api/cajas/resumen', `manager:${MOD}`, async (c) => {
-    const mes = today().slice(0, 7);
+    const mes = today().slice(0, 7), anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), meses12 = mesesDelAnio(anio);
+    const rango = [`${meses12[0]}-01`, `${anio + 1}-07-01`];
     const [s, delMes, cats, meses] = await Promise.all([
       saldos(c.env, c.businessId),
       all(c.env, "SELECT caja, tipo, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND substr(fecha, 1, 7) = ? AND traslado IS NULL GROUP BY caja, tipo", c.businessId, mes),
-      all(c.env, "SELECT caja, COALESCE(categoria, 'Sin categoría') categoria, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND tipo = 'egreso' AND traslado IS NULL GROUP BY caja, categoria ORDER BY total DESC", c.businessId),
-      all(c.env, "SELECT caja, substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos FROM ro_movimientos WHERE business_id = ? AND fecha >= date('now', '-6 month') AND traslado IS NULL GROUP BY caja, mes ORDER BY mes", c.businessId),
+      all(c.env, "SELECT caja, COALESCE(categoria, 'Sin categoría') categoria, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND tipo = 'egreso' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY caja, categoria ORDER BY total DESC", c.businessId, ...rango),
+      all(c.env, "SELECT caja, substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos FROM ro_movimientos WHERE business_id = ? AND fecha >= ? AND fecha < ? AND traslado IS NULL GROUP BY caja, mes", c.businessId, ...rango),
     ]);
     const caja = (k) => ({ id: k, nombre: CAJAS[k], saldo: s[k], ingresos_mes: delMes.find((x) => x.caja === k && x.tipo === 'ingreso')?.total || 0, egresos_mes: delMes.find((x) => x.caja === k && x.tipo === 'egreso')?.total || 0,
-      categorias: cats.filter((x) => x.caja === k).map(({ categoria, total }) => ({ categoria, total })), meses: meses.filter((x) => x.caja === k).map(({ mes, ingresos, egresos }) => ({ mes, ingresos, egresos })) });
-    return json({ mes, cajas: [caja('menor'), caja('mayor')], total: s.menor + s.mayor, valor: s.menor + s.mayor });
+      categorias: cats.filter((x) => x.caja === k).map(({ categoria, total }) => ({ categoria, total })),
+      meses: meses12.map((m) => { const x = meses.find((y) => y.caja === k && y.mes === m); return { mes: m, ingresos: x?.ingresos || 0, egresos: x?.egresos || 0 }; }) });
+    return json({ mes, anio, nombre_anio: `${anio}-${anio + 1}`, cajas: [caja('menor'), caja('mayor')], total: s.menor + s.mayor, valor: s.menor + s.mayor });
+  });
+
+  r.get('/api/cajas/proyectado', `manager:${MOD}`, async (c) => {
+    const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
+    if (anio < 2000 || anio > 2100) throw new HttpError(400, 'Año rotario no válido');
+    return json(await proyeccion(c.env, c.businessId, anio));
+  });
+
+  r.post('/api/cajas/distrital/:id/pagar', `manager:${MOD}`, async (c) => {
+    const b = await readJson(c.req);
+    const { codigo } = await distritoDe(c.env, c.businessId);
+    const q = await one(c.env, 'SELECT id, nombre FROM ro_cuota_distrital WHERE id = ? AND distrito = ?', Number(c.params.id), codigo);
+    if (!q) throw new HttpError(404, 'Cuota distrital no encontrada');
+    const monto = cast('monto', 'money', b.monto), fecha = cast('fecha', 'date', b.fecha || today());
+    if (!(monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero');
+    const t = Date.now();
+    const r2 = await c.env.DB.prepare(`INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, distrital_id, registrado_por, created_at, updated_at)
+      VALUES (?, 'menor', 'egreso', ?, ?, 'Obligaciones RI y Distrito', ?, ?, ?, ?, ?)`).bind(c.businessId, fecha, `Cuota distrital: ${q.nombre}`, monto, q.id, c.session.user_id, t, t).run();
+    await audit(c, `Pagó la cuota distrital «${q.nombre}»`, { modulo: MOD });
+    return json({ id: r2.meta.last_row_id }, 201);
   });
 }

@@ -48,6 +48,9 @@
   const link = (m) => `<li class="${inBottom.has(m.id) ? 'dw-in-bottom' : ''}"><a data-mod="${esc(m.id)}" href="${esc(m.ruta)}" class="${isActive(m) ? 'active' : ''}" ${isActive(m) ? 'aria-current="page"' : ''} title="${esc(m.nombre)}"><i class="bi ${esc(m.icono || 'bi-grid')}"></i><span>${esc(m.nombre)}</span></a></li>`;
 
   function render(me) {
+    // Perfil del distrito: en vez de «Lo tuyo» (no es socio de un club) tiene «Distrito»; sin carnet.
+    const DIST = !!me.distrito?.es_distrito;
+    if (DIST) BASE_START[1] = { id: 'distrito', nombre: `Distrito ${me.distrito.codigo}`, icono: 'bi-diagram-3', ruta: '/staff/distrito.html' };
     // «IA» va abajo, junto a Equipo; «Marca» tiene su propia pantalla en el menú (módulo central de Diwilo Modulos)
     const iaMod = me.modules.find((m) => m.id === 'ai');
     const FOOT = [...BASE_END, ...(iaMod ? [iaMod] : [])];
@@ -68,7 +71,7 @@
         <span class="dw-top__sep d-none d-lg-inline">/</span>
         <span class="dw-top__title" data-top-title>${esc(page.titulo)}</span>
         <span class="dw-top__spacer"></span>
-        <button class="dw-iconbtn" data-carnet aria-label="Mi carnet" title="Mi carnet"><i class="bi bi-person-vcard"></i></button>
+        ${DIST ? '' : '<button class="dw-iconbtn" data-carnet aria-label="Mi carnet" title="Mi carnet"><i class="bi bi-person-vcard"></i></button>'}
         <div class="dropdown">
           <button class="dw-iconbtn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificaciones"><i class="bi bi-bell"></i><span class="dw-dot" data-bell-dot ${me.business.readOnly ? '' : 'hidden'}></span></button>
           <div class="dropdown-menu dropdown-menu-end p-0" style="width:300px"><div class="px-3 py-2 fw-semibold border-bottom">Notificaciones</div>
@@ -109,7 +112,7 @@
         try { localStorage.setItem('dw_mini', document.body.classList.contains('dw-mini') ? '1' : '0'); } catch (_) {}
       };
       document.querySelector('[data-pass]').onclick = changePassword;
-      document.querySelector('[data-carnet]').onclick = () => carnet();
+      const kb = document.querySelector('[data-carnet]'); if (kb) kb.onclick = () => carnet();
       // El color y el modo ya no se eligen aquí: los maneja Marca → Color y letra (guarda para todo el equipo y este panel los toma por mensaje)
       document.querySelector('[data-logout]').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.replace('/'); };
       document.querySelectorAll('[data-biz]').forEach((b) => (b.onclick = async () => {
@@ -120,7 +123,7 @@
     }
 
     // Página de un módulo inactivo o sin permiso: no se muestra su contenido.
-    if (page.modulo && !['inicio', 'equipo', 'lotuyo'].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
+    if (page.modulo && !['inicio', 'equipo', 'lotuyo', 'distrito'].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
       main.innerHTML = `<div class="dw-card">${window.App.empty('bi-slash-circle', 'Este módulo no está activo para tu negocio o tu rol no tiene acceso.', '<a class="btn btn-primary" href="/staff/">Ir al inicio</a>')}</div>`;
       if (EMBED) notificar();
       return false;
@@ -162,7 +165,9 @@
   function iniciarPanel() {
     const frame = document.getElementById('dw-frame');
     const OK = /^\/staff\/[\w\-./?=&%]*(#[\w\-]*)?$/;
-    const go = new URLSearchParams(location.search).get('go');
+    // El #pestaña de un enlace directo (p. ej. cajas.html#proyectado) sobrevive a la redirección: se le pasa a la página
+    let go = new URLSearchParams(location.search).get('go');
+    if (go && !go.includes('#') && /^#[\w-]+$/.test(location.hash)) go += location.hash;
     let ultimo = null; try { ultimo = sessionStorage.getItem('dw_ultimo'); } catch (_) {}
     frame.src = [go, ultimo, '/staff/'].find((u) => u && OK.test(u));
     history.replaceState(null, '', location.pathname);   // la dirección queda fija: /<dirección del negocio>
