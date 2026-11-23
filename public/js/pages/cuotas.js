@@ -53,6 +53,12 @@ DW.ready.then(async (me) => {
 
   async function accion(a, p) {
     try {
+      if (a === 'editar') {
+        const out = await C.form({ title: `Editar pago · ${p.socio || ''}`, fields: [{ k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha del pago', type: 'date', required: true },
+          { k: 'metodo', label: 'Método', type: 'select', options: METODOS }, { k: 'observaciones', label: 'Observaciones', type: 'long' }], values: p, okText: 'Guardar' });
+        if (!out) return;
+        await api(`/api/cuotas/pagos/${p.id}`, { method: 'PATCH', body: out }); toast('Pago actualizado (también en la Caja menor)');
+      }
       if (a === 'verificar') { await api(`/api/cuotas/pagos/${p.id}/verificar`, { method: 'POST', body: {} }); toast('Verificado: entró a la Caja menor'); }
       if (a === 'rechazar') { const motivo = prompt('¿Por qué se rechaza? (el socio lo verá)'); if (!motivo) return; await api(`/api/cuotas/pagos/${p.id}/rechazar`, { method: 'POST', body: { motivo } }); toast('Rechazado'); }
       if (a === 'anular') { if (!(await window.App.confirm({ title: '¿Anular este pago?', text: 'Sale de la Caja menor y deja de contar en la cartera.', ok: 'Anular' }))) return; await api(`/api/cuotas/pagos/${p.id}/anular`, { method: 'POST', body: {} }); toast('Anulado'); }
@@ -86,8 +92,8 @@ DW.ready.then(async (me) => {
       { label: 'Fecha', html: (p) => C.day(p.fecha) }, { label: 'Socio', main: true, html: (p) => `${esc(p.socio || '')}<div class="small text-body-secondary fw-normal text-capitalize">${esc(p.metodo || '')}${p.observaciones ? ` · ${esc(p.observaciones)}` : ''}${p.motivo_rechazo ? ` · <span class="text-danger">${esc(p.motivo_rechazo)}</span>` : ''}</div>` },
       { label: 'Monto', cls: 'text-end', html: (p) => `<b class="${p.estado === 'anulado' ? 'text-decoration-line-through text-body-secondary' : ''}">${C.money(p.monto)}</b>` }, { label: 'Estado', html: (p) => C.chip(...(PEST[p.estado] || PEST.pendiente)) },
       { label: 'Comprobante', html: (p) => (p.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cuotas/pagos/${p.id}/comprobante" target="_blank" rel="noopener"><i class="bi bi-paperclip me-1"></i>Ver</a>` : W && p.estado !== 'anulado' ? `<button class="btn btn-sm btn-light" data-a="subir" data-p="${p.id}"><i class="bi bi-upload"></i></button>` : '<span class="text-body-secondary">—</span>') },
-      { label: '', cls: 'text-end text-nowrap', html: (p) => (!W ? '' : p.estado === 'pendiente' ? `<button class="btn btn-sm btn-success" data-a="verificar" data-p="${p.id}">Verificar</button> <button class="btn btn-sm btn-outline-danger" data-a="rechazar" data-p="${p.id}">Rechazar</button>`
-        : p.estado === 'verificado' ? `<button class="btn btn-sm btn-light" data-a="anular" data-p="${p.id}" title="Anular"><i class="bi bi-x-circle"></i></button>` : '') }], pagos) : window.App.empty('bi-receipt', 'Aún no hay ingresos de cuotas.');
+      { label: '', cls: 'text-end text-nowrap', html: (p) => (!W ? '' : p.estado === 'pendiente' ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-success" data-a="verificar" data-p="${p.id}">Verificar</button> <button class="btn btn-sm btn-outline-danger" data-a="rechazar" data-p="${p.id}">Rechazar</button>`
+        : p.estado === 'verificado' ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-light" data-a="anular" data-p="${p.id}" title="Anular"><i class="bi bi-x-circle"></i></button>` : '') }], pagos) : window.App.empty('bi-receipt', 'Aún no hay ingresos de cuotas.');
   }
 
   // Año rotario (julio → junio): barras de lo recaudado por mes y una casilla por socio y mes.

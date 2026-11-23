@@ -38,7 +38,7 @@ DW.ready.then(async (me) => {
   async function ficha(s0) {
     const { el, m } = modal('<div class="modal-body p-4 text-center text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
     let d; try { d = await api(`/api/socios/socios/${s0.id}/ficha`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
-    const s = d.socio, cu = d.cuota, mio = s.user_id && s.user_id === me.user.id;
+    const s = d.socio, cu = d.cuota, mio = s.user_id && s.user_id === me.user.id, R0 = rows.find((x) => x.id === s0.id) || s0;
     const linea = (i, t) => (t ? `<div class="d-flex gap-2 small"><i class="bi ${i} text-body-secondary"></i><span>${t}</span></div>` : '');
     el.querySelector('.modal-content').innerHTML = `<div class="modal-header border-0 pb-0"><button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body pt-0">
@@ -51,6 +51,9 @@ DW.ready.then(async (me) => {
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold">${d.tareas.filter((t) => t.estado !== 'hecha').length}</div><div class="small text-body-secondary">Tareas abiertas</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold ${cu?.saldo ? 'text-danger' : ''}">${cu ? (cu.saldo ? C.money(cu.saldo) : 'Al día') : '—'}</div><div class="small text-body-secondary">Cuotas</div></div></div>
         </div>
+        <div class="dw-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap"><span class="small text-body-secondary">Acceso a la app</span>${accesoBadge(R0)}
+          ${M && !RO_APP && R0.acceso && R0.acceso.rol !== 'owner' && s.user_id !== me.user.id ? `<select class="form-select form-select-sm ms-auto" style="width:auto" data-rol aria-label="Tipo de acceso"><option value="admin" ${R0.acceso.rol === 'admin' ? 'selected' : ''}>Junta: ve y edita todo</option><option value="staff" ${R0.acceso.rol === 'staff' ? 'selected' : ''}>Socio: lo del club y lo suyo</option></select>
+            ${R0.acceso.estado === 'invitado' ? '<button class="btn btn-sm btn-light" data-reinv><i class="bi bi-link-45deg"></i> Enlace</button>' : ''}` : ''}</div>
         <div class="d-grid gap-1 mb-3">${linea('bi-envelope', esc(s.email || ''))}${linea('bi-phone', esc(s.telefono || ''))}${linea('bi-briefcase', esc(s.profesion || ''))}${linea('bi-calendar-check', s.fecha_ingreso ? `Ingresó el ${C.day(s.fecha_ingreso)}` : '')}${linea('bi-instagram', esc(s.instagram || ''))}</div>
         ${d.tareas.length ? `<div class="ro-h mt-0">Tareas</div><ul class="list-unstyled small mb-0">${d.tareas.slice(0, 8).map((t) => `<li class="d-flex gap-2 py-1 border-bottom"><i class="bi ${t.estado === 'hecha' ? 'bi-check-circle-fill text-success' : 'bi-circle'}"></i><span class="flex-grow-1">${esc(t.titulo)}</span><span class="text-body-secondary">${t.fecha_limite ? C.day(t.fecha_limite) : ''}</span></li>`).join('')}</ul>` : ''}
       </div>
@@ -63,6 +66,10 @@ DW.ready.then(async (me) => {
     on('[data-act]', async () => { if (await activar(s)) { m.hide(); ficha(s); } });
     on('[data-edit]', () => { m.hide(); editar(rows.find((x) => x.id === s.id) || s); });
     on('[data-foto]', async () => { const f = await RO_.elegirArchivo('image/*'); if (!f) return; try { await RO_.subir(`/api/socios/socios/${s.id}/foto`, f); toast('Foto actualizada'); m.hide(); await cargar(); ficha(s); } catch (x) { toast(x.message, false); } });
+    el.querySelector('[data-rol]')?.addEventListener('change', async (e) => {
+      try { await api(`/api/team/${s.user_id}`, { method: 'PATCH', body: { role: e.target.value } }); toast(`Ahora tiene acceso de ${ROL[e.target.value][0]}`); await cargar(); } catch (x) { toast(x.message, false); }
+    });
+    on('[data-reinv]', async () => { try { const r = await api(`/api/team/${s.user_id}/invite`, { method: 'POST', body: {} }); await navigator.clipboard?.writeText(r.invite_url); toast('Enlace de invitación copiado'); } catch (x) { toast(x.message, false); } });
     on('[data-acceso]', async () => {
       try {
         const r = await api(`/api/socios/socios/${s.id}/acceso`, { method: 'POST', body: {} });
@@ -73,9 +80,13 @@ DW.ready.then(async (me) => {
     });
   }
 
-  const tarjetaJunta = (s) => `<button type="button" class="ro-jcard" data-id="${s.id}">${RO_.avatar(s, 76)}<b>${esc(s.nombre)}</b><span class="cargo">${esc(s.cargo)}</span>${s.activado ? '' : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'}</button>`;
-  const tarjetaSocio = (s) => `<button type="button" class="ro-scard" data-id="${s.id}">${RO_.avatar(s, 44)}<span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(s.nombre)}</b><span class="small text-body-secondary">${esc(RO_.TIPO[s.tipo_membresia] || '')}</span></span>${s.estado !== 'activo' ? C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo)) : s.activado ? '<i class="bi bi-patch-check-fill text-success" title="Activado"></i>' : ''}</button>`;
+  const tarjetaJunta = (s) => `<button type="button" class="ro-jcard" data-id="${s.id}">${RO_.avatar(s, 76)}<b>${esc(s.nombre)}</b><span class="cargo">${esc(s.cargo)}</span>${accesoBadge(s)}${s.activado ? '' : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'}</button>`;
+  const tarjetaSocio = (s) => `<button type="button" class="ro-scard" data-id="${s.id}">${RO_.avatar(s, 44)}<span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(s.nombre)}</b><span class="small text-body-secondary">${esc(RO_.TIPO[s.tipo_membresia] || '')}</span> ${accesoBadge(s)}</span>${s.estado !== 'activo' ? C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo)) : s.activado ? '<i class="bi bi-patch-check-fill text-success" title="Activado"></i>' : ''}</button>`;
 
+  // Acceso a la app: Presidencia (owner) · Junta (admin, ve y edita todo) · Socio (staff, ve lo del club y lo suyo) · invitado · sin acceso
+  const ROL = { owner: ['Acceso completo', 'bi-shield-fill-check', '#7c3aed'], admin: ['Junta', 'bi-shield-check', '#0284c7'], staff: ['Socio', 'bi-person-badge', '#16a34a'] };
+  const accesoBadge = (s) => { if (!s.acceso) return '<span class="ro-acc" style="--c:#94a3b8"><i class="bi bi-slash-circle"></i>Sin acceso</span>';
+    const [l, i, c] = ROL[s.acceso.rol] || ROL.staff; return `<span class="ro-acc" style="--c:${c}"><i class="bi ${i}"></i>${l}${s.acceso.estado === 'invitado' ? ' · invitado' : ''}</span>`; };
   // [tipo, título, nota, ícono]. La junta (con cargo) va aparte, arriba.
   const GRUPOS = [['socio', 'Socios', 'miembros del club', 'bi-person-check'], ['honorario', 'Honorarios', '', 'bi-star'], ['aspirante', 'Aspirantes', 'en proceso de ingreso', 'bi-hourglass-split'],
     ['socio_externo', 'Socios externos', 'entran a la app, pero no son socios del club', 'bi-box-arrow-in-right'], ['voluntario_invitado', 'Voluntarios invitados', 'apoyan sin ser socios', 'bi-hand-thumbs-up']];

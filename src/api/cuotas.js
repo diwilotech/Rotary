@@ -115,6 +115,25 @@ export function routes(r) {
   r.post('/api/cuotas/pagos/:id/comprobante', `manager:${MOD}`, async (c) => json(await subirComprobante(c, await pagoOr404(c, c.params.id))));
   r.get('/api/cuotas/pagos/:id/comprobante', `manager:${MOD}`, async (c) => servirComprobante(c, await pagoOr404(c, c.params.id)));
 
+  // Editar un pago (monto, fecha, método, observaciones): solo quien tiene Cuotas. Si ya entró a la Caja menor, el ingreso se ajusta.
+  r.patch('/api/cuotas/pagos/:id', `manager:${MOD}`, async (c) => {
+    const p = await pagoOr404(c, c.params.id), b = await readJson(c.req);
+    if (p.estado === 'anulado') throw new HttpError(409, 'El pago está anulado');
+    const o = {};
+    if ('monto' in b) { o.monto = cast('monto', 'money', b.monto); if (!(o.monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero'); }
+    if ('fecha' in b) { o.fecha = cast('fecha', 'date', b.fecha); if (!o.fecha || o.fecha > today()) throw new HttpError(400, 'La fecha del pago no puede ser futura'); }
+    if ('metodo' in b) o.metodo = cast('metodo', METODOS, b.metodo);
+    if ('observaciones' in b) o.observaciones = cast('observaciones', 'long', b.observaciones);
+    const ks = Object.keys(o); if (!ks.length) return json({ ok: true });
+    const t = Date.now();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE ro_pagos SET ${ks.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ? AND business_id = ?`).bind(...ks.map((k) => o[k]), t, p.id, c.businessId),
+      c.env.DB.prepare('UPDATE ro_movimientos SET monto = ?, fecha = ?, updated_at = ? WHERE business_id = ? AND pago_id = ?').bind(o.monto ?? p.monto, o.fecha ?? p.fecha, t, c.businessId, p.id),
+    ]);
+    await audit(c, `Editó un pago de cuota (${ks.join(', ')})`, { modulo: MOD });
+    return json({ ok: true });
+  });
+
   r.post('/api/cuotas/pagos/:id/verificar', `manager:${MOD}`, async (c) => {
     const p = await pagoOr404(c, c.params.id);
     if (p.estado === 'verificado') return json({ ok: true });

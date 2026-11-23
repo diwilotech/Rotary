@@ -8,6 +8,7 @@ DW.ready.then(async (me) => {
   const C = window.App.Crud, RO = window.RO;
   const view = document.querySelector('[data-view]'), acciones = document.querySelector('[data-acciones]');
   const W = !me.business.readOnly;
+  const CUO = me.canManage && me.modules.some((x) => x.id === 'cuotas');   // ver/editar las cuotas desde la caja
   const [cat, proys] = await Promise.all([api('/api/cajas/categorias'), me.modules.some((m) => m.id === 'impacto') ? RO.proyectos() : []]);
   const ICON = { menor: 'bi-cup-hot', mayor: 'bi-bricks' };
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
@@ -112,9 +113,27 @@ DW.ready.then(async (me) => {
         ...(proys.length ? [{ k: 'proyecto_id', label: 'Proyecto (obra)', type: 'select', options: RO.opts(proys, 'Ninguno') }] : []), { k: 'observaciones', label: 'Observaciones', type: 'long' }],
       columns: [{ label: 'Fecha', html: (m) => C.day(m.fecha) }, { label: 'Concepto', main: true, html: (m) => `${esc(m.concepto)}<div class="small text-body-secondary fw-normal">${esc(m.categoria || '')}${m.proyecto ? ` · ${esc(m.proyecto)}` : ''}${m.pago_id ? ' · <i class="bi bi-wallet2"></i> cuota' : ''}${m.traslado ? ' · <i class="bi bi-arrow-left-right"></i> traslado' : ''}</div>` },
         { label: 'Monto', cls: 'text-end', html: (m) => `<b class="${m.tipo === 'egreso' ? 'text-danger' : 'text-success'}">${m.tipo === 'egreso' ? '−' : '+'}${C.money(m.monto)}</b>` }],
-      rowActions: (m) => `${m.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cajas/movimientos/${m.id}/comprobante" target="_blank" rel="noopener" title="Ver comprobante"><i class="bi bi-paperclip"></i></a>` : ''}${W && !m.pago_id ? ` <button class="btn btn-sm btn-light" data-act="subir" title="Adjuntar comprobante"><i class="bi bi-upload"></i></button>` : ''}`,
-      onAction: async (a, m) => { if (a !== 'subir') return; const f = await RO.elegirArchivo(); if (!f) return; try { await RO.subir(`/api/cajas/movimientos/${m.id}/comprobante`, f); toast('Comprobante adjunto'); tabla.load(); } catch (x) { toast(x.message, false); } } });
+      // Ingreso de una cuota: su comprobante y su edición son los de la cuota (solo quien tiene Cuotas)
+      rowActions: (m) => (m.pago_id ? (CUO ? `${m.cuota?.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cuotas/pagos/${m.pago_id}/comprobante" target="_blank" rel="noopener" title="Ver comprobante de la cuota"><i class="bi bi-paperclip"></i></a>` : ''}
+          ${W ? ` <button class="btn btn-sm btn-light" data-act="csubir" title="${m.cuota?.comprobante ? 'Cambiar' : 'Subir'} comprobante"><i class="bi bi-upload"></i></button> <button class="btn btn-sm btn-light" data-act="ceditar" title="Editar la cuota"><i class="bi bi-pencil"></i></button>` : ''}`
+          : '<span class="small text-body-secondary" title="Solo quien tiene Cuotas la edita"><i class="bi bi-lock"></i></span>')
+        : `${m.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cajas/movimientos/${m.id}/comprobante" target="_blank" rel="noopener" title="Ver comprobante"><i class="bi bi-paperclip"></i></a>` : ''}${W ? ` <button class="btn btn-sm btn-light" data-act="subir" title="Adjuntar comprobante"><i class="bi bi-upload"></i></button>` : ''}`),
+      onRow: (m) => { if (!m.pago_id) return true; if (CUO && W) editarCuota(m); return false; },
+      onAction: async (a, m) => {
+        if (a === 'ceditar') return editarCuota(m);
+        if (a !== 'subir' && a !== 'csubir') return;
+        const f = await RO.elegirArchivo(); if (!f) return;
+        try { await RO.subir(a === 'csubir' ? `/api/cuotas/pagos/${m.pago_id}/comprobante` : `/api/cajas/movimientos/${m.id}/comprobante`, f); toast('Comprobante adjunto'); tabla.load(); } catch (x) { toast(x.message, false); }
+      } });
     tabla.load();
+  }
+
+  async function editarCuota(m) {
+    const out = await C.form({ title: `Editar cuota · ${m.socio || ''}`, fields: [{ k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha del pago', type: 'date', required: true },
+      { k: 'metodo', label: 'Método', type: 'select', options: [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']] },
+      { k: 'observaciones', label: 'Observaciones', type: 'long' }], values: { monto: m.monto, fecha: m.fecha, metodo: m.cuota?.metodo || 'transferencia', observaciones: m.cuota?.observaciones || '' }, okText: 'Guardar' });
+    if (!out) return;
+    try { await api(`/api/cuotas/pagos/${m.pago_id}`, { method: 'PATCH', body: out }); toast('Cuota actualizada (también en Cuotas)'); await cargar(); } catch (x) { toast(x.message, false); }
   }
 
   async function resumen() {

@@ -44,7 +44,13 @@ export const ENTITIES = {
       if (n.n) throw new HttpError(409, 'El socio tiene pagos o asistencias: márcalo como retirado en vez de borrarlo');
       await borrarArchivo(c.env, before.foto_key);
     },
-    decorate: (c, rows) => rows.map((s) => publico(c, s)).sort((a, b) => a.orden_cargo - b.orden_cargo || 0) },
+    // + el acceso a la app de cada uno (Presidencia / Junta / Socio, o sin acceso; «invitado» si aún no crea su contraseña)
+    async decorate(c, rows) {
+      const ms = await all(c.env, 'SELECT m.user_id, m.role, u.password_hash IS NOT NULL activo FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.business_id = ?', c.businessId);
+      return rows.map((s) => { const m = s.user_id && ms.find((x) => x.user_id === s.user_id);
+        return { ...publico(c, s), acceso: m ? { rol: m.role, estado: m.activo ? 'activo' : 'invitado' } : null }; })
+        .sort((a, b) => a.orden_cargo - b.orden_cargo || 0);
+    } },
 };
 
 async function socioOr404(c, id) {

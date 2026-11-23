@@ -124,6 +124,7 @@
       const act = e.target.closest('[data-act]');
       if (act) { cfg.onAction?.(act.dataset.act, row, act); return; }
       if (e.target.closest('[data-stop], a, input, button, select')) return;
+      if (cfg.onRow && cfg.onRow(row) === false) return;   // la página decide (p. ej. un ingreso de cuota se edita como cuota)
       if (!cfg.readOnly) edit(row); else cfg.onOpen?.(row);
     });
     return { load, edit, rows: () => st.rows };

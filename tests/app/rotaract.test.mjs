@@ -94,6 +94,15 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Cuotas: anular saca el ingreso de la caja', (await A.app('/api/cajas/resumen')).data.cajas[0].saldo === 200000);
   check('Cuotas: el personal no ve la cartera (403) y B no ve pagos de A', (await staff.app('/api/cuotas/cartera')).status === 403 && (await B.app('/api/cuotas/pagos')).data.rows.length === 0);
 
+  /* Cuotas editables (solo quien tiene Cuotas) y acceso de cada socio */
+  const pv2 = await A.app('/api/cuotas/pagos', { method: 'POST', body: { socio_id: ana.data.id, monto: 25000 } });
+  const ed2 = await A.app(`/api/cuotas/pagos/${pv2.data.id}`, { method: 'PATCH', body: { monto: 30000, metodo: 'nequi' } });
+  const mv2 = (await A.app('/api/cajas/movimientos?limit=1000')).data.rows.find((m) => m.pago_id === pv2.data.id);
+  check('Cuotas: editar un pago ajusta su ingreso en la Caja menor', ed2.status === 200 && mv2?.monto === 30000 && mv2.cuota?.metodo === 'nequi', JSON.stringify(mv2));
+  check('Cuotas: el personal no edita pagos (403)', (await staff.app(`/api/cuotas/pagos/${pv2.data.id}`, { method: 'PATCH', body: { monto: 1 } })).status === 403);
+  const conAcc = (await A.app('/api/socios/socios')).data.rows;
+  check('Socios: cada socio muestra su acceso a la app', conAcc.find((x) => x.id === sec.data.id)?.acceso?.rol === 'staff' && conAcc.find((x) => x.id === pres.data.id)?.acceso === null, JSON.stringify(conAcc.map((x) => [x.nombre, x.acceso])));
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);

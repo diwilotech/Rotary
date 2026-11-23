@@ -22,7 +22,7 @@ export const ENTITIES = {
     prepareBody: (b) => ({ caja: 'menor', tipo: 'egreso', ...b }),
     beforeCreate(c, row) { if (!(row.monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero'); row.registrado_por = c.session.user_id; },
     beforeUpdate(c, row, before) {
-      if (before.pago_id) throw new HttpError(409, 'Este ingreso viene de una cuota: anúlalo desde Cuotas');
+      if (before.pago_id) throw new HttpError(409, 'Este ingreso viene de una cuota: edítalo con el botón de la cuota (o desde Cuotas)');
       if (before.traslado && ('monto' in row || 'caja' in row || 'tipo' in row)) throw new HttpError(409, 'Es parte de un traslado: bórralo y hazlo de nuevo');
       if ('monto' in row && !(row.monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero');
     },
@@ -33,8 +33,10 @@ export const ENTITIES = {
     },
     async decorate(c, rows) {
       if (!rows.length) return rows;
-      const [ps, ss] = await Promise.all([all(c.env, 'SELECT id, nombre FROM ro_proyectos WHERE business_id = ?', c.businessId), all(c.env, 'SELECT id, nombre FROM ro_socios WHERE business_id = ?', c.businessId)]);
-      return rows.map((m) => ({ ...m, proyecto: ps.find((p) => p.id === m.proyecto_id)?.nombre || null, socio: ss.find((s) => s.id === m.socio_id)?.nombre || null, comprobante: !!(m.comprobante_key || m.comprobante_url), comprobante_key: undefined }));
+      const [ps, ss, pg] = await Promise.all([all(c.env, 'SELECT id, nombre FROM ro_proyectos WHERE business_id = ?', c.businessId), all(c.env, 'SELECT id, nombre FROM ro_socios WHERE business_id = ?', c.businessId),
+        rows.some((m) => m.pago_id) ? all(c.env, 'SELECT id, metodo, estado, comprobante_key, comprobante_url, observaciones FROM ro_pagos WHERE business_id = ?', c.businessId) : []]);
+      const cuota = (m) => { const p = m.pago_id && pg.find((x) => x.id === m.pago_id); return p ? { metodo: p.metodo, estado: p.estado, observaciones: p.observaciones, comprobante: !!(p.comprobante_key || p.comprobante_url) } : null; };
+      return rows.map((m) => ({ ...m, proyecto: ps.find((p) => p.id === m.proyecto_id)?.nombre || null, socio: ss.find((s) => s.id === m.socio_id)?.nombre || null, comprobante: !!(m.comprobante_key || m.comprobante_url), comprobante_key: undefined, cuota: cuota(m) }));
     } },
 };
 

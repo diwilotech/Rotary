@@ -80,6 +80,7 @@
     .ro-socios{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))}
     .ro-scard{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg);cursor:pointer;color:inherit;text-align:left;width:100%}
     .ro-scard:hover{border-color:var(--dw-p)}
+    .ro-acc{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap}
     .ro-h{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--bs-secondary-color);margin:18px 0 10px}
   `;
   document.head.appendChild(css);
