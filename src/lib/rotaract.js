@@ -237,10 +237,19 @@ async function logoOficial(c, club) {
 async function hojaCertificado(c, d) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
   const club = biz?.name || 'Club Rotaract', logo = await logoOficial(c, club);
-  const globo = `<svg class="globo" viewBox="0 0 300 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g fill="none" stroke-linecap="round">
-    ${[0, 1, 2, 3, 4].map((n) => `<ellipse cx="300" cy="400" rx="${60 + n * 70}" ry="330" stroke="${n % 2 ? '#F7A81B' : '#D41367'}" stroke-width="${n % 2 ? 3 : 7}"/>`).join('')}
-    ${[-240, -160, -80, 0, 80, 160, 240].map((y, n) => `<line x1="-20" y1="${400 + y}" x2="320" y2="${400 + y}" stroke="${n % 3 === 1 ? '#F7A81B' : '#D41367'}" stroke-width="${n % 3 === 1 ? 3 : 7}"/>`).join('')}
-    <circle cx="300" cy="400" r="330" stroke="#D41367" stroke-width="9"/></g></svg>`;
+  // Franja izquierda moderna: degradado azul Rotary, la rueda oficial grande en blanco muy suave, arcos arándano y oro y una trama de puntos
+  let rueda = '';
+  try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rueda.svg', c.url.origin))); rueda = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0].replace(/fill="#D41367"/g, 'fill="#FFFFFF"'); } catch (_) { rueda = ''; }
+  const globo = `<svg class="globo" viewBox="0 0 280 794" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs><pattern id="pt" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.3" fill="#fff" opacity=".18"/></pattern></defs>
+    <rect width="280" height="794" fill="url(#pt)"/>
+    ${rueda ? `<svg x="-150" y="420" width="470" height="470" viewBox="316.77 8.78 144.12 144.22" opacity=".14">${rueda}</svg>` : ''}
+    <circle cx="300" cy="120" r="190" fill="none" stroke="#D41367" stroke-width="26" opacity=".95"/>
+    <circle cx="300" cy="120" r="150" fill="none" stroke="#F7A81B" stroke-width="5"/>
+    <circle cx="-40" cy="430" r="110" fill="#D41367" opacity=".22"/>
+    <circle cx="220" cy="560" r="46" fill="none" stroke="#F7A81B" stroke-width="5" opacity=".9"/>
+    <path d="M0 330 L280 250" stroke="#fff" stroke-width="1.5" opacity=".25"/>
+  </svg><div class="lema">Gente de acción</div>`;
   const firma = (f) => `<div class="firma"><div class="fimg">${f.img ? `<img src="${esc(f.img)}" alt="Firma">` : ''}</div><div class="l"></div><span class="rol">${esc(f.rol)}</span><b>${esc(f.nombre || '')}</b>
     <div class="fecha">${f.fecha ? esc(fechaLarga(f.fecha)) : '&nbsp;'}</div><div class="l"></div><span class="rol">Fecha</span></div>`;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.titulo)} · ${esc(d.nombre)}</title>
@@ -251,9 +260,10 @@ async function hojaCertificado(c, d) {
 body{margin:0;background:#e9edf4;color:#1d2433;font-family:'Open Sans',Arial,sans-serif}
 .bar{display:flex;justify-content:center;padding:12px}.bar button{border:0;border-radius:999px;padding:10px 20px;font:600 15px 'Open Sans',sans-serif;background:var(--azul);color:#fff;cursor:pointer}
 .hoja{width:297mm;height:210mm;margin:0 auto 20px;background:#fff;position:relative;overflow:hidden;display:flex;box-shadow:0 10px 40px rgba(23,69,143,.18)}
-.banda{width:74mm;flex:none;position:relative;overflow:hidden;background:linear-gradient(165deg,var(--azul) 0%,#1d5aa8 55%,var(--celeste) 100%)}
+.banda{width:74mm;flex:none;position:relative;overflow:hidden;background:linear-gradient(170deg,#0b2f63 0%,var(--azul) 45%,var(--celeste) 100%)}
 .banda:after{content:"";position:absolute;top:0;right:0;bottom:0;width:1.6mm;background:var(--oro)}
-.globo{position:absolute;inset:0;width:100%;height:100%;opacity:.9}
+.globo{position:absolute;inset:0;width:100%;height:100%}
+.lema{position:absolute;left:9mm;bottom:9mm;font:700 9pt 'Open Sans',sans-serif;letter-spacing:.32em;text-transform:uppercase;color:#fff;opacity:.92}.lema:before{content:"";display:block;width:12mm;height:1mm;background:var(--oro);margin-bottom:3mm}
 .cuerpo{flex:1;padding:14mm 20mm 11mm;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative}
 .logo-of{height:25mm;width:auto}.club{font:700 12pt 'Open Sans',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--rojo)}
 h1{margin:9mm 0 0;font:700 25pt 'Open Sans',sans-serif;color:var(--gris);letter-spacing:.01em}
