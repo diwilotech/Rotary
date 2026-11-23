@@ -11,6 +11,7 @@ DW.ready.then(async (me) => {
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
   let cartera = [], pagos = [], filtro = '', anio = null, fEst = '', cfg = { aspirantes: false, honorarios: false };
   const ICO = { debe: 'bi-exclamation-circle-fill', por_vencer: 'bi-clock-fill', al_dia: 'bi-check-circle-fill', adelantado: 'bi-star-fill' };
+  RO.nav('cuotas');
 
   if (W) {
     acciones.innerHTML = '<button class="btn btn-outline-secondary" data-quien><i class="bi bi-people me-1"></i>¿Quién paga?</button><button class="btn btn-outline-secondary" data-per><i class="bi bi-calendar3 me-1"></i>Periodos</button><button class="btn btn-primary" data-pago><i class="bi bi-plus-lg me-1"></i>Registrar pago</button>';
@@ -77,9 +78,6 @@ DW.ready.then(async (me) => {
     const q = filtro.toLowerCase(), k = cartera.filter((x) => !q || x.nombre.toLowerCase().includes(q)).sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
     const pend = pagos.filter((p) => p.estado === 'pendiente');
     const n = (e) => cartera.filter((x) => x.estado === e).length;
-    C.kpis(view.querySelector('[data-kpis]'), [['Deben', n('debe'), C.money(cartera.filter((x) => x.estado === 'debe').reduce((t, x) => t + x.saldo, 0)), 'bi-exclamation-circle'],
-      ['Por vencer', n('por_vencer'), 'tienen cuota del mes sin pagar', 'bi-clock'], ['Al día', n('al_dia') + n('adelantado'), `de ${cartera.length} socios · ${n('adelantado')} adelantados`, 'bi-check2-circle'],
-      ['Por verificar', pend.length, 'pagos reportados', 'bi-hourglass-split']]);
     // Filtro por estado y tarjetas de color según cómo va cada socio (el nombre baja de línea, no se sale de la tarjeta)
     const ORD = { debe: 0, por_vencer: 1, al_dia: 2, adelantado: 3 };
     const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
@@ -140,7 +138,7 @@ DW.ready.then(async (me) => {
       .ro-anio td{text-align:center;padding:0}.ro-anio-n{display:flex;align-items:center;gap:6px;text-align:left!important;min-width:150px;max-width:220px;padding-right:6px!important}
       .ro-c{display:inline-block;width:100%;min-width:18px;height:18px;border-radius:5px;vertical-align:middle}.dw-legend .ro-c{width:12px;min-width:12px;height:12px;margin-right:4px}
       .ro-c-pagado{background:var(--bs-success)}.ro-c-parcial{background:var(--bs-warning)}.ro-c-debe{background:var(--bs-danger)}.ro-c-pendiente{background:rgba(var(--dw-p-rgb),.18)}.ro-c-na{border:1px dashed var(--bs-border-color)}</style>
-    <div class="dw-grid dw-grid--kpi mb-3" data-kpis></div><div data-anio></div>
+    <div data-anio></div>
     <div class="d-flex align-items-center gap-2 mb-2"><h2 class="h6 mb-0 flex-grow-1">Cartera</h2><input class="form-control form-control-sm" style="max-width:220px" placeholder="Buscar socio…" data-q aria-label="Buscar socio"></div>
     <div class="mb-4" data-cartera></div><div data-pend></div><h2 class="h6 mb-2">Ingresos de cuotas</h2><div class="dw-card p-0 p-md-2" data-pagos></div>`;
   view.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.ro-cc')) e.target.click(); });

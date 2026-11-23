@@ -1,9 +1,10 @@
-// Inicio = el módulo Dashboard de Diwilo Modulos. Aquí se registra lo PROPIO del club: la próxima reunión, mis pendientes
-// y una tarjeta por módulo activo con su número clave (lleva a su pantalla).
+// Inicio = el módulo Dashboard de Diwilo Modulos. Aquí se registra lo PROPIO del club: arriba el logo completo del club
+// (portada) y debajo, como principal, el calendario. Sin estadísticas: lo de cada socio ya está en «Lo tuyo».
 window.DwSinFigura = true;    // sin «Así funciona tu negocio»
+window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
 (window.DwDashboard = window.DwDashboard || []).push({
   id: 'club',
-  titulo: 'Tu club',
+  titulo: '',
   async mount(host, { me }) {
     const { api, esc } = window.App;
     const C = window.App.Crud;
@@ -18,34 +19,32 @@ window.DwSinFigura = true;    // sin «Así funciona tu negocio»
       return;
     }
     const tiene = (id) => me.modules.some((m) => m.id === id);
-    const pedir = (url) => api(url).catch(() => null);
-    const [yo, reu, soc, tar, imp, caj, cuo] = await Promise.all([pedir('/api/lotuyo'), tiene('reuniones') ? pedir('/api/reuniones/resumen') : null, tiene('socios') ? pedir('/api/socios/resumen') : null,
-      tiene('tareas') ? pedir('/api/tareas/resumen') : null, tiene('impacto') ? pedir('/api/impacto/resumen') : null, tiene('cajas') ? pedir('/api/cajas/resumen') : null, tiene('cuotas') ? pedir('/api/cuotas/resumen') : null]);
-    const hoy = C.todayCo();
-    const cuando = (f) => { const n = Math.round((Date.parse(f) - Date.parse(hoy)) / 864e5); return n === 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`; };
-    const prox = reu?.proximas?.[0];
-    const tiles = [
-      soc && ['Socios del club', soc.activos, `${soc.junta} en la junta${soc.externos ? ` · ${soc.externos} externos` : ''}${soc.sin_activar ? ` · ${soc.sin_activar} sin activar` : ''}`, 'bi-people-fill', '/staff/socios.html'],
-      reu && ['Asistencia (90 días)', reu.asistencia_90d == null ? '—' : `${reu.asistencia_90d}%`, `${reu.proximas.length} próximas`, 'bi-calendar-event', '/staff/reuniones.html'],
-      tar && ['Tareas abiertas', tar.valor, tar.vencidas ? `${tar.vencidas} vencidas` : `${tar.hechas_30d} hechas en 30 días`, 'bi-kanban', '/staff/tareas.html'],
-      imp && ['Beneficiados', C.num(imp.beneficiados), `${imp.en_curso} proyectos vivos`, 'bi-globe-americas', '/staff/impacto.html'],
-      caj && ['Caja menor · Club', C.money(caj.cajas[0].saldo), `Caja mayor ${C.money(caj.cajas[1].saldo)}`, 'bi-cash-stack', '/staff/cajas.html'],
-      cuo && ['Cuotas por cobrar', C.money(cuo.por_cobrar), cuo.por_verificar ? `${cuo.por_verificar} por verificar` : `${cuo.deben} socios deben`, 'bi-wallet2', '/staff/cuotas.html'],
-    ].filter(Boolean);
+    // Portada: el logo completo del club. Primero el de fondo oscuro (blanco) sobre el color del club; si no, el horizontal
+    // sobre blanco; si no hay ninguno, el logo de la app con el nombre del club.
+    const logos = tiene('marca') ? ((await api('/api/marca/logos').catch(() => null))?.logos || []) : [];
+    const L = (t) => logos.find((x) => x.tipo === t && x.data_url)?.data_url;
+    const oscuro = L('oscuro'), horiz = L('horizontal');
+    const portada = `<style>.ro-portada{position:relative;overflow:hidden;border-radius:22px;padding:clamp(28px,5vw,52px) clamp(20px,4vw,48px);display:grid;place-items:center;text-align:center;min-height:190px}
+      .ro-portada.color{background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--dw-p) 70%,#fff) 0%,var(--dw-p) 45%,color-mix(in srgb,var(--dw-p) 70%,#000) 100%);color:#fff;box-shadow:0 18px 40px -18px color-mix(in srgb,var(--dw-p) 70%,transparent)}
+      .ro-portada.claro{background:linear-gradient(135deg,#fff,color-mix(in srgb,var(--dw-p) 7%,#fff));border:1px solid color-mix(in srgb,var(--dw-p) 18%,var(--bs-border-color))}
+      .ro-portada::before,.ro-portada::after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+      .ro-portada::before{width:340px;height:340px;right:-110px;top:-150px;background:rgba(255,255,255,.12)}
+      .ro-portada::after{width:220px;height:220px;left:-80px;bottom:-120px;background:rgba(255,255,255,.08)}
+      .ro-portada.claro::before,.ro-portada.claro::after{background:color-mix(in srgb,var(--dw-p) 6%,transparent)}
+      .ro-portada img{position:relative;z-index:1;max-width:min(100%,560px);max-height:150px;object-fit:contain;filter:drop-shadow(0 4px 14px rgba(0,0,0,.12))}
+      .ro-portada .app{width:96px;height:96px;border-radius:24px;object-fit:cover;background:#fff;margin-bottom:12px}
+      .ro-portada h2{position:relative;z-index:1;font-weight:700;margin:0;font-size:clamp(1.4rem,3.5vw,2.1rem)}
+      .ro-portada .lema{position:relative;z-index:1;margin-top:10px;opacity:.85;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}</style>
+      ${oscuro ? `<div class="ro-portada color"><img src="${esc(oscuro)}" alt="${esc(me.business.name)}"></div>`
+        : horiz ? `<div class="ro-portada claro"><img src="${esc(horiz)}" alt="${esc(me.business.name)}"></div>`
+        : `<div class="ro-portada color"><div>${me.settings.logo ? `<img class="app" src="${esc(me.settings.logo)}" alt="">` : ''}<h2>${esc(me.business.name)}</h2></div></div>`}`;
     // Club sin logos: tarjeta para crearlos con los archivos oficiales de Rotary (solo si la app ya los tiene)
     const logosCard = me.canManage && !me.business.readOnly && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema)) && tiene('marca')
       ? await new Promise((ok) => { if (window.RoLogos) return ok(true); const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = () => ok(true); sc.onerror = () => ok(false); document.head.appendChild(sc); })
         .then(async (ok) => ok && (await window.RoLogos.archivos()).logo) : false;
     host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>
         <div class="flex-grow-1"><b>Configura la marca de tu club</b><div class="small text-body-secondary">Con el logotipo oficial de Rotaract y el nombre «${esc(window.RoLogos.club(me.business.name))}»: los logos (app, horizontal, ícono, letras y fondo oscuro), los colores de Rotaract, la letra Open Sans y una descripción del club. Todo queda en Marca y se usa en los certificados.</div></div>
-        <button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div>` : ''}<div class="row g-3 mb-3">
-        <div class="col-lg-5"><div class="dw-card h-100" style="border-left:4px solid var(--dw-p)"><div class="small text-body-secondary">Próxima reunión</div>
-          ${prox ? `<div class="fs-5 fw-bold">${esc(prox.titulo)}</div><div class="small text-capitalize">${new Date(`${prox.fecha}T12:00:00Z`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}${prox.hora_ini ? ` · ${esc(prox.hora_ini)}` : ''} · <b>${cuando(prox.fecha)}</b></div>${prox.lugar ? `<div class="small text-body-secondary"><i class="bi bi-geo-alt me-1"></i>${esc(prox.lugar)}</div>` : ''}
-            <a class="btn btn-sm btn-outline-primary mt-2" href="/staff/reuniones.html">Ver calendario</a>` : '<div class="text-body-secondary">No hay reuniones programadas.</div>'}</div></div>
-        <div class="col-lg-7"><div class="dw-card h-100"><div class="small text-body-secondary mb-1">Lo tuyo</div>
-          ${yo?.socio ? `<div class="d-flex flex-wrap gap-3"><span><b>${yo.tareas ? yo.tareas.length : 0}</b> tareas tuyas</span><span><b>${yo.asistencia.pct ?? '—'}${yo.asistencia.pct != null ? '%' : ''}</b> de asistencia</span><span>${yo.cuota ? (yo.cuota.saldo ? `Cuotas: debes <b class="text-danger">${C.money(yo.cuota.saldo)}</b>` : '<b class="text-success">Cuotas al día</b>') : ''}</span></div>
-            <a class="btn btn-sm btn-outline-primary mt-2" href="/staff/lotuyo.html">Ir a lo tuyo</a>` : '<div class="text-body-secondary small">Tu usuario aún no está enlazado a una ficha de socio.</div>'}</div></div></div>
-      ${tiles.length ? `<div class="dw-grid">${tiles.map(([t, v, d, i, r]) => window.App.kpi({ titulo: t, valor: v, detalle: d, icono: i, ruta: r })).join('')}</div>` : ''}`;
+        <button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div>` : ''}${portada}`;
     host.querySelector('[data-rologos]')?.addEventListener('click', async (ev) => {
       const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creando…';
       try { const n = await window.RoLogos.crear(me); window.App.toast('Listo: la marca del club quedó configurada'); setTimeout(() => (window.top || window).location.reload(), 1200); }
