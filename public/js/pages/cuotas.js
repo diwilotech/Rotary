@@ -9,7 +9,8 @@ DW.ready.then(async (me) => {
   const EST = { al_dia: ['ok', 'Al día'], adelantado: ['ok', 'Adelantado'], por_vencer: ['soon', 'Por vencer'], debe: ['bad', 'Debe'] };
   const PEST = { pendiente: ['soon', 'Por verificar'], verificado: ['ok', 'Verificado'], rechazado: ['bad', 'Rechazado'], anulado: ['free', 'Anulado'] };
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
-  let cartera = [], pagos = [], filtro = '', anio = null;
+  let cartera = [], pagos = [], filtro = '', anio = null, fEst = '';
+  const ICO = { debe: 'bi-exclamation-circle-fill', por_vencer: 'bi-clock-fill', al_dia: 'bi-check-circle-fill', adelantado: 'bi-star-fill' };
   RO.nav('cuotas');
 
   if (W) {
@@ -63,10 +64,22 @@ DW.ready.then(async (me) => {
   function pintar() {
     const q = filtro.toLowerCase(), k = cartera.filter((x) => !q || x.nombre.toLowerCase().includes(q)).sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
     const pend = pagos.filter((p) => p.estado === 'pendiente');
-    C.kpis(view.querySelector('[data-kpis]'), [['Al día', cartera.filter((x) => x.estado !== 'debe').length, `de ${cartera.length} socios`, 'bi-check2-circle'], ['Deben', cartera.filter((x) => x.estado === 'debe').length, '', 'bi-exclamation-circle'],
-      ['Por cobrar', C.money(cartera.reduce((s, x) => s + x.saldo, 0)), '', 'bi-wallet2'], ['Por verificar', pend.length, 'pagos reportados', 'bi-hourglass-split']]);
-    view.querySelector('[data-cartera]').innerHTML = k.length ? `<div class="ro-socios">${k.map((x) => `<div class="ro-scard" data-s="${x.socio_id}">${RO.avatar(x, 40)}<span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.nombre)}</b>
-        <span class="small text-body-secondary">${x.saldo ? `Debe <b class="text-danger">${C.money(x.saldo)}</b>` : x.a_favor ? `A favor ${C.money(x.a_favor)}` : `Pagado ${C.money(x.pagado)}`}</span></span>${C.chip(...(EST[x.estado] || EST.debe))}</div>`).join('')}</div>`
+    const n = (e) => cartera.filter((x) => x.estado === e).length;
+    C.kpis(view.querySelector('[data-kpis]'), [['Deben', n('debe'), C.money(cartera.filter((x) => x.estado === 'debe').reduce((t, x) => t + x.saldo, 0)), 'bi-exclamation-circle'],
+      ['Por vencer', n('por_vencer'), 'tienen cuota del mes sin pagar', 'bi-clock'], ['Al día', n('al_dia') + n('adelantado'), `de ${cartera.length} socios · ${n('adelantado')} adelantados`, 'bi-check2-circle'],
+      ['Por verificar', pend.length, 'pagos reportados', 'bi-hourglass-split']]);
+    // Filtro por estado y tarjetas de color según cómo va cada socio (el nombre baja de línea, no se sale de la tarjeta)
+    const ORD = { debe: 0, por_vencer: 1, al_dia: 2, adelantado: 3 };
+    const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
+    const linea = (x) => x.estado === 'debe' ? `<b>Debe ${C.money(x.saldo)}</b>${x.vencido ? ` · ${C.money(x.vencido)} vencido` : ''}`
+      : x.estado === 'por_vencer' ? `<b>Por vencer ${C.money(x.saldo)}</b>` : x.estado === 'adelantado' ? `<b>A favor ${C.money(x.a_favor)}</b>` : `<b>Al día</b> · pagado ${C.money(x.pagado)}`;
+    view.querySelector('[data-cartera]').innerHTML = cartera.length ? `<div class="d-flex flex-wrap gap-2 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
+        .map(([e, l, c]) => `<button type="button" class="btn btn-sm ${fEst === e ? 'btn-primary' : 'btn-light'} rounded-pill" data-fe="${e}">${l} <span class="badge text-bg-${fEst === e ? 'light' : 'secondary'}">${c}</span></button>`).join('')}</div>
+      ${vis.length ? `<div class="ro-cart">${vis.map((x) => `<div class="ro-cc ro-cc-${x.estado}" data-s="${x.socio_id}" role="button" tabindex="0">
+          <div class="d-flex align-items-start gap-2">${RO.avatar(x, 38)}<div class="min-w-0 flex-grow-1"><b class="ro-cc-n">${esc(x.nombre)}</b>${x.cargo ? `<div class="small text-body-secondary text-truncate">${esc(x.cargo)}</div>` : ''}</div></div>
+          <div class="ro-cc-pie"><span class="ro-cc-e"><i class="bi ${ICO[x.estado]} me-1"></i>${(EST[x.estado] || EST.debe)[1]}</span><span class="text-end">${linea(x)}</span></div>
+          <div class="small text-body-secondary">${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}</div></div>`).join('')}</div>`
+        : '<p class="small text-body-secondary">Nadie en este estado.</p>'}`
       : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».');
     view.querySelector('[data-pend]').innerHTML = pend.length ? `<div class="alert alert-warning d-flex align-items-center gap-2"><i class="bi bi-hourglass-split"></i><span class="flex-grow-1">${pend.length} pago${pend.length > 1 ? 's' : ''} reportado${pend.length > 1 ? 's' : ''} por los socios esperan verificación.</span></div>` : '';
     view.querySelector('[data-pagos]').innerHTML = pagos.length ? window.App.table([
@@ -105,17 +118,25 @@ DW.ready.then(async (me) => {
     pintar(); pintarAnio(anio);
   }
 
-  view.innerHTML = `<style>.ro-anio{overflow-x:auto}.ro-anio table{width:100%;border-collapse:separate;border-spacing:3px;font-size:.8rem}.ro-anio th{font-weight:600;color:var(--bs-secondary-color);text-align:center}
+  view.innerHTML = `<style>.ro-cart{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr))}
+      .ro-cc{--c:var(--bs-secondary-color);display:grid;gap:8px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 35%,transparent);border-left:5px solid var(--c);background:color-mix(in srgb,var(--c) 8%,var(--bs-body-bg));cursor:pointer;min-width:0}
+      .ro-cc:hover{background:color-mix(in srgb,var(--c) 14%,var(--bs-body-bg))}.ro-cc-n{display:block;line-height:1.25;overflow-wrap:anywhere}
+      .ro-cc-debe{--c:var(--bs-danger)}.ro-cc-por_vencer{--c:#d97706}.ro-cc-al_dia{--c:var(--bs-success)}.ro-cc-adelantado{--c:#0284c7}
+      .ro-cc-pie{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;padding-top:8px;border-top:1px dashed color-mix(in srgb,var(--c) 40%,transparent);color:var(--c)}
+      .ro-cc-e{font-weight:700;white-space:nowrap}
+.ro-anio{overflow-x:auto}.ro-anio table{width:100%;border-collapse:separate;border-spacing:3px;font-size:.8rem}.ro-anio th{font-weight:600;color:var(--bs-secondary-color);text-align:center}
       .ro-anio td{text-align:center;padding:0}.ro-anio-n{display:flex;align-items:center;gap:6px;text-align:left!important;min-width:150px;max-width:220px;padding-right:6px!important}
       .ro-c{display:inline-block;width:100%;min-width:18px;height:18px;border-radius:5px;vertical-align:middle}.dw-legend .ro-c{width:12px;min-width:12px;height:12px;margin-right:4px}
       .ro-c-pagado{background:var(--bs-success)}.ro-c-parcial{background:var(--bs-warning)}.ro-c-debe{background:var(--bs-danger)}.ro-c-pendiente{background:rgba(var(--dw-p-rgb),.18)}.ro-c-na{border:1px dashed var(--bs-border-color)}</style>
     <div class="dw-grid dw-grid--kpi mb-3" data-kpis></div><div data-anio></div>
     <div class="d-flex align-items-center gap-2 mb-2"><h2 class="h6 mb-0 flex-grow-1">Cartera</h2><input class="form-control form-control-sm" style="max-width:220px" placeholder="Buscar socio…" data-q aria-label="Buscar socio"></div>
     <div class="mb-4" data-cartera></div><div data-pend></div><h2 class="h6 mb-2">Ingresos de cuotas</h2><div class="dw-card p-0 p-md-2" data-pagos></div>`;
+  view.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.ro-cc')) e.target.click(); });
   view.querySelector('[data-q]').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintar(); });
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) return pintarAnio(Number(y.dataset.ay));
     const b = e.target.closest('[data-a]'); if (b) return accion(b.dataset.a, pagos.find((p) => String(p.id) === b.dataset.p));
+    const fe = e.target.closest('[data-fe]'); if (fe) { fEst = fe.dataset.fe; return pintar(); }
     const s = e.target.closest('[data-s]'); if (s && W) registrar(s.dataset.s);
   });
   await cargar();
