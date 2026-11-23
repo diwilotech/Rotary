@@ -25,6 +25,7 @@ Partió de CD Academia (misma base: shell, login, panel con marco, contrato con 
 - Cobro de cuotas: desde la activación en el club (`inicioCobro`: `activado_at`, si no hay, `fecha_ingreso`).
 - La junta está siempre en Equipo con rol admin: `juntaAlEquipo` (socios.js) al guardar un socio y al abrir Equipo.
 - `lotuyo` (base, siempre activo): vista del socio, carnet (`/api/lotuyo/carnet`), reportar pago con comprobante, certificado propio.
+- `kit` (Kit de marca, migración 0016): logotipo del club = PNG oficial del programa (lo sube la junta desde el Brand Center, `ro_club_config.emblema_key`) + nombre del club; horizontal/centrada, a todo color o a una tinta; descarga PNG/JPG/SVG. Piezas (publicación, historia, portada, volante A5) con foto local, colores de marca y el logotipo en blanco. Todo en canvas (`public/js/pages/kit.js`); el servidor guarda `ro_club_config.kit` (JSON).
 - Shell (`public/js/shell.js`): botón **Mi carnet** en la barra superior (`DW.carnet()`); en celular, accesos fijos Inicio · Club · Lo tuyo · Juegos (si existe el módulo `juegos`) + «Más».
 - Centrales: marketing, whatsapp, marca, ai, dashboard (sin finanzas ni nómina). IA propia: `src/ia/control.js`, pendientes en `src/ia/pendientes.js`.
 - Importación del sistema anterior: `scripts/importar-rotaract.mjs` (genera SQL idempotente por `origen_id`).

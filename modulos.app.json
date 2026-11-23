@@ -210,6 +210,26 @@
         ],
         "flujos": []
       }
+    },
+    {
+      "id": "kit",
+      "nombre": "Kit de marca",
+      "descripcion": "Logotipo del club (horizontal o vertical, a todo color o a una tinta) y piezas para redes e impresos",
+      "icono": "bi-palette2",
+      "menu": {
+        "ruta": "/staff/kit.html",
+        "orden": 70
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_club_config"
+      ]
     }
   ]
 }

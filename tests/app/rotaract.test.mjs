@@ -138,6 +138,15 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Impacto: el proyecto trae comunidad, documentos y alianza financiera con su aporte', det.proyecto.comunidad === 'Fundación Jardín de Amor' && det.docs.length === 2 && det.alianzas[0]?.tipo_aporte === 'financiera' && det.alianzas[0].aporte_recibido === 100000 && dl.status === 201 && df.status === 201, JSON.stringify(det.docs));
   check('Impacto: B no ve los documentos de A', (await B.app(`/api/impacto/docs/${dl.data.id}`)).status === 404);
 
+  /* Kit de marca */
+  const PNGK = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
+  const kv = await A.app('/api/kit', { method: 'PUT', body: { linea1: 'Club Prueba', version: 'centrada' } });
+  const ke = await A.app('/api/kit/emblema?nombre=logo.png', { method: 'POST', body: PNGK, headers: raw });
+  const kg = (await A.app('/api/kit')).data;
+  check('Kit de marca: guarda los datos y el logotipo oficial (PNG)', kv.status === 200 && ke.status === 200 && kg.kit.linea1 === 'Club Prueba' && !!kg.emblema && (await A.app('/api/kit/emblema')).status === 200);
+  check('Kit de marca: rechaza JPG/PDF, el personal no lo cambia y B no ve el de A', (await A.app('/api/kit/emblema?nombre=x.pdf', { method: 'POST', body: new TextEncoder().encode('%PDF-1.4'), headers: raw })).status === 400
+    && (await anaU.app('/api/kit', { method: 'PUT', body: { linea1: 'x' } })).status === 403 && !(await B.app('/api/kit')).data.emblema);
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);

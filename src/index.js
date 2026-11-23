@@ -26,13 +26,14 @@ import * as cuotasApi from './api/cuotas.js';
 import * as lotuyoApi from './api/lotuyo.js';
 import * as clubApi from './api/club.js';
 import * as distritoApi from './api/distrito.js';
+import * as kitApi from './api/kit.js';
 import { isCentralApi, centralModuleOf, centralApi, centralPage, centralAsset, centralPublic } from './lib/central.js';
 import { CENTRALES } from './lib/modules.js';
 
 const router = new Router();
 // platform va primero. Agrega aquí cada módulo nuevo de src/api/ (y su entrada en modulos.app.json).
 // Los horizontales (Finanzas, Marketing…) no van aquí: se piden en modulos.app.json → "centrales" y viven en Diwilo Modulos.
-const MODULE_APIS = [sociosApi, reunionesApi, tareasApi, impactoApi, cajasApi, cuotasApi, lotuyoApi, clubApi, distritoApi];
+const MODULE_APIS = [sociosApi, reunionesApi, tareasApi, impactoApi, cajasApi, cuotasApi, lotuyoApi, clubApi, distritoApi, kitApi];
 for (const mod of [platformApi, platformModulesApi, authApi, meApi, settingsApi, mcpApi, teamApi, ...MODULE_APIS]) if (typeof mod.routes === 'function') mod.routes(router);
 
 const SECURITY_HEADERS = {
