@@ -9,7 +9,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { activeModuleIds } from '../lib/modules.js';
-import { socioDeSesion, socioDeSesionOError, cartera, cargoOrden, certificadoHtml } from '../lib/rotaract.js';
+import { socioDeSesion, socioDeSesionOError, cartera, cargoOrden, certificadoHtml, anioRotario, anioRotarioDe } from '../lib/rotaract.js';
 import { subirFoto } from './socios.js';
 import { nuevoPago, subirComprobante, servirComprobante, pagosDe } from './cuotas.js';
 
@@ -43,6 +43,9 @@ export function routes(r) {
       cartera(c, s.id).then((x) => x[0] || null),
       pagosDe(c, { socioId: s.id }),
     ]);
+    // Sus cuotas del año rotario mes a mes (los cuadritos de colores) y el valor de la cuota de este mes
+    const [anio, per] = cuota ? await Promise.all([anioRotario(c, anioRotarioDe(hoy), s.id), one(c.env, 'SELECT monto FROM ro_periodos WHERE business_id = ? AND mes <= ? ORDER BY mes DESC LIMIT 1', c.businessId, hoy.slice(0, 7))]) : [null, null];
+    if (cuota) Object.assign(cuota, { anio: anio.nombre, meses: anio.rows[0]?.celdas || [], valor_mes: per?.monto || null });
     return json({ socio: await carnet(c, s), tareas, reuniones, asistencia: { total: asis.t || 0, presente: asis.p || 0, pct: asis.t ? Math.round((asis.p / asis.t) * 100) : null }, cuota, pagos: pagos.slice(0, 24), modulos: [...activos] });
   });
 

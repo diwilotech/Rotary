@@ -18,11 +18,11 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Socios: sin activar no hay certificado', (await A.app(`/api/socios/socios/${ana.data.id}/certificado`)).status === 409);
   const act = await A.app(`/api/socios/socios/${ana.data.id}/activar`, { method: 'POST', body: { fecha: `${mes}-01` } });
   const cert = await A.app(`/api/socios/socios/${ana.data.id}/certificado`);
-  check('Socios: activar (con su fecha) genera el certificado con firmas', act.data.activado_at === `${mes}-01` && cert.status === 200 && cert.data.text.includes('Ana Socia') && cert.data.text.includes('Camila Presidenta') && cert.data.text.includes('Activo en el club'));
+  check('Socios: activar (con su fecha) genera el certificado con firmas', act.data.activado_at === `${mes}-01` && cert.status === 200 && cert.data.text.includes('Ana Socia') && cert.data.text.includes('Camila Presidenta') && cert.data.text.includes('Activación en el club') && cert.data.text.includes('En proceso'));
   await A.app(`/api/socios/socios/${ana.data.id}`, { method: 'PATCH', body: { myrotary_id: '12345678', myrotary_at: `${mes}-02` } });
   const cert2 = await A.app(`/api/socios/socios/${ana.data.id}/certificado`);
   const anaR = (await A.app('/api/socios/socios')).data.rows.find((x) => x.id === ana.data.id);
-  check('Socios: 3 fechas (ingreso, activación, My Rotary) y el código es el ID de My Rotary', anaR.fecha_ingreso && anaR.activado_at && anaR.myrotary_at === `${mes}-02` && anaR.en_myrotary && cert2.data.text.includes('ID My Rotary 12345678'));
+  check('Socios: 3 fechas (ingreso, activación, My Rotary) y el código es el ID de My Rotary', anaR.fecha_ingreso && anaR.activado_at && anaR.myrotary_at === `${mes}-02` && anaR.en_myrotary && cert2.data.text.includes('ID 12345678'));
   check('Socios: activación con fecha futura se rechaza', (await A.app(`/api/socios/socios/${sec.data.id}/activar`, { method: 'POST', body: { fecha: '2999-01-01' } })).status === 400);
   check('Socios: B no ve ni activa los socios de A', (await B.app('/api/socios/socios')).data.rows.length === 0 && (await B.app(`/api/socios/socios/${ana.data.id}/activar`, { method: 'POST', body: {} })).status === 404);
 
@@ -82,6 +82,7 @@ export default async function ({ check, newBusiness, newMember }) {
   await A.app(`/api/socios/socios/${sec.data.id}`, { method: 'PATCH', body: { email: me.user.email } });
   const lt = await staff.app('/api/lotuyo');
   check('Lo tuyo: enlaza la ficha por correo y muestra el carnet', lt.data.socio?.nombre === 'Sara Secretaria' && lt.data.socio.cargo === 'Secretario/a del club');
+  check('Lo tuyo: sus cuotas traen los 12 meses del año rotario', !lt.data.cuota || (lt.data.cuota.meses.length === 12 && lt.data.cuota.meses[0].mes.endsWith('-07')), JSON.stringify(lt.data.cuota));
   check('Lo tuyo: edita su carnet', (await staff.app('/api/lotuyo/carnet', { method: 'PATCH', body: { telefono: '3001234567', profesion: 'Ingeniera' } })).status === 200 && (await staff.app('/api/lotuyo/carnet')).data.carnet.profesion === 'Ingeniera');
   const rp = await staff.app('/api/lotuyo/pagos', { method: 'POST', body: { monto: 25000, metodo: 'nequi' } });
   const cp = await staff.app(`/api/lotuyo/pagos/${rp.data.id}/comprobante?nombre=pago`, { method: 'POST', body: PNG, headers: raw });

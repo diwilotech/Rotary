@@ -21,6 +21,7 @@ Partió de CD Academia (misma base: shell, login, panel con marco, contrato con 
 - Inicio: widget «Calendario del club» (`/api/club/calendario`: reuniones, eventos, tareas, cumpleaños, proyectos, cuotas y cuota distrital según módulos activos). Finanzas y Cuotas muestran el año rotario (julio a junio).
 - Quién paga cuota: `PAGA_CUOTA` (rotaract.js) = socios activos y junta siempre; aspirantes/honorarios si el club lo marca (`ro_club_config.cuota_aspirantes/cuota_honorarios`, migración 0012, `/api/cuotas/config`); externos y voluntarios nunca.
 - Socios: 3 fechas — `fecha_ingreso` (ingreso al club), `activado_at` (activación en el club, con certificado; «Activar» pide la fecha) y `myrotary_at` (My Rotary). El código del socio es `myrotary_id` (va en el certificado); se puede estar activo sin My Rotary. `activacion_codigo` (RTC-…) queda solo como verificación interna. Migración 0013.
+- Cobro de cuotas: desde la activación en el club (`inicioCobro`: `activado_at`, si no hay, `fecha_ingreso`).
 - La junta está siempre en Equipo con rol admin: `juntaAlEquipo` (socios.js) al guardar un socio y al abrir Equipo.
 - `lotuyo` (base, siempre activo): vista del socio, carnet (`/api/lotuyo/carnet`), reportar pago con comprobante, certificado propio.
 - Shell (`public/js/shell.js`): botón **Mi carnet** en la barra superior (`DW.carnet()`); en celular, accesos fijos Inicio · Club · Lo tuyo · Juegos (si existe el módulo `juegos`) + «Más».
