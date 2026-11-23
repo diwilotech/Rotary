@@ -1,51 +1,71 @@
-// Logos del club con los archivos OFICIALES de Rotary (public/img/marca/): nada inventado.
-//  · rotaract.png  logotipo oficial de Rotaract (rueda + palabra), a todo color, fondo transparente
-//  · rueda.png     solo la rueda (el engranaje), fondo transparente
-//  · letras.png    (opcional) solo la palabra «Rotaract»
-// Con ellos arma: el cuadrado de la app (la rueda), horizontal (logotipo + nombre del club debajo, alineado con la palabra),
-// solo ícono (la rueda), solo letras (si está letras.png) y para fondo oscuro (palabra y nombre en blanco, rueda en oro).
-// La versión vertical no se genera. Se ofrece desde Inicio (tarjeta para la presidencia o la junta si el club no tiene logos).
+// Logos del club con el logotipo OFICIAL de Rotaract (public/img/marca/, sacado del archivo del Brand Center de Rotary):
+//  · rotaract.svg  palabra «Rotaract» + rueda de Rotary, en arándano      · rueda.svg  solo la rueda      · letras.svg  solo la palabra
+// El nombre del club va como en el logo oficial del Brand Center: debajo de «Rotaract», en Open Sans Light, alineado a la
+// DERECHA con el final de la palabra («Medellín»). Si el nombre es largo, la letra se achica hasta caber (y si no, 2 líneas).
+// Arma: el cuadrado de la app (la rueda), horizontal, solo ícono, solo letras (palabra + nombre) y fondo oscuro (todo en blanco).
+// La versión vertical no se genera. Se ofrece desde Inicio (presidencia o junta, club sin logo).
 (function () {
-  const BASE = '/img/marca/', ROJO = '#D41367', F = "'Open Sans', Arial, Helvetica, sans-serif";
-  const ALINEAR = 0.335;   // dónde empieza la palabra dentro del logotipo oficial (fracción del ancho): ahí arranca el nombre del club
+  const BASE = '/img/marca/', ROJO = '#D41367', F = "'Open Sans', Arial, sans-serif";
+  // Medidas del arte oficial (unidades del archivo, y hacia arriba): caja del logo completo, de la palabra y del nombre
+  const ARTE = { x0: 8.624, x1: 460.882, y0: 9.004, y1: 153.221 }, PAL = { x0: 8.624, x1: 299.39, y0: 56.664, y1: 114.181 };
+  const NOMBRE = { tam: 48.93, base: -4.8, max: PAL.x1 - PAL.x0 };   // 20.5 pt en el PDF; línea base 61.5 bajo la de «Rotaract»
   const cargar = (n) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = BASE + n; });
-  const club = (nombre) => String(nombre || '').replace(/^\s*(rotaract|rotary|interact)\s+/i, '').trim() || 'Club';
+  // «Rotaract Club de Medellín» → «Medellín» (el logo oficial lleva solo el nombre del club)
+  const club = (nombre) => String(nombre || '').replace(/^\s*rotaract\s+/i, '').replace(/^club\s+(de|del|of)?\s*/i, '').trim() || String(nombre || 'Club');
   const lienzo = (w, h) => { const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h); return c; };
-  // Pinta de blanco lo que no es oro (la palabra), para la versión de fondo oscuro
-  function enBlanco(img) {
-    const c = lienzo(img.naturalWidth, img.naturalHeight), x = c.getContext('2d'); x.drawImage(img, 0, 0);
-    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
-    for (let i = 0; i < p.length; i += 4) { if (!p[i + 3]) continue; const oro = p[i] > 200 && p[i + 1] > 120 && p[i + 2] < 110; if (!oro) { p[i] = p[i + 1] = p[i + 2] = 255; } }
-    x.putImageData(d, 0, 0); return c;
-  }
-  const ancho = (i) => i.naturalWidth || i.width, alto = (i) => i.naturalHeight || i.height;
-  function horizontal(logo, nombre, color) {
-    const W = 1000, h = Math.round(alto(logo) * (W / ancho(logo))), fs = Math.round(h * 0.2), pad = 24;
-    const c = lienzo(W + pad * 2, h + fs * 1.5 + pad * 2), x = c.getContext('2d');
-    x.drawImage(logo, pad, pad, W, h);
-    x.fillStyle = color; x.font = `700 ${fs}px ${F}`; x.textBaseline = 'top'; x.fillText(nombre, pad + W * ALINEAR, pad + h + fs * 0.2);
-    return c;
-  }
-  function cuadrado(rueda, fondo = '#FFFFFF') {
-    const c = lienzo(512, 512), x = c.getContext('2d'), s = 380;
-    x.fillStyle = fondo; x.fillRect(0, 0, 512, 512);
-    const k = s / Math.max(rueda.naturalWidth, rueda.naturalHeight); x.drawImage(rueda, (512 - rueda.naturalWidth * k) / 2, (512 - rueda.naturalHeight * k) / 2, rueda.naturalWidth * k, rueda.naturalHeight * k);
-    return c;
-  }
-  function sola(img, alto = 600) { const k = alto / img.naturalHeight, c = lienzo(img.naturalWidth * k, alto); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c; }
+  const tinta = (img, color) => { const c = lienzo(img.width, img.height), x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height); return c; };
 
-  async function archivos() { const [logo, rueda, letras] = await Promise.all([cargar('rotaract.png'), cargar('rueda.png'), cargar('letras.png')]); return { logo, rueda, letras }; }
-  async function crear(me) {
-    const { api } = window.App, A = await archivos();
-    if (!A.logo || !A.rueda) throw new Error('Faltan los archivos oficiales de Rotary en la app');
-    await document.fonts.load(`700 40px ${F}`).catch(() => {});
-    const n = club(me.business.name), png = (c) => c.toDataURL('image/png');
-    const L = { horizontal: horizontal(A.logo, n, ROJO), icono: sola(A.rueda, 400), oscuro: horizontal(enBlanco(A.logo), n, '#FFFFFF'), ...(A.letras ? { letras: sola(A.letras, 300) } : {}) };
-    const app = png(cuadrado(A.rueda));
-    await api('/api/settings/logo', { method: 'PUT', body: { dataUrl: app } });
-    await api('/api/marca/logo', { method: 'PUT', body: { dataUrl: app } }).catch(() => {});
-    for (const [t, c] of Object.entries(L)) await api(`/api/marca/logos/${t}`, { method: 'PUT', body: { dataUrl: png(c) } });
-    return Object.keys(L).length + 1;
+  // Logo con nombre. conRueda: horizontal (palabra + rueda) o solo letras (palabra). k = px por unidad del arte.
+  function conNombre(img, nombre, { conRueda = true, color = ROJO, k = 2.6 } = {}) {
+    const m = document.createElement('canvas').getContext('2d');
+    let fs = NOMBRE.tam, lineas = [nombre];
+    m.font = `300 ${fs}px ${F}`;
+    if (m.measureText(nombre).width > NOMBRE.max) {   // tamaño dinámico, como el del Brand Center
+      fs = Math.max(NOMBRE.tam * 0.62, NOMBRE.tam * (NOMBRE.max / m.measureText(nombre).width));
+      m.font = `300 ${fs}px ${F}`;
+      if (m.measureText(nombre).width > NOMBRE.max) {   // aún largo: dos líneas
+        const p = nombre.split(/\s+/); let a = '', i = 0;
+        for (; i < p.length; i++) { const t = a ? `${a} ${p[i]}` : p[i]; if (m.measureText(t).width > NOMBRE.max && a) break; a = t; }
+        lineas = [a, p.slice(i).join(' ')].filter(Boolean);
+      }
+    }
+    const caja = conRueda ? ARTE : PAL, pad = 14;
+    const abajo = NOMBRE.base - (lineas.length - 1) * fs * 1.15 - fs * 0.3;   // hasta el descendente de la última línea
+    const W = (caja.x1 - caja.x0 + pad * 2) * k, H = (caja.y1 - abajo + pad * 2) * k;
+    const c = lienzo(W, H), x = c.getContext('2d'), X = (u) => (u - caja.x0 + pad) * k, Y = (u) => (caja.y1 - u + pad) * k;
+    const arte = color === ROJO ? img : tinta(img, color);
+    x.drawImage(arte, X(caja.x0), Y(caja.y1), (caja.x1 - caja.x0) * k, (caja.y1 - caja.y0) * k);
+    x.fillStyle = color; x.font = `300 ${fs * k}px ${F}`; x.textAlign = 'right'; x.textBaseline = 'alphabetic';
+    lineas.forEach((l, i) => x.fillText(l, X(PAL.x1), Y(NOMBRE.base - i * fs * 1.15)));
+    return c;
   }
-  window.RoLogos = { crear, archivos, club };
+  function sola(img, alto, color = ROJO) { const k = alto / img.height, c = lienzo(img.width * k, alto); c.getContext('2d').drawImage(color === ROJO ? img : tinta(img, color), 0, 0, c.width, c.height); return c; }
+  function cuadrado(rueda) {
+    const c = lienzo(512, 512), x = c.getContext('2d'), s = 400, k = s / Math.max(rueda.width, rueda.height);
+    x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, 512, 512);
+    x.drawImage(rueda, (512 - rueda.width * k) / 2, (512 - rueda.height * k) / 2, rueda.width * k, rueda.height * k);
+    return c;
+  }
+
+  async function archivos() { const [logo, rueda, letras] = await Promise.all([cargar('rotaract.svg'), cargar('rueda.svg'), cargar('letras.svg')]); return { logo, rueda, letras }; }
+  async function generar(nombreNegocio) {
+    const A = await archivos();
+    if (!A.logo || !A.rueda || !A.letras) throw new Error('Faltan los archivos oficiales de Rotaract en la app');
+    if (!document.querySelector('link[data-opensans]')) {   // la letra del nombre (Open Sans Light, como el logo oficial)
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.opensans = '1'; l.href = 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@300&display=swap';
+      document.head.appendChild(l); await new Promise((ok) => { l.onload = ok; l.onerror = ok; setTimeout(ok, 3000); });
+    }
+    await document.fonts.load(`300 40px ${F}`).catch(() => {});
+    const n = club(nombreNegocio);
+    return { app: cuadrado(A.rueda), horizontal: conNombre(A.logo, n), icono: sola(A.rueda, 420), letras: conNombre(A.letras, n, { conRueda: false }),
+      oscuro: conNombre(A.logo, n, { color: '#FFFFFF' }) };
+  }
+  async function crear(me) {
+    const { api } = window.App, L = await generar(me.business.name), png = (c) => c.toDataURL('image/png');
+    await api('/api/settings/logo', { method: 'PUT', body: { dataUrl: png(L.app) } });
+    await api('/api/marca/logo', { method: 'PUT', body: { dataUrl: png(L.app) } }).catch(() => {});
+    for (const t of ['horizontal', 'icono', 'letras', 'oscuro']) await api(`/api/marca/logos/${t}`, { method: 'PUT', body: { dataUrl: png(L[t]) } });
+    return 5;
+  }
+  window.RoLogos = { crear, generar, archivos, club };
 })();
