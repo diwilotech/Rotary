@@ -120,39 +120,39 @@ export async function obligacionesClub(env, bid, { anio = null } = {}) {
   });
 }
 
-/* ---------------- Proyectado (Caja menor) ---------------- */
-// Por mes del año rotario: lo real (ingresos/egresos) y, de este mes en adelante, lo proyectado:
-// ingresos = cuotas que deben pagar los socios ese mes + otros ingresos (promedio de los últimos 6 meses);
-// egresos  = obligaciones del club (cuotas distritales sin pagar que vencen ese mes) + gasto corriente (promedio de 6 meses).
-// El saldo proyectado arranca del saldo de hoy de la Caja menor.
+/* ---------------- Obligaciones vs. Caja menor ---------------- */
+// Lo que el club debe pagar (cuotas distritales sin pagar) frente a la plata de la Caja menor: cuánto falta o cuánto sobra.
+// Lo proyectado por mes es sencillo: lo que deberían pagar los socios en cuotas (según los periodos de Cuotas) y las
+// obligaciones que vencen ese mes. El saldo proyectado parte del saldo real de hoy.
 export async function proyeccion(env, bid, anio) {
   const hoy = today(), mesHoy = hoy.slice(0, 7), meses = mesesDelAnio(anio);
-  const [reales, prom, periodos, socios, oblig, s] = await Promise.all([
-    all(env, `SELECT substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos
+  const [reales, periodos, socios, oblig, s] = await Promise.all([
+    all(env, `SELECT substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos,
+      SUM(CASE WHEN pago_id IS NOT NULL THEN monto ELSE 0 END) cuotas
       FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, bid, `${meses[0]}-01`, `${anio + 1}-07-01`),
-    one(env, `SELECT SUM(CASE WHEN tipo = 'ingreso' AND pago_id IS NULL THEN monto ELSE 0 END) otros_ing, SUM(CASE WHEN tipo = 'egreso' AND distrital_id IS NULL THEN monto ELSE 0 END) gasto
-      FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= date(?, '-6 month') AND fecha < ?`, bid, `${mesHoy}-01`, `${mesHoy}-01`),
     all(env, 'SELECT mes, monto FROM ro_periodos WHERE business_id = ?', bid),
     all(env, "SELECT fecha_ingreso FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid),
     obligacionesClub(env, bid),
     saldos(env, bid),
   ]);
-  const otros = Math.round((prom?.otros_ing || 0) / 6), gasto = Math.round((prom?.gasto || 0) / 6);
+  const quienes = (mes) => socios.filter((x) => !x.fecha_ingreso || x.fecha_ingreso.slice(0, 7) <= mes).length;
   let saldo = s.menor;
   const rows = meses.map((mes) => {
-    const r = reales.find((x) => x.mes === mes) || { ingresos: 0, egresos: 0 };
-    const futuro = mes >= mesHoy;
-    const per = periodos.find((p) => p.mes === mes);
-    const cuotas = futuro && per ? per.monto * socios.filter((x) => !x.fecha_ingreso || x.fecha_ingreso.slice(0, 7) <= mes).length : 0;
-    const obl = futuro ? oblig.filter((o) => o.estado !== 'pagada' && (o.vence.slice(0, 7) === mes || (mes === mesHoy && o.vence.slice(0, 7) < mesHoy))).reduce((t, o) => t + o.saldo, 0) : 0;
-    // Del mes en curso solo se proyecta lo que falta (lo ya registrado cuenta como real)
-    const ing_p = futuro ? Math.max(0, cuotas + otros - (mes === mesHoy ? r.ingresos : 0)) : 0;
-    const egr_p = futuro ? obl + Math.max(0, gasto - (mes === mesHoy ? r.egresos : 0)) : 0;
-    if (futuro) saldo += ing_p - egr_p;
-    return { mes, ingresos: r.ingresos, egresos: r.egresos, proyectado: futuro, ingresos_proy: ing_p, egresos_proy: egr_p, cuotas_socios: cuotas, otros_ingresos: futuro ? otros : 0,
-      obligaciones: obl, gasto_corriente: futuro ? gasto : 0, saldo_proy: futuro ? saldo : null };
+    const r = reales.find((x) => x.mes === mes) || { ingresos: 0, egresos: 0, cuotas: 0 };
+    const futuro = mes >= mesHoy, per = periodos.find((p) => p.mes === mes);
+    const esperadas = per ? per.monto * quienes(mes) : 0;
+    // Del mes en curso solo se proyecta lo que falta por entrar
+    const cuotas_proy = futuro ? Math.max(0, esperadas - (mes === mesHoy ? r.cuotas : 0)) : 0;
+    const oblig_proy = futuro ? oblig.filter((o) => o.estado !== 'pagada' && (o.vence.slice(0, 7) === mes || (mes === mesHoy && o.vence.slice(0, 7) < mesHoy))).reduce((t, o) => t + o.saldo, 0) : 0;
+    if (futuro) saldo += cuotas_proy - oblig_proy;
+    return { mes, ingresos: r.ingresos, egresos: r.egresos, proyectado: futuro, cuotas_proy, oblig_proy, saldo_proy: futuro ? saldo : null };
   });
-  return { anio, nombre: `${anio}-${anio + 1}`, actual: anioRotarioDe(hoy), saldo_hoy: s.menor, promedio: { otros_ingresos: otros, gasto_corriente: gasto }, meses: rows,
+  const porPagar = oblig.filter((o) => o.estado !== 'pagada').reduce((t, o) => t + o.saldo, 0);
+  const perHoy = periodos.find((p) => p.mes === mesHoy) || [...periodos].sort((a, b) => b.mes.localeCompare(a.mes))[0];
+  const cuotaMes = perHoy ? perHoy.monto * quienes(mesHoy) : 0;
+  const falta = Math.max(0, porPagar - s.menor);
+  return { anio, nombre: `${anio}-${anio + 1}`, saldo: s.menor, por_pagar: porPagar, falta, sobra: Math.max(0, s.menor - porPagar),
+    cuota_mes: cuotaMes, socios_cuota: quienes(mesHoy), meses_para_cubrir: falta && cuotaMes ? Math.ceil(falta / cuotaMes) : null, meses: rows,
     obligaciones: oblig.filter((o) => o.anio === anio || o.estado !== 'pagada') };
 }
 

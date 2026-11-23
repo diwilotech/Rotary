@@ -32,7 +32,7 @@ export function routes(r) {
     const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), meses = mesesDelAnio(anio), rango = [`${meses[0]}-01`, `${anio + 1}-07-01`];
     const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id), IN = enLista(ids);
     const [soc, asis, proy, movs, cats, reus] = ids.length ? await Promise.all([
-      all(c.env, `SELECT business_id, SUM(estado = 'activo') activos, SUM(estado = 'activo' AND activado_at IS NOT NULL) activados, SUM(estado = 'aspirante') aspirantes FROM ro_socios WHERE business_id IN (${IN}) GROUP BY business_id`, ...ids),
+      all(c.env, `SELECT business_id, SUM(estado = 'activo' AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activos, SUM(estado = 'activo' AND activado_at IS NOT NULL AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activados, SUM(estado = 'aspirante') aspirantes FROM ro_socios WHERE business_id IN (${IN}) GROUP BY business_id`, ...ids),
       all(c.env, `SELECT a.business_id, SUM(a.presente = 1) presentes, COUNT(*) marcas FROM ro_asistencia a JOIN ro_reuniones r ON r.id = a.reunion_id AND r.business_id = a.business_id
         WHERE a.business_id IN (${IN}) AND a.presente IS NOT NULL AND r.fecha >= date('now', '-90 day') GROUP BY a.business_id`, ...ids),
       all(c.env, `SELECT business_id, COUNT(*) proyectos, SUM(estado = 'en_curso') en_curso, SUM(COALESCE(beneficiados, 0)) beneficiados, SUM(COALESCE(horas_servicio, 0)) horas FROM ro_proyectos WHERE business_id IN (${IN}) AND estado <> 'cancelado' GROUP BY business_id`, ...ids),

@@ -49,7 +49,7 @@ export function routes(r) {
     if (mods.has('cuotas')) q.push(all(c.env, 'SELECT nombre, vence FROM ro_periodos WHERE business_id = ? AND vence BETWEEN ? AND ?', bid, desde, hasta)
       .then((rs) => rs.forEach((x) => add('cuota', x.vence, `Vence la cuota de ${x.nombre}`, { ruta: '/staff/cuotas.html' }))));
     if (mods.has('cajas')) q.push(all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.codigo, desde, hasta)
-      .then((rs) => rs.forEach((x) => add('distrital', x.vence, `Cuota distrital: ${x.nombre}`, { ruta: '/staff/cajas.html#proyectado' }))));
+      .then((rs) => rs.forEach((x) => add('distrital', x.vence, `Cuota distrital: ${x.nombre}`, { ruta: '/staff/cajas.html#menor' }))));
     await Promise.all(q);
     return json({ desde, hasta, rows: items.sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.hora || '').localeCompare(String(b.hora || ''))) });
   });

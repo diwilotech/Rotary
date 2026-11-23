@@ -76,20 +76,28 @@ DW.ready.then(async (me) => {
   const tarjetaJunta = (s) => `<button type="button" class="ro-jcard" data-id="${s.id}">${RO_.avatar(s, 76)}<b>${esc(s.nombre)}</b><span class="cargo">${esc(s.cargo)}</span>${s.activado ? '' : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'}</button>`;
   const tarjetaSocio = (s) => `<button type="button" class="ro-scard" data-id="${s.id}">${RO_.avatar(s, 44)}<span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(s.nombre)}</b><span class="small text-body-secondary">${esc(RO_.TIPO[s.tipo_membresia] || '')}</span></span>${s.estado !== 'activo' ? C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo)) : s.activado ? '<i class="bi bi-patch-check-fill text-success" title="Activado"></i>' : ''}</button>`;
 
+  // [tipo, título, nota, ícono]. La junta (con cargo) va aparte, arriba.
+  const GRUPOS = [['socio', 'Socios', 'miembros del club', 'bi-person-check'], ['honorario', 'Honorarios', '', 'bi-star'], ['aspirante', 'Aspirantes', 'en proceso de ingreso', 'bi-hourglass-split'],
+    ['socio_externo', 'Socios externos', 'entran a la app, pero no son socios del club', 'bi-box-arrow-in-right'], ['voluntario_invitado', 'Voluntarios invitados', 'apoyan sin ser socios', 'bi-hand-thumbs-up']];
   function pintarSocios() {
     const q = filtro.toLowerCase(), f = rows.filter((s) => !q || `${s.nombre} ${s.cargo || ''} ${s.profesion || ''}`.toLowerCase().includes(q));
     const vivos = f.filter((s) => ['activo', 'aspirante'].includes(s.estado));
     const junta = vivos.filter((s) => s.junta).sort((a, b) => a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
     const demas = vivos.filter((s) => !s.junta).sort((a, b) => a.nombre.localeCompare(b.nombre));
     const otros = f.filter((s) => !['activo', 'aspirante'].includes(s.estado));
+    // Después de la junta, un grupo por tipo: los socios del club primero y los externos e invitados al final
+    const grupo = (s) => (s.estado === 'aspirante' ? 'aspirante' : s.tipo_membresia || 'socio');
+    const bloques = GRUPOS.map(([k, titulo, nota, ic]) => [titulo, nota, ic, demas.filter((s) => grupo(s) === k)]).filter(([, , , l]) => l.length);
+    const cuenta = (k) => vivos.filter((s) => grupo(s) === k).length;
     view.querySelector('[data-lista]').innerHTML = (rows.length ? '' : window.App.empty('bi-people', 'Aún no hay socios. Crea la junta y los socios del club.'))
+      + (rows.length ? `<div class="d-flex flex-wrap gap-2 mb-3 small">${GRUPOS.map(([k, t, , ic]) => `<span class="badge rounded-pill text-bg-light border"><i class="bi ${ic} me-1"></i>${cuenta(k)} ${t.toLowerCase()}</span>`).join('')}</div>` : '')
       + (junta.length ? `<div class="ro-h mt-0"><i class="bi bi-award me-1"></i>Junta directiva</div><div class="ro-junta">${junta.map(tarjetaJunta).join('')}</div>` : '')
-      + (demas.length ? `<div class="ro-h">Socios (${demas.length})</div><div class="ro-socios">${demas.map(tarjetaSocio).join('')}</div>` : '')
+      + bloques.map(([t, nota, ic, l]) => `<div class="ro-h"><i class="bi ${ic} me-1"></i>${t} (${l.length})${nota ? ` <span class="fw-normal" style="text-transform:none;letter-spacing:0">· ${nota}</span>` : ''}</div><div class="ro-socios">${l.map(tarjetaSocio).join('')}</div>`).join('')
       + (otros.length ? `<details class="mt-3"><summary class="ro-h d-inline-block">Inactivos y retirados (${otros.length})</summary><div class="ro-socios mt-2">${otros.map(tarjetaSocio).join('')}</div></details>` : '');
   }
 
   function pintarActivacion() {
-    const act = rows.filter((s) => ['activo', 'aspirante'].includes(s.estado)).sort((a, b) => Number(a.activado) - Number(b.activado) || a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
+    const act = rows.filter((s) => ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia))).sort((a, b) => Number(a.activado) - Number(b.activado) || a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
     const hechos = act.filter((s) => s.activado).length;
     view.querySelector('[data-lista]').innerHTML = `<div class="dw-card mb-3"><div class="d-flex justify-content-between small mb-1"><b>Socios activados</b><span>${hechos} de ${act.length}</span></div>${C.meter(hechos, act.length || 1)}</div>`
       + (act.length ? window.App.table([
@@ -98,7 +106,7 @@ DW.ready.then(async (me) => {
         { label: 'Fecha', html: (s) => (s.activado_at ? C.day(s.activado_at) : '—') },
         { label: 'Código', html: (s) => esc(s.activacion_codigo || '—') },
         { label: '', cls: 'text-end text-nowrap', html: (s) => (s.activado ? `<button class="btn btn-sm btn-outline-primary" data-cert="${s.id}"><i class="bi bi-download me-1"></i>Certificado</button>` : M && !RO_APP ? `<button class="btn btn-sm btn-primary" data-activar="${s.id}"><i class="bi bi-patch-check me-1"></i>Activar</button>` : '') },
-      ], act) : window.App.empty('bi-patch-check', 'No hay socios activos todavía.'));
+      ], act) : window.App.empty('bi-patch-check', 'No hay socios del club activos todavía (los externos y voluntarios no se activan).'));
   }
 
   function pintar() {

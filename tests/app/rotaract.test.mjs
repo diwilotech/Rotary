@@ -105,7 +105,7 @@ export default async function ({ check, newBusiness, newMember }) {
   const qd = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota distrital prueba', valor_socio: 10000, vence } });
   check('Distrito: un club no puede crear cuotas distritales', (await A.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'x', valor_socio: 1, vence } })).status === 403);
   let pj = (await A.app('/api/cajas/proyectado')).data, ob = pj.obligaciones?.find((o) => o.id === qd.data.id);
-  check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * 10000 && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.obligaciones >= ob.total), JSON.stringify(ob));
+  check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * 10000 && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.oblig_proy >= ob.total) && pj.por_pagar >= ob.total && pj.falta === Math.max(0, pj.por_pagar - pj.saldo), JSON.stringify(ob));
   check('Finanzas: un club de otro distrito no la ve ni la paga', !(await B.app('/api/cajas/proyectado')).data.obligaciones.length && (await B.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: 1000 } })).status === 404);
   const pg = await A.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: ob.total } });
   const cq = (await D.app('/api/distrito/cuotas')).data.rows.find((q) => q.id === qd.data.id)?.clubes.find((x) => x.club_id === A.id);

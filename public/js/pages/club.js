@@ -9,7 +9,6 @@
     [['proyectos', 'Proyectos', '/staff/impacto.html', 'bi-globe-americas', 'impacto'], ['alianzas', 'Alianzas', '/staff/impacto.html#alianzas', 'bi-people', 'impacto'],
       ['beneficiarios', 'Beneficiarios', '/staff/impacto.html#beneficiarios', 'bi-heart', 'impacto']],
     [['menor', 'Caja menor', '/staff/cajas.html#menor', 'bi-cup-hot', 'cajas'], ['mayor', 'Caja mayor', '/staff/cajas.html#mayor', 'bi-bricks', 'cajas'],
-      ['proyectado', 'Proyectado', '/staff/cajas.html#proyectado', 'bi-graph-up-arrow', 'cajas'],
       ['cuotas', 'Cuotas', '/staff/cuotas.html', 'bi-wallet2', 'cuotas']],
   ];
   const RO = {

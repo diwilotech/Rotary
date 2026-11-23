@@ -66,9 +66,12 @@ export function routes(r) {
   crud(r, { base: '/api/socios', modulo: MOD, entities: ENTITIES });
 
   r.get('/api/socios/resumen', `tenant:${MOD}`, async (c) => {
-    const x = await one(c.env, `SELECT SUM(estado = 'activo') activos, SUM(estado = 'aspirante') aspirantes, SUM(estado = 'activo' AND activado_at IS NULL) sin_activar,
+    // «Socios» = miembros del club (socios, honorarios y la junta); los externos y voluntarios se cuentan aparte
+    const x = await one(c.env, `SELECT SUM(estado = 'activo' AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activos, SUM(estado = 'aspirante' OR (estado = 'activo' AND tipo_membresia = 'aspirante')) aspirantes,
+      SUM(estado = 'activo' AND tipo_membresia IN ('socio_externo', 'voluntario_invitado') AND (cargo IS NULL OR cargo = '')) externos,
+      SUM(estado = 'activo' AND activado_at IS NULL AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) sin_activar,
       SUM(estado = 'activo' AND cargo IS NOT NULL AND cargo <> '' AND lower(cargo) NOT IN ('socio','socia')) junta FROM ro_socios WHERE business_id = ?`, c.businessId);
-    return json({ valor: x.activos || 0, activos: x.activos || 0, aspirantes: x.aspirantes || 0, sin_activar: x.sin_activar || 0, junta: x.junta || 0 });
+    return json({ valor: x.activos || 0, activos: x.activos || 0, aspirantes: x.aspirantes || 0, externos: x.externos || 0, sin_activar: x.sin_activar || 0, junta: x.junta || 0 });
   });
 
   r.get('/api/socios/socios/:id/ficha', `tenant:${MOD}`, async (c) => {

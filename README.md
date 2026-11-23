@@ -22,7 +22,8 @@ Reglas: skill `diwilo-nueva-app` (partió de CD Academia) · Fecha: 2026-11-22 �
 - Para activarlo: crear «Distrito 4271» en diwilo.com/admin → Rotaract y marcarlo:
   `npx wrangler d1 execute control-de-rotaract-db --remote --command "INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('<id>', '4271', 1)"`
 - Un club de otro distrito: `INSERT OR REPLACE INTO ro_club_config (business_id, distrito) VALUES ('<id club>', '<código>')`.
-- Finanzas: flujo de los 12 meses del año rotario por caja y pestaña **Proyectado** (ingresos y egresos proyectados, saldo proyectado, obligaciones). Inicio: calendario del club.
+- Finanzas: flujo de los 12 meses del año rotario por caja. En la Caja menor, **Obligaciones del club**: plata en caja vs. por pagar (cuánto falta) y las cuotas de socios proyectadas al mes. Inicio: calendario del club.
+- Socios: después de la junta, grupos por tipo (socios, honorarios, aspirantes, socios externos, voluntarios invitados). «Socios» cuenta solo a los miembros del club.
 
 ## Pruebas
 - `npm run db:migrate:local && npm test` → «Todo bien»: 115 verificaciones en total, 32 de ellas de los módulos del club.

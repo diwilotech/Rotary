@@ -25,7 +25,7 @@ window.DwSinFigura = true;    // sin «Así funciona tu negocio»
     const cuando = (f) => { const n = Math.round((Date.parse(f) - Date.parse(hoy)) / 864e5); return n === 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`; };
     const prox = reu?.proximas?.[0];
     const tiles = [
-      soc && ['Socios activos', soc.activos, soc.sin_activar ? `${soc.sin_activar} sin activar` : `${soc.junta} en la junta`, 'bi-people-fill', '/staff/socios.html'],
+      soc && ['Socios del club', soc.activos, `${soc.junta} en la junta${soc.externos ? ` · ${soc.externos} externos` : ''}${soc.sin_activar ? ` · ${soc.sin_activar} sin activar` : ''}`, 'bi-people-fill', '/staff/socios.html'],
       reu && ['Asistencia (90 días)', reu.asistencia_90d == null ? '—' : `${reu.asistencia_90d}%`, `${reu.proximas.length} próximas`, 'bi-calendar-event', '/staff/reuniones.html'],
       tar && ['Tareas abiertas', tar.valor, tar.vencidas ? `${tar.vencidas} vencidas` : `${tar.hechas_30d} hechas en 30 días`, 'bi-kanban', '/staff/tareas.html'],
       imp && ['Beneficiados', C.num(imp.beneficiados), `${imp.en_curso} proyectos vivos`, 'bi-globe-americas', '/staff/impacto.html'],
