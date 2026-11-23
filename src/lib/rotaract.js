@@ -246,7 +246,7 @@ async function certificado(c, socio, d) {
 :root{--azul:#17458f;--oro:#f7a81b;--rojo:#d41367;--tinta:#1d2433}
 body{margin:0;background:#e9edf4;color:var(--tinta);font-family:'Cormorant Garamond',Georgia,serif}
 .bar{display:flex;gap:8px;justify-content:center;padding:12px;font-family:Inter,system-ui,sans-serif}.bar button{border:0;border-radius:999px;padding:10px 20px;font-size:15px;background:var(--azul);color:#fff;cursor:pointer}
-.hoja{width:297mm;height:210mm;margin:0 auto 20px;background:#fffdf8;position:relative;overflow:hidden;box-shadow:0 10px 40px rgba(23,69,143,.18)}
+.hoja{width:297mm;height:210mm;margin:0 auto 20px;background:#fff;position:relative;overflow:hidden;box-shadow:0 10px 40px rgba(23,69,143,.18)}
 .marco{position:absolute;inset:7mm;border:3mm solid var(--azul);border-radius:2mm}
 .marco:after{content:"";position:absolute;inset:2.5mm;border:.6mm solid var(--oro)}
 .esq{position:absolute;width:22mm;height:22mm;border:1.2mm solid var(--oro);z-index:2}

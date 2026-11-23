@@ -40,10 +40,17 @@
     return c;
   }
   function sola(img, alto, color = ROJO) { const k = alto / img.height, c = lienzo(img.width * k, alto); c.getContext('2d').drawImage(color === ROJO ? img : tinta(img, color), 0, 0, c.width, c.height); return c; }
+  // Solo ícono: la rueda (sin ®) centrada en un cuadrado transparente, con aire alrededor
+  function icono(rueda, lado = 600) {
+    const c = lienzo(lado, lado), s = lado * 0.88, k = s / Math.max(rueda.width, rueda.height);
+    c.getContext('2d').drawImage(rueda, (lado - rueda.width * k) / 2, (lado - rueda.height * k) / 2, rueda.width * k, rueda.height * k);
+    return c;
+  }
+  // Cuadrado de la app: fondo arándano y la rueda en blanco, centrada
   function cuadrado(rueda) {
-    const c = lienzo(512, 512), x = c.getContext('2d'), s = 400, k = s / Math.max(rueda.width, rueda.height);
-    x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, 512, 512);
-    x.drawImage(rueda, (512 - rueda.width * k) / 2, (512 - rueda.height * k) / 2, rueda.width * k, rueda.height * k);
+    const c = lienzo(512, 512), x = c.getContext('2d'), s = 360, k = s / Math.max(rueda.width, rueda.height);
+    x.fillStyle = ROJO; x.fillRect(0, 0, 512, 512);
+    x.drawImage(tinta(rueda, '#FFFFFF'), (512 - rueda.width * k) / 2, (512 - rueda.height * k) / 2, rueda.width * k, rueda.height * k);
     return c;
   }
 
@@ -57,7 +64,7 @@
     }
     await document.fonts.load(`300 40px ${F}`).catch(() => {});
     const n = club(nombreNegocio);
-    return { app: cuadrado(A.rueda), horizontal: conNombre(A.logo, n), icono: sola(A.rueda, 420), letras: conNombre(A.letras, n, { conRueda: false }),
+    return { app: cuadrado(A.rueda), horizontal: conNombre(A.logo, n), icono: icono(A.rueda), letras: conNombre(A.letras, n, { conRueda: false }),
       oscuro: conNombre(A.logo, n, { color: '#FFFFFF' }) };
   }
   // Toda la marca del club de una vez: logos oficiales + color de la app (arándano Rotaract) + en Marca: color de la app,
@@ -76,5 +83,8 @@
     await api('/api/marca', { method: 'PUT', body }).catch(() => { const { tipografia: _t, ...resto } = body; return api('/api/marca', { method: 'PUT', body: resto }).catch(() => {}); });
     return 5;
   }
-  window.RoLogos = { crear, generar, archivos, club };
+  // Versión de los logos: si el logo de la app es anterior, Inicio vuelve a ofrecer «Configurar la marca»
+  const VERSION = '2026-11-23T21:40:00Z';
+  const vieja = (me) => { const v = /[?&]v=([^&]+)/.exec(me.settings.logo || '')?.[1]; return !v || decodeURIComponent(v) < VERSION; };
+  window.RoLogos = { crear, generar, archivos, club, vieja };
 })();

@@ -39,9 +39,9 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
         : horiz ? `<div class="ro-portada claro"><img src="${esc(horiz)}" alt="${esc(me.business.name)}"></div>`
         : `<div class="ro-portada color"><div>${me.settings.logo ? `<img class="app" src="${esc(me.settings.logo)}" alt="">` : ''}<h2>${esc(me.business.name)}</h2></div></div>`}`;
     // Club sin logos: tarjeta para crearlos con los archivos oficiales de Rotary (solo si la app ya los tiene)
-    const logosCard = me.canManage && !me.business.readOnly && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema)) && tiene('marca')
+    const logosCard = me.canManage && !me.business.readOnly && tiene('marca')
       ? await new Promise((ok) => { if (window.RoLogos) return ok(true); const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = () => ok(true); sc.onerror = () => ok(false); document.head.appendChild(sc); })
-        .then(async (ok) => ok && (await window.RoLogos.archivos()).logo) : false;
+        .then(async (ok) => ok && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema) || window.RoLogos.vieja(me)) && (await window.RoLogos.archivos()).logo) : false;
     host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>
         <div class="flex-grow-1"><b>Configura la marca de tu club</b><div class="small text-body-secondary">Con el logotipo oficial de Rotaract y el nombre «${esc(window.RoLogos.club(me.business.name))}»: los logos (app, horizontal, ícono, letras y fondo oscuro), los colores de Rotaract, la letra Open Sans y una descripción del club. Todo queda en Marca y se usa en los certificados.</div></div>
         <button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div>` : ''}${portada}`;
