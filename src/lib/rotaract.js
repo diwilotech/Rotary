@@ -119,6 +119,11 @@ export async function clubesDelDistrito(env, codigo) {
   return all(env, `SELECT b.id, b.name, b.slug FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
     WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? ORDER BY b.name`, def, codigo);
 }
+// Condición SQL «business_id es un club de este distrito» (2 parámetros: defecto y código). Sin listas IN de ids:
+// D1 acepta máximo 100 parámetros por consulta y un distrito puede tener más clubes.
+export const EN_DISTRITO = `business_id IN (SELECT b.id FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
+  WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ?)`;
+export const enDistrito = (env, codigo) => [env.DISTRITO_DEFECTO || '4271', codigo];
 // Socios que cuentan para la cuota distrital: activos y que pagan cuota.
 export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid))?.n || 0;
 // Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.

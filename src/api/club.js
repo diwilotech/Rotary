@@ -5,7 +5,7 @@
 import { json, HttpError } from '../lib/http.js';
 import { all } from '../lib/crud.js';
 import { visibleModules } from '../lib/modules.js';
-import { distritoDe, clubesDelDistrito } from '../lib/rotaract.js';
+import { distritoDe, clubesDelDistrito, EN_DISTRITO, enDistrito } from '../lib/rotaract.js';
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,7 +19,7 @@ export function routes(r) {
     if (d.es_distrito) {
       const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id);
       if (ids.length) {
-        const ev = await all(c.env, `SELECT business_id, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE business_id IN (${ids.map(() => '?').join(',')}) AND tipo = 'evento' AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?`, ...ids, desde, hasta);
+        const ev = await all(c.env, `SELECT business_id, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE ${EN_DISTRITO} AND tipo = 'evento' AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?`, ...enDistrito(c.env, d.codigo), desde, hasta);
         for (const e of ev) add('evento', e.fecha, e.titulo, { hora: e.hora_ini, lugar: e.lugar, club: clubes.find((k) => k.id === e.business_id)?.name, ruta: '/staff/distrito.html' });
       }
       for (const q of await all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.codigo, desde, hasta)) add('distrital', q.vence, `Vence: ${q.nombre}`, { ruta: '/staff/distrito.html#cuotas' });

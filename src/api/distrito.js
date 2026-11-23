@@ -8,14 +8,13 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
-import { PAGA_CUOTA, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
+import { PAGA_CUOTA, EN_DISTRITO, enDistrito, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
 
 async function distritoOError(c) {
   const d = await distritoDe(c.env, c.businessId);
   if (!d.es_distrito) throw new HttpError(403, 'Esta sección es solo para el perfil del distrito');
   return d;
 }
-const enLista = (ids) => ids.map(() => '?').join(',') || "''";
 
 async function clubDelDistrito(c, id) {
   const d = await distritoOError(c);
@@ -30,17 +29,17 @@ export function routes(r) {
   r.get('/api/distrito/tablero', 'tenant', async (c) => {
     const d = await distritoOError(c);
     const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), meses = mesesDelAnio(anio), rango = [`${meses[0]}-01`, `${anio + 1}-07-01`];
-    const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id), IN = enLista(ids);
+    const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id), P = enDistrito(c.env, d.codigo);
     const [soc, asis, proy, movs, cats, reus] = ids.length ? await Promise.all([
-      all(c.env, `SELECT business_id, SUM(estado = 'activo' AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activos, SUM(estado = 'activo' AND activado_at IS NOT NULL AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activados, SUM(estado = 'aspirante') aspirantes FROM ro_socios WHERE business_id IN (${IN}) GROUP BY business_id`, ...ids),
+      all(c.env, `SELECT business_id, SUM(estado = 'activo' AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activos, SUM(estado = 'activo' AND activado_at IS NOT NULL AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activados, SUM(estado = 'aspirante') aspirantes FROM ro_socios WHERE ${EN_DISTRITO} GROUP BY business_id`, ...P),
       all(c.env, `SELECT a.business_id, SUM(a.presente = 1) presentes, COUNT(*) marcas FROM ro_asistencia a JOIN ro_reuniones r ON r.id = a.reunion_id AND r.business_id = a.business_id
-        WHERE a.business_id IN (${IN}) AND a.presente IS NOT NULL AND r.fecha >= date('now', '-90 day') GROUP BY a.business_id`, ...ids),
-      all(c.env, `SELECT business_id, COUNT(*) proyectos, SUM(estado = 'en_curso') en_curso, SUM(COALESCE(beneficiados, 0)) beneficiados, SUM(COALESCE(horas_servicio, 0)) horas FROM ro_proyectos WHERE business_id IN (${IN}) AND estado <> 'cancelado' GROUP BY business_id`, ...ids),
+        WHERE a.${EN_DISTRITO} AND a.presente IS NOT NULL AND r.fecha >= date('now', '-90 day') GROUP BY a.business_id`, ...P),
+      all(c.env, `SELECT business_id, COUNT(*) proyectos, SUM(estado = 'en_curso') en_curso, SUM(COALESCE(beneficiados, 0)) beneficiados, SUM(COALESCE(horas_servicio, 0)) horas FROM ro_proyectos WHERE ${EN_DISTRITO} AND estado <> 'cancelado' GROUP BY business_id`, ...P),
       all(c.env, `SELECT substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos,
         SUM(CASE WHEN pago_id IS NOT NULL THEN monto ELSE 0 END) cuotas, SUM(CASE WHEN distrital_id IS NOT NULL THEN monto ELSE 0 END) distrital
-        FROM ro_movimientos WHERE business_id IN (${IN}) AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, ...ids, ...rango),
-      all(c.env, `SELECT COALESCE(categoria, 'Sin categoría') categoria, SUM(monto) total FROM ro_movimientos WHERE business_id IN (${IN}) AND tipo = 'egreso' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY categoria ORDER BY total DESC LIMIT 10`, ...ids, ...rango),
-      all(c.env, `SELECT substr(fecha, 1, 7) mes, SUM(tipo = 'reunion') reuniones, SUM(tipo = 'evento') eventos FROM ro_reuniones WHERE business_id IN (${IN}) AND fecha >= ? AND fecha < ? AND estado <> 'cancelada' GROUP BY mes`, ...ids, ...rango),
+        FROM ro_movimientos WHERE ${EN_DISTRITO} AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, ...P, ...rango),
+      all(c.env, `SELECT COALESCE(categoria, 'Sin categoría') categoria, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND tipo = 'egreso' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY categoria ORDER BY total DESC LIMIT 10`, ...P, ...rango),
+      all(c.env, `SELECT substr(fecha, 1, 7) mes, SUM(tipo = 'reunion') reuniones, SUM(tipo = 'evento') eventos FROM ro_reuniones WHERE ${EN_DISTRITO} AND fecha >= ? AND fecha < ? AND estado <> 'cancelada' GROUP BY mes`, ...P, ...rango),
     ]) : [[], [], [], [], [], []];
     const filas = [];
     for (const k of clubes) {
@@ -86,8 +85,8 @@ export function routes(r) {
     const cuotas = await all(c.env, 'SELECT * FROM ro_cuota_distrital WHERE distrito = ? ORDER BY vence DESC', d.codigo);
     const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id);
     const [pag, soc] = ids.length ? await Promise.all([
-      all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE business_id IN (${enLista(ids)}) AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...ids),
-      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE business_id IN (${enLista(ids)}) AND ${PAGA_CUOTA} GROUP BY business_id`, ...ids),
+      all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...enDistrito(c.env, d.codigo)),
+      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...enDistrito(c.env, d.codigo)),
     ]) : [[], []];
     return json({ codigo: d.codigo, rows: cuotas.map((q) => {
       const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;
