@@ -1,0 +1,215 @@
+{
+  "app": "cdrotaract",
+  "nombre": "CD Rotaract",
+  "tema": "rosa",
+  "centrales": [
+    "marketing",
+    "whatsapp",
+    "marca",
+    "ai",
+    "dashboard"
+  ],
+  "modulos": [
+    {
+      "id": "socios",
+      "nombre": "Socios",
+      "descripcion": "Junta, socios, ficha 360 y certificado de activación",
+      "icono": "bi-people-fill",
+      "menu": {
+        "ruta": "/staff/socios.html",
+        "orden": 10
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/socios/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_socios"
+      ],
+      "mcp": {
+        "guia": "Socios: la junta (con su cargo, en el orden oficial) y los demás socios. socios.listar_socios / ver_ficha para consultar; crear_socio y editar_socio (junta); activar_socio genera el certificado de activación. Pide confirmación antes de escribir.",
+        "ejemplos": [
+          "Pídele: «¿Quiénes están en la junta?»",
+          "Pídele: «Activa a Laura Gómez»"
+        ],
+        "flujos": []
+      }
+    },
+    {
+      "id": "reuniones",
+      "nombre": "Reuniones",
+      "descripcion": "Calendario de reuniones y eventos, confirmaciones, asistencia y minutas",
+      "icono": "bi-calendar-event",
+      "menu": {
+        "ruta": "/staff/reuniones.html",
+        "orden": 20
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/reuniones/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_reuniones",
+        "ro_asistencia"
+      ],
+      "mcp": {
+        "guia": "Reuniones y eventos en un calendario. reuniones.calendario y ver_asistencia para consultar; crear_reunion (tipo reunion o evento), editar_reunion y tomar_asistencia (junta).",
+        "ejemplos": [
+          "Pídele: «¿Qué reuniones hay este mes?»",
+          "Pídele: «Crea la reunión de club del jueves a las 7 pm en la sede»"
+        ],
+        "flujos": []
+      }
+    },
+    {
+      "id": "tareas",
+      "nombre": "Tareas",
+      "descripcion": "Kanban con responsables, fechas y checklist",
+      "icono": "bi-kanban",
+      "menu": {
+        "ruta": "/staff/tareas.html",
+        "orden": 30
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/tareas/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_tareas"
+      ],
+      "mcp": {
+        "guia": "Tareas del club en kanban (pendiente, en_curso, hecha). tareas.listar_tareas, crear_tarea y editar_tarea (cambia estado o responsable).",
+        "ejemplos": [
+          "Pídele: «¿Qué tareas están vencidas?»"
+        ],
+        "flujos": []
+      }
+    },
+    {
+      "id": "impacto",
+      "nombre": "Impacto",
+      "descripcion": "Proyectos, beneficiados, alianzas y financiación",
+      "icono": "bi-globe-americas",
+      "menu": {
+        "ruta": "/staff/impacto.html",
+        "orden": 40
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/impacto/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_proyectos",
+        "ro_beneficiarios",
+        "ro_alianzas"
+      ],
+      "mcp": {
+        "guia": "Impacto: proyectos de servicio con beneficiados, tareas, alianzas y origen de los recursos (caja_mayor, externa o doble). impacto.tarjetas para el panorama; crear_proyecto y editar_proyecto (junta); alianzas con su CRUD.",
+        "ejemplos": [
+          "Pídele: «¿Cuántos beneficiados llevamos este año?»",
+          "Pídele: «¿Qué proyectos tienen doble financiación?»"
+        ],
+        "flujos": []
+      }
+    },
+    {
+      "id": "cajas",
+      "nombre": "Finanzas",
+      "descripcion": "Caja menor (Club) y Caja mayor (Obras)",
+      "icono": "bi-cash-stack",
+      "menu": {
+        "ruta": "/staff/cajas.html",
+        "orden": 50
+      },
+      "permisos": {
+        "ver": "admin",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/cajas/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_movimientos"
+      ],
+      "mcp": {
+        "guia": "Finanzas del club en dos cajas: menor = Caja menor (Club) y mayor = Caja mayor (Obras). cajas.resumen para saldos; listar_movimientos con f_caja; crear_movimiento (junta). Las cuotas entran solas a la caja menor.",
+        "ejemplos": [
+          "Pídele: «¿Cuánto hay en cada caja?»",
+          "Pídele: «Registra un egreso de $45.000 en refrigerios de la caja menor»"
+        ],
+        "flujos": []
+      }
+    },
+    {
+      "id": "cuotas",
+      "nombre": "Cuotas",
+      "descripcion": "Cartera de cuotas e ingresos con comprobante",
+      "icono": "bi-wallet2",
+      "menu": {
+        "ruta": "/staff/cuotas.html",
+        "orden": 60
+      },
+      "permisos": {
+        "ver": "admin",
+        "configurar": "admin"
+      },
+      "widgets": [
+        {
+          "id": "resumen",
+          "api": "/api/cuotas/resumen"
+        }
+      ],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_periodos",
+        "ro_pagos"
+      ],
+      "mcp": {
+        "guia": "Cuotas: cuotas.cartera muestra cómo va cada socio; listar_pagos los ingresos; registrar_pago y verificar_pago (entran a la caja menor).",
+        "ejemplos": [
+          "Pídele: «¿Quién debe cuotas?»",
+          "Pídele: «Registra la cuota de agosto de Camilo, $25.000 por Nequi»"
+        ],
+        "flujos": []
+      }
+    }
+  ]
+}

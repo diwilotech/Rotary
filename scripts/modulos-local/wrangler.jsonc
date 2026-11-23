@@ -1,0 +1,15 @@
+// SOLO PARA PRUEBAS LOCALES: Diwilo Modulos (carpeta hermana) sin los bindings que exigen la nube (IA y correo),
+// así `npm test` corre sin credenciales de Cloudflare. Nunca se despliega.
+{
+  "name": "diwilo-modulos",
+  "main": "../../../Diwilo Modulos/src/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "assets": { "directory": "../../../Diwilo Modulos/public", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "diwilo-modulos-db", "database_id": "d4969edc-4280-438f-a19d-e5a1ac07c33c", "migrations_dir": "../../../Diwilo Modulos/migrations" }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "diwilo-modulos-media" }],
+  "vars": { "CORREO_RESPALDO": "pruebas@ejemplo.com" }
+}
