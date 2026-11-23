@@ -114,6 +114,15 @@ export default async function ({ check, newBusiness, newMember }) {
   const rz = (await A.app('/api/cajas/resumen')).data;
   check('Finanzas: los 12 meses del año rotario por caja', rz.cajas[0].meses.length === 12 && rz.cajas[0].meses[0].mes.endsWith('-07'));
 
+  /* Obligaciones propias del club */
+  const ob1 = await A.app('/api/cajas/obligaciones', { method: 'POST', body: { categoria: 'Pines', nombre: 'Pines de socios', monto: 50000, vence } });
+  let tod = (await A.app('/api/cajas/proyectado')).data;
+  check('Finanzas: obligación propia (pines) suma al total de obligaciones', ob1.status === 201 && tod.obligaciones.some((o) => o.clave === `c:${ob1.data.id}` && o.estado === 'pendiente') && tod.total_obligaciones >= 50000, JSON.stringify(ob1.data));
+  const pg1 = await A.app(`/api/cajas/obligaciones/${ob1.data.id}/pagar`, { method: 'POST', body: { monto: 50000 } });
+  tod = (await A.app('/api/cajas/proyectado')).data;
+  check('Finanzas: pagar la obligación la deja pagada y no se puede borrar', pg1.status === 201 && tod.obligaciones.find((o) => o.clave === `c:${ob1.data.id}`)?.estado === 'pagada' && (await A.app(`/api/cajas/obligaciones/${ob1.data.id}`, { method: 'DELETE' })).status === 409);
+  check('Finanzas: B no ve ni paga las obligaciones de A', (await B.app(`/api/cajas/obligaciones/${ob1.data.id}/pagar`, { method: 'POST', body: { monto: 1 } })).status === 404 && !(await B.app('/api/cajas/obligaciones')).data.rows.length);
+
   /* Calendario del club (Inicio) */
   const calA = (await A.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || [];
   check('Inicio: el calendario junta reuniones, tareas y cuota distrital', calA.some((x) => x.tipo === 'distrital') && calA.every((x) => x.fecha >= hoy && x.fecha <= vence), JSON.stringify(calA.map((x) => x.tipo)));

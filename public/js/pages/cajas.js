@@ -44,36 +44,62 @@ DW.ready.then(async (me) => {
     view.querySelector('[data-flujo-t]').innerHTML = `<span class="ro-h m-0">Flujo del año rotario · julio a junio</span>${selAnio(res.nombre_anio)}`;
     C.bars(view.querySelector('[data-flujo]'), filas, { la: 'Ingresos', lb: 'Egresos' });
     view.querySelector('[data-tot]').innerHTML = `${caja === 'menor' && pro ? '<i class="bi bi-info-circle me-1"></i>Rayado = proyectado: cuotas que deben pagar los socios y obligaciones que vencen. ' : ''}Año: <span class="text-success">+${C.money(k.meses.reduce((t, x) => t + x.ingresos, 0))}</span> · <span class="text-danger">−${C.money(k.meses.reduce((t, x) => t + x.egresos, 0))}</span>`;
-    C.rank(view.querySelector('[data-cats]'), k.categorias.slice(0, 8).map((x) => ({ k: x.categoria, n: x.total })), C.money);
+    C.rank(view.querySelector('[data-cats]'), k.categorias.slice(0, caja === 'menor' && pro ? 5 : 8).map((x) => ({ k: x.categoria, n: x.total })), C.money);
     if (!k.categorias.length) view.querySelector('[data-cats]').innerHTML = '<p class="small text-body-secondary mb-0">Sin gastos en este año rotario.</p>';
     view.querySelector('[data-tit]').innerHTML = `Movimientos · ${esc(k.nombre)}`;
   }
 
-  /* ---------- Obligaciones del club (solo Caja menor) ---------- */
+  /* ---------- Obligaciones (solo Caja menor), dentro de la tarjeta «¿En qué se gasta?» ----------
+     Arriba el total de obligaciones del año; al fondo un carrusel que se mueve solo con cada obligación (la tarjeta no crece). */
   const OEST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
+  const OICON = { 'Obligaciones distritales': 'bi-bank', 'Reconocimiento y protocolo': 'bi-award', 'Bonos distritales': 'bi-ticket-perforated', 'Camisetas del club': 'bi-person-standing-dress', Pines: 'bi-pin-angle', 'Otras obligaciones': 'bi-receipt' };
+  let giro = null;
   function pintarObligaciones() {
-    const el = view.querySelector('[data-oblig]');
-    if (caja !== 'menor' || !pro) { el.innerHTML = ''; return; }
-    const p = pro, alcanza = !p.falta;
-    const pend = p.obligaciones.filter((o) => o.estado !== 'pagada'), pagadas = p.obligaciones.filter((o) => o.estado === 'pagada');
-    const fila = (o) => `<div class="d-flex align-items-center gap-2 py-2 border-top flex-wrap"><div class="flex-grow-1 min-w-0"><b>${esc(o.nombre)}</b>
-        <div class="small text-body-secondary">Vence ${C.day(o.vence)} · ${C.money(o.valor_socio)} × ${o.socios} socios = ${C.money(o.total)}${o.pagado ? ` · pagado ${C.money(o.pagado)}` : ''}</div></div>
-        ${C.chip(...OEST[o.estado])}${W && o.saldo > 0 ? `<button class="btn btn-sm btn-primary" data-pagar="${o.id}">Pagar ${C.money(o.saldo)}</button>` : ''}</div>`;
-    el.innerHTML = `<div class="dw-card mb-3"><div class="ro-h mt-0"><i class="bi bi-bank me-1"></i>Obligaciones del club</div>
-      <div class="ro-ob"><div><span>Plata en la caja</span><b>${C.money(p.saldo)}</b></div><i class="bi bi-dash-lg"></i>
-        <div><span>Por pagar</span><b>${C.money(p.por_pagar)}</b></div><i class="bi bi-pause"></i>
-        <div class="${alcanza ? 'ok' : 'bad'}"><span>${alcanza ? 'Alcanza, sobran' : 'Hace falta'}</span><b>${C.money(alcanza ? p.sobra : p.falta)}</b></div></div>
-      ${p.cuota_mes ? `<div class="small mt-2"><i class="bi bi-wallet2 me-1" style="color:var(--dw-p)"></i>Cuotas de socios proyectadas: <b>${C.money(p.cuota_mes)} al mes</b> (${p.socios_cuota} socios que pagan cuota)${p.meses_para_cubrir ? ` · si todos pagan, lo que falta se cubre en <b>${p.meses_para_cubrir} ${p.meses_para_cubrir === 1 ? 'mes' : 'meses'}</b>` : ''}.</div>`
-        : '<div class="small mt-2 text-body-secondary">Crea los periodos en Cuotas para ver lo que deben pagar los socios cada mes.</div>'}
-      ${pend.length ? `<div class="mt-2">${pend.map(fila).join('')}</div>` : '<div class="small text-body-secondary mt-2">No hay obligaciones pendientes.</div>'}
-      ${pagadas.length ? `<details class="mt-1"><summary class="small">Pagadas (${pagadas.length})</summary>${pagadas.map(fila).join('')}</details>` : ''}</div>`;
+    const top = view.querySelector('[data-otop]'), bot = view.querySelector('[data-oslide]');
+    clearInterval(giro);
+    view.querySelector('[data-cats-t]').hidden = caja === 'menor' && !!pro;
+    if (caja !== 'menor' || !pro) { top.innerHTML = ''; bot.innerHTML = ''; return; }
+    const p = pro, pagado = p.obligaciones.reduce((t, o) => t + Math.min(o.pagado, o.total), 0);
+    top.innerHTML = `<div class="ro-h mt-0">Obligaciones · año rotario</div>
+      <div class="d-flex align-items-baseline gap-2 flex-wrap"><span class="ro-saldo" style="font-size:1.5rem">${C.money(p.total_obligaciones)}</span><span class="small text-body-secondary">pagado ${C.money(pagado)}</span></div>
+      ${C.meter(pagado, p.total_obligaciones || 1)}
+      <div class="small mt-1">Por pagar <b>${C.money(p.por_pagar)}</b> · en caja ${C.money(p.saldo)} · ${p.falta ? `<b class="text-danger">faltan ${C.money(p.falta)}</b>` : `<b class="text-success">alcanza</b>`}</div>
+      ${p.cuota_mes ? `<div class="small text-body-secondary">Cuotas de socios proyectadas: ${C.money(p.cuota_mes)} al mes${p.meses_para_cubrir ? ` · cubren lo que falta en ${p.meses_para_cubrir} ${p.meses_para_cubrir === 1 ? 'mes' : 'meses'}` : ''}</div>` : ''}
+      <div class="ro-h">¿En qué se gasta?</div>`;
+    const slide = (o) => `<div class="ro-os"><div class="d-flex align-items-center gap-2"><i class="bi ${OICON[o.categoria] || 'bi-receipt'}"></i><span class="small text-body-secondary text-truncate flex-grow-1">${esc(o.categoria)}</span>${C.chip(...OEST[o.estado])}</div>
+        <b class="d-block text-truncate mt-1" title="${esc(o.nombre)}">${esc(o.nombre)}</b>
+        <div class="d-flex align-items-center gap-2 mt-1"><span class="small flex-grow-1">${C.money(o.total)}${o.vence ? ` · ${C.day(o.vence)}` : ''}</span>
+        ${W && o.saldo > 0 ? `<button class="btn btn-sm btn-primary py-0" data-pagar="${o.clave}">Pagar</button>` : ''}${W && o.origen === 'club' ? `<button class="btn btn-sm btn-light py-0" data-oed="${o.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light py-0" data-odel="${o.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div></div>`;
+    bot.innerHTML = `<div class="d-flex align-items-center gap-2 mt-3 mb-1"><span class="ro-h m-0 flex-grow-1">Lista de obligaciones</span>
+        <button class="btn btn-sm btn-light" data-os="-1" aria-label="Anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-sm btn-light" data-os="1" aria-label="Siguiente"><i class="bi bi-chevron-right"></i></button>
+        ${W ? '<button class="btn btn-sm btn-outline-primary" data-onueva><i class="bi bi-plus-lg"></i> Nueva</button>' : ''}</div>
+      <div class="ro-oslider" data-track>${p.obligaciones.length ? p.obligaciones.map(slide).join('') : `<div class="ro-os text-body-secondary small">Aún no hay obligaciones. Ejemplos: ${p.tipos.slice(0, 5).join(', ')}.</div>`}</div>`;
+    const track = bot.querySelector('[data-track]');
+    if (p.obligaciones.length > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      let quieto = false;
+      ['pointerenter', 'touchstart', 'focusin'].forEach((ev) => track.addEventListener(ev, () => (quieto = true), { passive: true }));
+      ['pointerleave', 'focusout'].forEach((ev) => track.addEventListener(ev, () => (quieto = false)));
+      giro = setInterval(() => { if (quieto || !track.isConnected) return; mover(track, 1, true); }, 4000);
+    }
   }
-  async function pagar(id) {
-    const o = pro.obligaciones.find((x) => String(x.id) === id); if (!o) return;
+  const mover = (track, dir, vuelta) => {
+    const w = track.firstElementChild?.getBoundingClientRect().width + 10 || 200;
+    if (vuelta && track.scrollLeft + track.clientWidth >= track.scrollWidth - 4) track.scrollTo({ left: 0, behavior: 'smooth' });
+    else track.scrollBy({ left: dir * w, behavior: 'smooth' });
+  };
+  async function editarObligacion(o) {
+    const out = await C.form({ title: o ? 'Editar obligación' : 'Nueva obligación', fields: [{ k: 'categoria', label: 'Tipo', type: 'select', options: pro.tipos.filter((t) => t !== 'Obligaciones distritales').map((t) => [t, t]) },
+      { k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true, hint: 'p. ej. Bonos de la conferencia distrital, Camisetas del club, Pines de socios' }, { k: 'monto', label: 'Monto', type: 'money', required: true },
+      { k: 'vence', label: 'Vence', type: 'date' }, { k: 'notas', label: 'Notas', type: 'long' }], values: o || { categoria: 'Reconocimiento y protocolo' }, okText: 'Guardar' });
+    if (!out) return;
+    try { await api(o ? `/api/cajas/obligaciones/${o.id}` : '/api/cajas/obligaciones', { method: o ? 'PATCH' : 'POST', body: out }); toast('Obligación guardada'); await resumen(); } catch (x) { toast(x.message, false); }
+  }
+  async function pagar(clave) {
+    const o = pro.obligaciones.find((x) => x.clave === clave); if (!o) return;
     const out = await C.form({ title: `Pagar: ${o.nombre}`, fields: [{ k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha', type: 'date', required: true }],
       values: { monto: o.saldo, fecha: C.todayCo() }, okText: 'Registrar pago' });
     if (!out) return;
-    try { await api(`/api/cajas/distrital/${o.id}/pagar`, { method: 'POST', body: out }); toast('Pagada: salió de la Caja menor'); await cargar(); } catch (x) { toast(x.message, false); }
+    try { await api(o.origen === 'distrito' ? `/api/cajas/distrital/${o.id}/pagar` : `/api/cajas/obligaciones/${o.id}/pagar`, { method: 'POST', body: out }); toast('Pagada: salió de la Caja menor'); await cargar(); } catch (x) { toast(x.message, false); }
   }
 
   function pintarTabla() {
@@ -100,16 +126,25 @@ DW.ready.then(async (me) => {
   view.innerHTML = `<style>.ro-cajas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-bottom:16px}
     .ro-caja{display:grid;gap:4px;text-align:left;padding:16px;border-radius:16px;border:2px solid var(--bs-border-color);background:var(--bs-body-bg);color:inherit}
     .ro-caja.on{border-color:var(--dw-p);background:linear-gradient(160deg,rgba(var(--dw-p-rgb),.12),var(--bs-body-bg) 70%)}.ro-caja.on i{color:var(--dw-p)}.ro-saldo{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+    .ro-oslider{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;height:118px}.ro-oslider::-webkit-scrollbar{display:none}
+    .ro-os{flex:0 0 min(240px,85%);scroll-snap-align:start;padding:10px 12px;border-radius:12px;border:1px solid var(--bs-border-color);background:rgba(var(--dw-p-rgb),.04);overflow:hidden}.ro-os .bi{color:var(--dw-p)}
     .ro-ob{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ro-ob>div{flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:rgba(var(--dw-p-rgb),.06)}.ro-ob>i{color:var(--bs-secondary-color)}
     .ro-ob span{display:block;font-size:.75rem;color:var(--bs-secondary-color)}.ro-ob b{font-size:1.25rem;font-variant-numeric:tabular-nums}
     .ro-ob .ok{background:rgba(25,135,84,.12)}.ro-ob .ok b{color:var(--bs-success)}.ro-ob .bad{background:rgba(220,53,69,.12)}.ro-ob .bad b{color:var(--bs-danger)}</style>
-    <div class="ro-cajas" data-cajas></div><div data-oblig></div>
+    <div class="ro-cajas" data-cajas></div>
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
-      <div class="col-md-5"><div class="dw-card h-100"><div class="ro-h mt-0">¿En qué se gasta? · año rotario</div><div data-cats></div></div></div></div>
+      <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>¿En qué se gasta? · año rotario</div><div data-cats></div><div class="mt-auto" data-oslide></div></div></div></div>
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div>`;
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return resumen(); }
     const pg = e.target.closest('[data-pagar]'); if (pg) return pagar(pg.dataset.pagar);
+    const os = e.target.closest('[data-os]'); if (os) { clearInterval(giro); return mover(view.querySelector('[data-track]'), Number(os.dataset.os)); }
+    if (e.target.closest('[data-onueva]')) return editarObligacion(null);
+    const od = e.target.closest('[data-odel]'); if (od) return (async () => {
+      if (!(await window.App.confirm({ title: '¿Borrar esta obligación?', text: 'Si ya tiene pagos, primero borra el pago en Movimientos.', ok: 'Borrar' }))) return;
+      try { await api(`/api/cajas/obligaciones/${od.dataset.odel}`, { method: 'DELETE' }); toast('Borrada'); await resumen(); } catch (x) { toast(x.message, false); }
+    })();
+    const oe = e.target.closest('[data-oed]'); if (oe) return editarObligacion(pro.obligaciones.find((o) => o.clave === `c:${oe.dataset.oed}`));
     const b = e.target.closest('[data-caja]'); if (!b || b.dataset.caja === caja) return;
     history.replaceState(null, '', `#${b.dataset.caja}`);
     nav?.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x.dataset.club === b.dataset.caja));

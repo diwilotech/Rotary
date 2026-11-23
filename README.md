@@ -22,7 +22,7 @@ Reglas: skill `diwilo-nueva-app` (partió de CD Academia) · Fecha: 2026-11-22 �
 - Para activarlo: crear «Distrito 4271» en diwilo.com/admin → Rotaract y marcarlo:
   `npx wrangler d1 execute control-de-rotaract-db --remote --command "INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('<id>', '4271', 1)"`
 - Un club de otro distrito: `INSERT OR REPLACE INTO ro_club_config (business_id, distrito) VALUES ('<id club>', '<código>')`.
-- Finanzas: flujo de los 12 meses del año rotario por caja. En la Caja menor, **Obligaciones del club**: plata en caja vs. por pagar (cuánto falta) y las cuotas de socios proyectadas al mes. Inicio: calendario del club.
+- Finanzas: flujo de los 12 meses del año rotario por caja. En la Caja menor, la tarjeta «¿En qué se gasta?» trae arriba el **total de obligaciones** del año (pagado, por pagar, en caja, cuánto falta, cuotas proyectadas al mes) y al fondo un carrusel con la **lista de obligaciones**: la cuota distrital (la pone el distrito) y las propias del club (`ro_obligaciones`, migración 0011: reconocimiento y protocolo, bonos distritales, camisetas del club, pines, otras), cada una con «Pagar». Inicio: calendario del club.
 - Socios: después de la junta, grupos por tipo (socios, honorarios, aspirantes, socios externos, voluntarios invitados). «Socios» cuenta solo a los miembros del club.
 
 ## Pruebas

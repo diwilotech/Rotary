@@ -6,11 +6,12 @@
 //   GET  /api/cajas/resumen?anio=2026     saldos, mes, los 12 meses del año rotario y gasto por categoría de cada caja
 //   GET  /api/cajas/proyectado?anio=2026  Caja menor: real + proyectado por mes (cuotas de socios, otros ingresos, obligaciones)
 //   POST /api/cajas/distrital/:id/pagar   paga una cuota distrital (egreso de la Caja menor)
+//   CRUD /api/cajas/obligaciones · POST /api/cajas/obligaciones/:id/pagar   obligaciones propias del club
 import { json, readJson, HttpError } from '../lib/http.js';
 import { crud, all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
-import { CAJAS, CATEGORIAS, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe } from '../lib/rotaract.js';
+import { CAJAS, CATEGORIAS, OBLIGACIONES, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe } from '../lib/rotaract.js';
 
 const MOD = 'cajas';
 
@@ -35,6 +36,13 @@ export const ENTITIES = {
       const [ps, ss] = await Promise.all([all(c.env, 'SELECT id, nombre FROM ro_proyectos WHERE business_id = ?', c.businessId), all(c.env, 'SELECT id, nombre FROM ro_socios WHERE business_id = ?', c.businessId)]);
       return rows.map((m) => ({ ...m, proyecto: ps.find((p) => p.id === m.proyecto_id)?.nombre || null, socio: ss.find((s) => s.id === m.socio_id)?.nombre || null, comprobante: !!(m.comprobante_key || m.comprobante_url), comprobante_key: undefined }));
     } },
+  // Obligaciones propias del club (reconocimiento y protocolo, bonos distritales, camisetas, pines…); se pagan desde la Caja menor
+  obligaciones: { table: 'ro_obligaciones', label: 'la obligación', title: 'nombre', search: ['nombre', 'categoria'], crear: 'manager', leer: 'manager', order: 'vence, id',
+    fields: { categoria: OBLIGACIONES, nombre: 'text!', monto: 'money', vence: 'date', notas: 'long' },
+    prepareBody: (b) => ({ categoria: 'Otras obligaciones', ...b }),
+    beforeCreate(c, row) { if (!(row.monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero'); row.creado_por = c.session.user_id; },
+    beforeUpdate(c, row) { if ('monto' in row && !(row.monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero'); },
+    async beforeDelete(c, before) { if (await one(c.env, 'SELECT 1 FROM ro_movimientos WHERE business_id = ? AND obligacion_id = ? LIMIT 1', c.businessId, before.id)) throw new HttpError(409, 'Esta obligación ya tiene pagos: borra primero el pago en Movimientos'); } },
 };
 
 export function routes(r) {
@@ -88,6 +96,19 @@ export function routes(r) {
     const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
     if (anio < 2000 || anio > 2100) throw new HttpError(400, 'Año rotario no válido');
     return json(await proyeccion(c.env, c.businessId, anio));
+  });
+
+  r.post('/api/cajas/obligaciones/:id/pagar', `manager:${MOD}`, async (c) => {
+    const b = await readJson(c.req);
+    const o = await one(c.env, 'SELECT id, nombre, categoria FROM ro_obligaciones WHERE id = ? AND business_id = ?', Number(c.params.id), c.businessId);
+    if (!o) throw new HttpError(404, 'Obligación no encontrada');
+    const monto = cast('monto', 'money', b.monto), fecha = cast('fecha', 'date', b.fecha || today());
+    if (!(monto > 0)) throw new HttpError(400, 'El monto debe ser mayor que cero');
+    const t = Date.now(), cat = CATEGORIAS.menor.egreso.includes(o.categoria) ? o.categoria : 'Otros gastos';
+    const r2 = await c.env.DB.prepare(`INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, obligacion_id, registrado_por, created_at, updated_at)
+      VALUES (?, 'menor', 'egreso', ?, ?, ?, ?, ?, ?, ?, ?)`).bind(c.businessId, fecha, o.nombre, cat, monto, o.id, c.session.user_id, t, t).run();
+    await audit(c, `Pagó la obligación «${o.nombre}»`, { modulo: MOD });
+    return json({ id: r2.meta.last_row_id }, 201);
   });
 
   r.post('/api/cajas/distrital/:id/pagar', `manager:${MOD}`, async (c) => {
