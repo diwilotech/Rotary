@@ -2,19 +2,38 @@
 (function () {
   const { api, esc } = window.App;
   const cache = {};
+  // [id, etiqueta, enlace, ícono, módulo que debe estar activo]
+  const GRUPOS = [
+    [['socios', 'Socios', '/staff/socios.html', 'bi-people', 'socios'], ['activacion', 'Activación', '/staff/socios.html#activacion', 'bi-patch-check', 'socios'],
+      ['reuniones', 'Reuniones', '/staff/reuniones.html', 'bi-calendar-event', 'reuniones'], ['tareas', 'Tareas', '/staff/tareas.html', 'bi-kanban', 'tareas']],
+    [['proyectos', 'Proyectos', '/staff/impacto.html', 'bi-globe-americas', 'impacto'], ['alianzas', 'Alianzas', '/staff/impacto.html#alianzas', 'bi-people', 'impacto'],
+      ['beneficiarios', 'Beneficiarios', '/staff/impacto.html#beneficiarios', 'bi-heart', 'impacto']],
+    [['menor', 'Caja menor', '/staff/cajas.html#menor', 'bi-cup-hot', 'cajas'], ['mayor', 'Caja mayor', '/staff/cajas.html#mayor', 'bi-bricks', 'cajas'],
+      ['cuotas', 'Cuotas', '/staff/cuotas.html', 'bi-wallet2', 'cuotas']],
+  ];
   const RO = {
-    // Pestañas del Club: Socios · Activación · Reuniones · Tareas (solo las activas para el negocio y el rol)
-    nav(activo) {
-      const me = window.DW?.me, main = document.querySelector('main.dw-main');
-      if (!me || !main) return;
+    // Botones de sección arriba de cada módulo (solo los activos para el negocio y el rol).
+    // `onTab(id)`: si el botón es de la misma página, cambia de pestaña sin recargar (y deja el #hash).
+    nav(activo, onTab) {
+      const me = window.DW?.me;
+      if (!me) return;
       const tiene = (id) => me.modules.some((m) => m.id === id);
-      const items = [['socios', 'Socios', '/staff/socios.html', 'bi-people'], ['activacion', 'Activación', '/staff/socios.html#activacion', 'bi-patch-check'],
-        ['reuniones', 'Reuniones', '/staff/reuniones.html', 'bi-calendar-event'], ['tareas', 'Tareas', '/staff/tareas.html', 'bi-kanban']]
-        .filter(([id]) => tiene(id === 'activacion' ? 'socios' : id));
-      if (items.length < 2) return;
+      const grupo = GRUPOS.find((g) => g.some((i) => i[0] === activo)) || [];
+      return RO.pills(grupo.filter((i) => tiene(i[4])), activo, onTab);
+    },
+    // items: [id, etiqueta, href, ícono]. Un href «#x» o de la misma página llama a onTab en vez de navegar.
+    pills(items, activo, onTab) {
+      const main = document.querySelector('main.dw-main');
+      if (!main || items.length < 2) return;
       const nav = document.createElement('nav');
-      nav.className = 'ro-club'; nav.setAttribute('aria-label', 'Secciones del club');
+      nav.className = 'ro-club'; nav.setAttribute('aria-label', 'Secciones');
       nav.innerHTML = items.map(([id, l, href, ic]) => `<a href="${href}" class="${id === activo ? 'on' : ''}" data-club="${id}"><i class="bi ${ic}"></i>${l}</a>`).join('');
+      nav.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-club]'); if (!a || !onTab) return;
+        const u = new URL(a.href, location.href); if (u.pathname.replace(/\.html$/, '') !== location.pathname.replace(/\.html$/, '')) return;
+        e.preventDefault(); history.replaceState(null, '', u.hash || location.pathname);
+        nav.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x === a)); onTab(a.dataset.club);
+      });
       main.prepend(nav);
       return nav;
     },

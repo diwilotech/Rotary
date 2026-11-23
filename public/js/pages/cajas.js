@@ -8,7 +8,9 @@ DW.ready.then(async (me) => {
   const W = !me.business.readOnly;
   const [cat, proys] = await Promise.all([api('/api/cajas/categorias'), me.modules.some((m) => m.id === 'impacto') ? RO.proyectos() : []]);
   const ICON = { menor: 'bi-cup-hot', mayor: 'bi-bricks' };
-  let caja = (() => { try { return localStorage.getItem('ro_caja') || 'menor'; } catch (_) { return 'menor'; } })(), res = null, tabla = null;
+  let caja = ['menor', 'mayor'].includes(location.hash.slice(1)) ? location.hash.slice(1) : (() => { try { return localStorage.getItem('ro_caja') || 'menor'; } catch (_) { return 'menor'; } })(), res = null, tabla = null;
+  const elegir = (k) => { caja = k; try { localStorage.setItem('ro_caja', caja); } catch (_) {} if (res) { pintarCajas(); pintarTabla(); } };
+  const nav = RO.nav(caja, elegir);
 
   if (W) {
     acciones.innerHTML = '<button class="btn btn-outline-primary" data-tras><i class="bi bi-arrow-left-right me-1"></i>Trasladar</button>';
@@ -59,8 +61,9 @@ DW.ready.then(async (me) => {
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div>`;
   view.querySelector('[data-cajas]').addEventListener('click', (e) => {
     const b = e.target.closest('[data-caja]'); if (!b || b.dataset.caja === caja) return;
-    caja = b.dataset.caja; try { localStorage.setItem('ro_caja', caja); } catch (_) {}
-    pintarCajas(); pintarTabla();
+    history.replaceState(null, '', `#${b.dataset.caja}`);
+    nav?.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x.dataset.club === b.dataset.caja));
+    elegir(b.dataset.caja);
   });
   await cargar();
 });

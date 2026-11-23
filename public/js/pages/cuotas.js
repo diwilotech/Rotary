@@ -10,6 +10,7 @@ DW.ready.then(async (me) => {
   const PEST = { pendiente: ['soon', 'Por verificar'], verificado: ['ok', 'Verificado'], rechazado: ['bad', 'Rechazado'], anulado: ['free', 'Anulado'] };
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
   let cartera = [], pagos = [], filtro = '';
+  RO.nav('cuotas');
 
   if (W) {
     acciones.innerHTML = '<button class="btn btn-outline-secondary" data-per><i class="bi bi-calendar3 me-1"></i>Periodos</button><button class="btn btn-primary" data-pago><i class="bi bi-plus-lg me-1"></i>Registrar pago</button>';

@@ -9,7 +9,7 @@ DW.ready.then(async (me) => {
   const EST = { propuesta: ['free', 'Propuesta'], planeacion: ['soon', 'Planeación'], en_curso: ['ok', 'En curso'], finalizado: ['ok', 'Finalizado'], cancelado: ['bad', 'Cancelado'] };
   const FIN = { caja_mayor: ['bi-safe2', 'Caja mayor', '#0ea5e9'], externa: ['bi-building', 'Financiación externa', '#8b5cf6'], doble: ['bi-intersect', 'Doble financiación', '#f59e0b'] };
   const socios = await RO.socios();
-  let tab = 'proyectos', rows = [];
+  let tab = ['alianzas', 'beneficiarios'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'proyectos', rows = [];
 
   const camposP = [{ k: 'nombre', label: 'Nombre del proyecto', type: 'text', required: true, full: true }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(EST).map(([k, [, l]]) => [k, l]) },
     { k: 'socio_lider_id', label: 'Líder', type: 'select', options: RO.opts(socios.filter((s) => s.estado === 'activo'), 'Sin líder') },
@@ -87,7 +87,7 @@ DW.ready.then(async (me) => {
     .ro-pimg{height:120px;background:linear-gradient(135deg,rgba(var(--dw-p-rgb),.35),rgba(var(--dw-p-rgb),.08)) center/cover;display:grid;place-items:center;font-size:2.4rem;color:var(--dw-p);position:relative}.ro-pest{position:absolute;top:8px;right:8px}
     .ro-pstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}.ro-pstats span{display:flex;flex-direction:column;font-size:.72rem;color:var(--bs-secondary-color);background:rgba(var(--dw-p-rgb),.05);border-radius:10px;padding:6px 2px}.ro-pstats b{font-size:1.05rem;color:var(--bs-body-color)}
     .ro-fin{display:inline-flex;gap:6px;align-items:center;font-size:.78rem;font-weight:600;color:var(--f);background:color-mix(in srgb,var(--f) 14%,transparent);border-radius:999px;padding:3px 10px}</style>`);
-  C.seg(seg, [['proyectos', 'Proyectos'], ['alianzas', 'Alianzas'], ['beneficiarios', 'Beneficiarios']], (k) => { tab = k; cargar(); }, tab);
+  RO.nav(tab, (k) => { tab = k; cargar(); });
   view.addEventListener('click', (e) => { const c = e.target.closest('[data-p]'); if (c && tab === 'proyectos') detalle(c.dataset.p); });
   await cargar();
 });

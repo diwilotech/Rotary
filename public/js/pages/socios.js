@@ -9,8 +9,7 @@ DW.ready.then(async (me) => {
   const CARGOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club', 'Director/a de Servicio a la Comunidad',
     'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos', 'Presidente/a del Comité de la Fundación del club'];
   let tab = location.hash === '#activacion' ? 'activacion' : 'socios', filtro = '', rows = [];
-  const nav = RO_.nav(tab);
-  nav?.addEventListener('click', (e) => { const a = e.target.closest('a[data-club]'); if (!a || !['socios', 'activacion'].includes(a.dataset.club)) return; e.preventDefault(); tab = a.dataset.club; history.replaceState(null, '', tab === 'activacion' ? '#activacion' : '#'); nav.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x === a)); pintar(); });
+  RO_.nav(tab, (k) => { tab = k; pintar(); });
 
   if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
   acciones.querySelector('[data-nuevo]')?.addEventListener('click', () => editar(null));
