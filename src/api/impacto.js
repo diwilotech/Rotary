@@ -203,11 +203,11 @@ export function routes(r) {
       all(c.env, `SELECT a.*, al.nombre, al.tipo, al.estado, al.contacto, al.telefono, al.correo FROM ro_proyecto_aportes a LEFT JOIN ro_alianzas al ON al.id = a.alianza_id AND al.business_id = a.business_id
         WHERE a.business_id = ? AND a.proyecto_id = ? ORDER BY a.origen = 'alianza', a.id`, c.businessId, p.id),
       // movimientos del proyecto hechos directo en Finanzas (los de los soportes ya vienen en soportes)
-      ['owner', 'admin'].includes(c.role) ? all(c.env, `SELECT m.id, m.caja, m.fecha, m.tipo, m.concepto, m.categoria, m.monto, m.comprobante_key IS NOT NULL OR m.comprobante_url IS NOT NULL comprobante FROM ro_movimientos m
+      ['owner', 'admin'].includes(c.role) ? all(c.env, `SELECT m.id, m.caja, m.fecha, m.tipo, m.concepto, m.categoria, m.monto, m.observaciones, m.comprobante_key IS NOT NULL OR m.comprobante_url IS NOT NULL comprobante FROM ro_movimientos m
         WHERE m.business_id = ? AND m.proyecto_id = ? AND NOT EXISTS (SELECT 1 FROM ro_aporte_soportes s WHERE s.business_id = m.business_id AND s.movimiento_id = m.id) ORDER BY m.fecha DESC, m.id DESC`, c.businessId, p.id) : [],
       all(c.env, 'SELECT id, nombre, tipo, mime, url, archivo_key IS NOT NULL archivo, notas, created_at, updated_at FROM ro_proyecto_docs WHERE business_id = ? AND proyecto_id = ? ORDER BY created_at DESC', c.businessId, p.id),
     ]);
-    const soportes = await all(c.env, `SELECT s.id, s.aporte_id, s.fecha, COALESCE(m.monto, s.monto) monto, s.forma, s.notas, s.archivo_key IS NOT NULL archivo, s.movimiento_id, m.caja
+    const soportes = await all(c.env, `SELECT s.id, s.aporte_id, s.fecha, COALESCE(m.monto, s.monto) monto, s.forma, s.notas, s.items, s.mime, s.archivo_key IS NOT NULL archivo, s.movimiento_id, m.caja, m.categoria
       FROM ro_aporte_soportes s LEFT JOIN ro_movimientos m ON m.id = s.movimiento_id AND m.business_id = s.business_id WHERE s.business_id = ? AND s.proyecto_id = ? ORDER BY s.fecha DESC, s.id DESC`, c.businessId, p.id);
     return json({ proyecto: p, comunidad, beneficiarios, tareas, aportes, soportes, alianzas: aportes.filter((a) => a.origen === 'alianza'), movimientos, docs });
   });
@@ -274,23 +274,51 @@ export function routes(r) {
   const aporteOr404 = async (c, id) => { const a = await one(c.env, `SELECT a.*, p.nombre proyecto, al.nombre alianza FROM ro_proyecto_aportes a JOIN ro_proyectos p ON p.id = a.proyecto_id AND p.business_id = a.business_id
     LEFT JOIN ro_alianzas al ON al.id = a.alianza_id AND al.business_id = a.business_id WHERE a.id = ? AND a.business_id = ?`, Number(id) || 0, c.businessId); if (!a) throw new HttpError(404, 'Aporte no encontrado'); return a; };
   const soporteOr404 = async (c, id) => { const s = await one(c.env, 'SELECT * FROM ro_aporte_soportes WHERE id = ? AND business_id = ?', Number(id) || 0, c.businessId); if (!s) throw new HttpError(404, 'Soporte no encontrado'); return s; };
+  // Datos de un comprobante: fecha, forma, notas y sus ítems (descripción, cantidad, valor). Con ítems, el valor es la suma.
+  function datosSoporte(b, antes = {}) {
+    const fecha = 'fecha' in b ? cast('fecha', 'date', b.fecha) : antes.fecha;
+    const forma = 'forma' in b ? (FORMAS[b.forma] ? b.forma : 'otro') : antes.forma || 'otro';
+    const notas = 'notas' in b ? cast('notas', 'long', b.notas) : antes.notas ?? null;
+    let items = 'items' in b ? b.items : JSON.parse(antes.items || 'null');
+    if (items != null && !Array.isArray(items)) throw new HttpError(400, 'Los ítems no son válidos');
+    items = (items || []).slice(0, 60).map((x) => ({ descripcion: String(x?.descripcion || '').trim().slice(0, 200), cantidad: Math.max(0, Number(x?.cantidad) || 0), valor: Math.max(0, Math.round(Number(x?.valor) || 0)) }))
+      .filter((x) => x.descripcion || x.valor);
+    items.forEach((x) => { if (!x.cantidad) x.cantidad = 1; });
+    const monto = items.length ? Math.round(items.reduce((t, x) => t + x.cantidad * x.valor, 0)) : 'monto' in b ? cast('monto', 'money', b.monto) : antes.monto;
+    if (!fecha || !(monto > 0)) throw new HttpError(400, 'Escribe la fecha y el valor (o los ítems con su valor)');
+    return { fecha, forma, notas, monto, items: items.length ? JSON.stringify(items) : null, lista: items };
+  }
+  const conceptoDe = (a, d) => `Proyecto ${a.proyecto} · ${FORMAS[d.forma]}${d.notas ? `: ${d.notas.slice(0, 120)}` : d.lista.length ? `: ${d.lista.map((x) => x.descripcion).filter(Boolean).join(', ').slice(0, 120)}` : ''}`.slice(0, 300);
+  const detalleItems = (d) => (d.lista.length ? d.lista.map((x) => `${x.cantidad} × ${x.descripcion || 'ítem'} @ ${x.valor}`).join('\n') : null);
+  const categoriaDe = (caja, v, antes) => { const cats = CATEGORIAS[caja].egreso; return cats.includes(v) ? v : antes && cats.includes(antes) ? antes : cats.includes('Otros gastos') ? 'Otros gastos' : cats.at(-1); };
   r.post('/api/impacto/aportes/:id/soportes', `manager:${MOD}`, async (c) => {
-    const a = await aporteOr404(c, c.params.id), b = await readJson(c.req), t = Date.now();
-    const fecha = cast('fecha', 'date', b.fecha), monto = cast('monto', 'money', b.monto), forma = FORMAS[b.forma] ? b.forma : 'otro', notas = cast('notas', 'long', b.notas);
-    if (!fecha || !(monto > 0)) throw new HttpError(400, 'Escribe la fecha y el valor');
+    const a = await aporteOr404(c, c.params.id), b = await readJson(c.req), t = Date.now(), d = datosSoporte(b);
     let movimiento = null;
     if (a.origen === 'club') {   // el mismo gasto queda en Finanzas, en la caja del aporte y con el nombre del proyecto
-      const caja = a.caja === 'menor' ? 'menor' : 'mayor', cats = CATEGORIAS[caja].egreso;
-      const categoria = cats.includes(b.categoria) ? b.categoria : cats.includes('Otros gastos') ? 'Otros gastos' : cats.at(-1);
+      const caja = a.caja === 'menor' ? 'menor' : 'mayor';
       const x = await c.env.DB.prepare('INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, proyecto_id, observaciones, registrado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(c.businessId, caja, 'egreso', fecha, `Proyecto ${a.proyecto} · ${FORMAS[forma]}${notas ? `: ${notas.slice(0, 120)}` : ''}`.slice(0, 300), categoria, monto, a.proyecto_id, notas, c.session.user_id, t, t).run();
+        .bind(c.businessId, caja, 'egreso', d.fecha, conceptoDe(a, d), categoriaDe(caja, b.categoria), d.monto, a.proyecto_id, [d.notas, detalleItems(d)].filter(Boolean).join('\n') || null, c.session.user_id, t, t).run();
       movimiento = x.meta.last_row_id;
     }
-    const x = await c.env.DB.prepare('INSERT INTO ro_aporte_soportes (business_id, aporte_id, proyecto_id, fecha, monto, forma, notas, movimiento_id, registrado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, a.id, a.proyecto_id, fecha, monto, forma, notas, movimiento, c.session.user_id, t, t).run();
+    const x = await c.env.DB.prepare('INSERT INTO ro_aporte_soportes (business_id, aporte_id, proyecto_id, fecha, monto, forma, notas, items, movimiento_id, registrado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, a.id, a.proyecto_id, d.fecha, d.monto, d.forma, d.notas, d.items, movimiento, c.session.user_id, t, t).run();
     await recalcularAporte(c.env, c.businessId, a.id);
-    await audit(c, `Registró ${FORMAS[forma].toLowerCase()} de ${monto} (${a.origen === 'club' ? 'club' : a.alianza}) en el proyecto ${a.proyecto}`, { modulo: MOD });
+    await audit(c, `Registró ${FORMAS[d.forma].toLowerCase()} de ${d.monto} (${a.origen === 'club' ? 'club' : a.alianza}) en el proyecto ${a.proyecto}`, { modulo: MOD });
     return json({ id: x.meta.last_row_id, movimiento_id: movimiento }, 201);
+  });
+  r.patch('/api/impacto/soportes/:id', `manager:${MOD}`, async (c) => {
+    const s = await soporteOr404(c, c.params.id), a = await aporteOr404(c, s.aporte_id), b = await readJson(c.req), t = Date.now();
+    const d = datosSoporte(b, s);
+    await c.env.DB.prepare('UPDATE ro_aporte_soportes SET fecha = ?, monto = ?, forma = ?, notas = ?, items = ?, updated_at = ? WHERE id = ? AND business_id = ?')
+      .bind(d.fecha, d.monto, d.forma, d.notas, d.items, t, s.id, c.businessId).run();
+    if (s.movimiento_id) {   // el egreso de Finanzas cambia igual
+      const m = await one(c.env, 'SELECT caja, categoria FROM ro_movimientos WHERE id = ? AND business_id = ?', s.movimiento_id, c.businessId);
+      if (m) await c.env.DB.prepare('UPDATE ro_movimientos SET fecha = ?, monto = ?, concepto = ?, categoria = ?, observaciones = ?, updated_at = ? WHERE id = ? AND business_id = ?')
+        .bind(d.fecha, d.monto, conceptoDe(a, d), categoriaDe(m.caja, b.categoria, m.categoria), [d.notas, detalleItems(d)].filter(Boolean).join('\n') || null, t, s.movimiento_id, c.businessId).run();
+    }
+    await recalcularAporte(c.env, c.businessId, s.aporte_id);
+    await audit(c, `Editó ${FORMAS[d.forma].toLowerCase()} de ${d.monto} del proyecto ${a.proyecto}`, { modulo: MOD });
+    return json({ ok: true });
   });
   r.post('/api/impacto/soportes/:id/archivo', `manager:${MOD}`, async (c) => {
     const s = await soporteOr404(c, c.params.id);

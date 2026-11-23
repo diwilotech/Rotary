@@ -8,6 +8,7 @@ import * as sociosApi from '../api/socios.js';
 import * as reunionesApi from '../api/reuniones.js';
 import * as tareasApi from '../api/tareas.js';
 import * as impactoApi from '../api/impacto.js';
+import * as encuestasApi from '../api/encuestas.js';
 import * as cajasApi from '../api/cajas.js';
 import * as cuotasApi from '../api/cuotas.js';
 import * as teamApi from '../api/team.js';
@@ -17,7 +18,7 @@ let router;
 const rutas = () => {
   if (!router) {
     router = new Router();
-    for (const m of [sociosApi, reunionesApi, tareasApi, impactoApi, cajasApi, cuotasApi, teamApi, settingsApi]) m.routes?.(router);
+    for (const m of [sociosApi, reunionesApi, tareasApi, impactoApi, encuestasApi, cajasApi, cuotasApi, teamApi, settingsApi]) m.routes?.(router);
   }
   return router;
 };

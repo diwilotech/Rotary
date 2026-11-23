@@ -137,44 +137,101 @@ DW.ready.then(async (me) => {
   /* ---------- soportes de un financiador (recibos, cuentas de cobro…) ---------- */
   const FORMAS = { recibo: 'Recibo de caja', cuenta_cobro: 'Cuenta de cobro', factura: 'Factura', transferencia: 'Transferencia', efectivo: 'Efectivo', otro: 'Otro' };
   let cats = null;
+  const itemsDe = (x) => { try { return JSON.parse(x.items || '[]') || []; } catch { return []; } };
+  const getCats = async () => { if (!cats) cats = await api('/api/cajas/categorias').then((x) => x.categorias).catch(() => ({})); return cats; };
+  // Ver un comprobante sin salir de la página (imagen o PDF)
+  function verArchivo(url, titulo, mime = '') {
+    const img = /^image\//.test(mime);
+    modal(`<div class="modal-header"><h2 class="modal-title h6 text-truncate">${esc(titulo)}</h2><a class="btn btn-sm btn-outline-secondary ms-auto me-2" href="${url}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Abrir</a><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body p-0 bg-body-tertiary">${img ? `<img src="${url}" class="img-fluid d-block mx-auto" alt="${esc(titulo)}">` : `<iframe src="${url}" title="${esc(titulo)}" style="width:100%;height:75vh;border:0;display:block"></iframe>`}</div>`, { size: 'modal-xl' });
+  }
+  // Crear o editar un comprobante con varios ítems (descripción, cantidad, valor) y su archivo
+  async function editarSoporte(d, aporteId, x, alGuardar) {
+    const a = d.aportes.find((y) => y.id === aporteId), p = d.proyecto; if (!a) return;
+    const club = a.origen === 'club', caja = a.caja === 'menor' ? 'menor' : 'mayor';
+    const opCat = club ? ((await getCats())?.[caja]?.egreso || []) : [];
+    let items = x ? itemsDe(x) : [];
+    if (!items.length) items = [{ descripcion: '', cantidad: 1, valor: x ? x.monto : '' }];
+    const { el, m } = modal(`<form><div class="modal-header"><h2 class="modal-title h5">${x ? 'Editar comprobante' : 'Nuevo comprobante'} · ${esc(club ? `Club (${caja === 'menor' ? 'Caja menor' : 'Caja mayor'})` : a.nombre || 'Alianza')}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body d-grid gap-3">
+        <div class="row g-2"><div class="col-sm-4"><label class="form-label small mb-1">Fecha</label><input class="form-control" type="date" name="fecha" required value="${x?.fecha || C.todayCo()}"></div>
+          <div class="col-sm-4"><label class="form-label small mb-1">Comprobante</label><select class="form-select" name="forma">${Object.entries(FORMAS).map(([k, l]) => `<option value="${k}" ${(x?.forma || 'recibo') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          ${opCat.length ? `<div class="col-sm-4"><label class="form-label small mb-1">Categoría en Finanzas</label><select class="form-select" name="categoria">${opCat.map((c) => `<option ${(x?.categoria || 'Otros gastos') === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>` : ''}
+          <div class="col-12"><label class="form-label small mb-1">Concepto</label><input class="form-control" name="notas" value="${esc(x?.notas || '')}" placeholder="${club ? 'p. ej. compras para la jornada' : 'p. ej. primer giro'}"></div></div>
+        <div><div class="d-flex align-items-center mb-1"><b class="small flex-grow-1">Ítems del comprobante</b><button type="button" class="btn btn-sm btn-outline-primary" data-mas><i class="bi bi-plus-lg me-1"></i>Ítem</button></div>
+          <div class="table-responsive"><table class="table table-sm align-middle mb-0 ro-items"><thead><tr><th>Descripción</th><th style="width:90px">Cant.</th><th style="width:150px">Valor unitario</th><th class="text-end" style="width:130px">Subtotal</th><th style="width:40px"></th></tr></thead><tbody data-items></tbody>
+            <tfoot><tr><th colspan="3" class="text-end">Total</th><th class="text-end" data-total></th><th></th></tr></tfoot></table></div></div>
+        <div><label class="form-label small mb-1">Archivo del comprobante (foto o PDF)</label>
+          ${x?.archivo ? `<div class="d-flex gap-2 align-items-center mb-1 small"><i class="bi bi-file-earmark-check text-success"></i><a href="#" data-verarch>Ver el archivo actual</a><span class="text-body-secondary">· sube otro para reemplazarlo</span></div>` : ''}
+          <input class="form-control" type="file" name="archivo" accept="image/png,image/jpeg,image/webp,application/pdf"></div>
+        ${club ? `<div class="form-text mt-0">Queda como egreso de la ${caja === 'menor' ? 'Caja menor' : 'Caja mayor'} en Finanzas, con el nombre del proyecto «${esc(p.nombre)}».</div>` : ''}
+      </div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar comprobante</button></div></form>`, { size: 'modal-lg' });
+    const f = el.querySelector('form'), tb = el.querySelector('[data-items]');
+    const total = () => items.reduce((t, it) => t + (Number(it.cantidad) || 0) * (Number(it.valor) || 0), 0);
+    const pintarTotal = () => { el.querySelector('[data-total]').textContent = C.money(total()); tb.querySelectorAll('[data-sub]').forEach((td) => { const it = items[+td.dataset.sub]; td.textContent = C.money((Number(it.cantidad) || 0) * (Number(it.valor) || 0)); }); };
+    const pintar = () => {
+      tb.innerHTML = items.map((it, k) => `<tr><td><input class="form-control form-control-sm" data-k="${k}" data-c="descripcion" value="${esc(it.descripcion || '')}" placeholder="p. ej. Pintura galón"></td>
+        <td><input class="form-control form-control-sm" type="number" min="0" step="any" data-k="${k}" data-c="cantidad" value="${it.cantidad ?? 1}"></td>
+        <td><input class="form-control form-control-sm" type="number" min="0" step="1" inputmode="numeric" data-k="${k}" data-c="valor" value="${it.valor ?? ''}" placeholder="$"></td>
+        <td class="text-end small" data-sub="${k}"></td><td>${items.length > 1 ? `<button type="button" class="btn btn-sm btn-light" data-quitar="${k}" aria-label="Quitar ítem"><i class="bi bi-x-lg"></i></button>` : ''}</td></tr>`).join('');
+      pintarTotal();
+    };
+    pintar();
+    tb.addEventListener('input', (e) => { const t = e.target; if (t.dataset.k == null) return; items[+t.dataset.k][t.dataset.c] = t.value; pintarTotal(); });
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-mas]')) { items.push({ descripcion: '', cantidad: 1, valor: '' }); pintar(); tb.querySelector('tr:last-child input')?.focus(); return; }
+      const q = e.target.closest('[data-quitar]'); if (q) { items.splice(+q.dataset.quitar, 1); pintar(); return; }
+      if (e.target.closest('[data-verarch]')) { e.preventDefault(); verArchivo(`/api/impacto/soportes/${x.id}/archivo`, 'Comprobante', x.mime); }
+    });
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const limpios = items.map((it) => ({ descripcion: String(it.descripcion || '').trim(), cantidad: Number(it.cantidad) || 1, valor: Math.round(Number(it.valor) || 0) })).filter((it) => it.descripcion || it.valor);
+      if (!limpios.length || !(total() > 0)) { toast('Escribe al menos un ítem con su valor', false); return; }
+      const body = { fecha: f.fecha.value, forma: f.forma.value, categoria: f.categoria?.value, notas: f.notas.value.trim(), items: limpios };
+      const file = f.archivo.files[0];
+      try {
+        const r = await api(x ? `/api/impacto/soportes/${x.id}` : `/api/impacto/aportes/${aporteId}/soportes`, { method: x ? 'PATCH' : 'POST', body });
+        if (file) await RO.subir(`/api/impacto/soportes/${x ? x.id : r.id}/archivo`, file).catch((er) => toast(`Quedó guardado, pero el archivo no subió: ${er.message}`, false));
+        m.hide(); toast(club && !x ? 'Comprobante guardado y enviado a Finanzas' : 'Comprobante guardado'); alGuardar?.();
+      } catch (er) { toast(er.message, false); }
+    };
+  }
+  const borrarSoporte = async (x, club, despues) => {
+    if (!(await window.App.confirm({ title: '¿Borrar este comprobante?', text: club ? 'También se borra el egreso que creó en Finanzas.' : '', ok: 'Borrar' }))) return;
+    try { await api(`/api/impacto/soportes/${x.id}`, { method: 'DELETE' }); toast('Comprobante borrado'); despues(); } catch (er) { toast(er.message, false); }
+  };
+  const itemsHtml = (x) => { const it = itemsDe(x); return it.length > 1 || (it.length === 1 && it[0].descripcion) ? `<div class="small text-body-secondary">${it.map((i) => `${i.cantidad !== 1 ? `${i.cantidad} × ` : ''}${esc(i.descripcion || 'ítem')} · ${C.money(i.cantidad * i.valor)}`).join('<br>')}</div>` : ''; };
+  // Comprobantes de un financiador
   async function soportes(d, aporteId) {
     const a = d.aportes.find((x) => x.id === aporteId), p = d.proyecto; if (!a) return;
     const club = a.origen === 'club', caja = a.caja === 'menor' ? 'menor' : 'mayor', lista = d.soportes.filter((x) => x.aporte_id === aporteId);
-    if (club && M && !cats) cats = await api('/api/cajas/categorias').then((x) => x.categorias).catch(() => ({}));
-    const opCat = club ? (cats?.[caja]?.egreso || []) : [];
-    const { el, m } = modal(`<div class="modal-header"><h2 class="modal-title h5">Soportes · ${club ? `Club (${caja === 'menor' ? 'Caja menor' : 'Caja mayor'})` : esc(a.nombre || 'Alianza')}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+    const { el, m } = modal(`<div class="modal-header"><h2 class="modal-title h5">Comprobantes · ${club ? `Club (${caja === 'menor' ? 'Caja menor' : 'Caja mayor'})` : esc(a.nombre || 'Alianza')}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body">
         ${barra(club ? 'Gastado' : 'Recibido', a.recibido, a.monto, club ? 'var(--dw-p)' : '#16a34a')}
-        ${lista.length ? `<div class="ro-docs mb-3">${lista.map((x) => `<div class="ro-doc"><i class="bi ${x.archivo ? 'bi-file-earmark-check text-success' : 'bi-file-earmark text-body-secondary'}"></i>
-            <span class="flex-grow-1 min-w-0"><b class="small d-block">${FORMAS[x.forma] || x.forma} · ${C.money(x.monto)}</b><span class="small text-body-secondary">${C.day(x.fecha)}${x.notas ? ` · ${esc(x.notas)}` : ''}${x.movimiento_id ? ' · en Finanzas' : ''}</span></span>
-            ${x.archivo ? `<a class="btn btn-sm btn-light" href="/api/impacto/soportes/${x.id}/archivo" target="_blank" rel="noopener" aria-label="Ver soporte"><i class="bi bi-eye"></i></a>` : M ? `<button class="btn btn-sm btn-light" data-sarch="${x.id}" title="Subir el archivo"><i class="bi bi-upload"></i></button>` : ''}
-            ${M ? `<button class="btn btn-sm btn-light" data-sborrar="${x.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>`).join('')}</div>` : '<p class="small text-body-secondary">Aún no hay soportes registrados.</p>'}
-        ${M ? `<form class="border rounded-3 p-3 d-grid gap-2" data-sform><b class="small">${club ? 'Registrar un gasto del club' : 'Registrar lo que llegó'}</b>
-          <div class="row g-2"><div class="col-sm-4"><label class="form-label small mb-1">Fecha</label><input class="form-control" type="date" name="fecha" required value="${C.todayCo()}"></div>
-            <div class="col-sm-4"><label class="form-label small mb-1">Valor</label><input class="form-control" type="number" name="monto" min="1" step="1" inputmode="numeric" required placeholder="$"></div>
-            <div class="col-sm-4"><label class="form-label small mb-1">¿Cómo se soporta?</label><select class="form-select" name="forma">${Object.entries(FORMAS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
-            ${opCat.length ? `<div class="col-sm-6"><label class="form-label small mb-1">Categoría en Finanzas</label><select class="form-select" name="categoria">${opCat.map((x) => `<option ${x === 'Otros gastos' ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>` : ''}
-            <div class="${opCat.length ? 'col-sm-6' : 'col-12'}"><label class="form-label small mb-1">Archivo (foto o PDF)</label><input class="form-control" type="file" name="archivo" accept="image/png,image/jpeg,image/webp,application/pdf"></div>
-            <div class="col-12"><label class="form-label small mb-1">Concepto / notas</label><input class="form-control" name="notas" placeholder="${club ? 'p. ej. compra de pintura' : 'p. ej. primer giro'}"></div></div>
-          ${club ? `<div class="form-text mt-0">Se registra como egreso de la ${caja === 'menor' ? 'Caja menor' : 'Caja mayor'} en Finanzas, con el nombre del proyecto «${esc(p.nombre)}».</div>` : ''}
-          <div class="text-end"><button class="btn btn-primary btn-sm">Guardar soporte</button></div></form>` : ''}
+        ${M ? '<div class="text-end mb-2"><button class="btn btn-sm btn-primary" data-snuevo><i class="bi bi-plus-lg me-1"></i>Nuevo comprobante</button></div>' : ''}
+        ${lista.length ? `<div class="ro-docs">${lista.map((x) => `<div class="ro-doc align-items-start"><i class="bi ${x.archivo ? 'bi-file-earmark-check text-success' : 'bi-file-earmark text-body-secondary'}"></i>
+            <span class="flex-grow-1 min-w-0"><b class="small d-block">${FORMAS[x.forma] || x.forma} · ${C.money(x.monto)}</b><span class="small text-body-secondary">${C.day(x.fecha)}${x.notas ? ` · ${esc(x.notas)}` : ''}${x.movimiento_id ? ' · en Finanzas' : ''}</span>${itemsHtml(x)}</span>
+            ${x.archivo ? `<button class="btn btn-sm btn-light" data-sver="${x.id}" title="Ver comprobante"><i class="bi bi-eye"></i></button>` : '<span class="badge text-bg-warning">sin archivo</span>'}
+            ${M ? `<button class="btn btn-sm btn-light" data-sed="${x.id}" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-sborrar="${x.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>`).join('')}</div>`
+          : '<p class="small text-body-secondary mb-0">Aún no hay comprobantes registrados.</p>'}
       </div>`, { size: 'modal-lg' });
-    const volver = async () => { m.hide(); await abrir(p.id); if (ultimo) soportes(ultimo, aporteId); };
-    const subirArch = async (id, file) => RO.subir(`/api/impacto/soportes/${id}/archivo`, file);
-    el.querySelector('[data-sform]')?.addEventListener('submit', async (e) => {
-      e.preventDefault(); const f = e.target, file = f.archivo.files[0];
-      try {
-        const r = await api(`/api/impacto/aportes/${aporteId}/soportes`, { method: 'POST', body: { fecha: f.fecha.value, monto: Number(f.monto.value), forma: f.forma.value, categoria: f.categoria?.value, notas: f.notas.value.trim() } });
-        if (file) await subirArch(r.id, file).catch((x) => toast(`Quedó registrado, pero el archivo no subió: ${x.message}`, false));
-        toast(club ? 'Gasto registrado y enviado a Finanzas' : 'Soporte registrado'); volver();
-      } catch (x) { toast(x.message, false); }
-    });
+    const volver = async () => { await abrir(p.id); if (ultimo) soportes(ultimo, aporteId); };
     el.addEventListener('click', async (e) => {
-      const up = e.target.closest('[data-sarch]'); if (up) { const file = await RO.elegirArchivo(); if (!file) return; try { await subirArch(up.dataset.sarch, file); toast('Archivo subido'); volver(); } catch (x) { toast(x.message, false); } return; }
-      const del = e.target.closest('[data-sborrar]'); if (!del) return;
-      if (!(await window.App.confirm({ title: '¿Borrar este soporte?', text: club ? 'También se borra el egreso que creó en Finanzas.' : '', ok: 'Borrar' }))) return;
-      try { await api(`/api/impacto/soportes/${del.dataset.sborrar}`, { method: 'DELETE' }); toast('Soporte borrado'); volver(); } catch (x) { toast(x.message, false); }
+      const id = (k) => lista.find((x) => String(x.id) === e.target.closest(`[${k}]`)?.getAttribute(k));
+      if (e.target.closest('[data-snuevo]')) { m.hide(); return editarSoporte(d, aporteId, null, volver); }
+      const v = id('data-sver'); if (v) return verArchivo(`/api/impacto/soportes/${v.id}/archivo`, `${FORMAS[v.forma] || 'Comprobante'} · ${C.money(v.monto)}`, v.mime);
+      const ed = id('data-sed'); if (ed) { m.hide(); return editarSoporte(d, aporteId, ed, volver); }
+      const del = id('data-sborrar'); if (del) { m.hide(); return borrarSoporte(del, club, volver); }
     });
+  }
+  // Movimiento registrado directo en Finanzas (cajas) con este proyecto
+  async function editarMovDirecto(mv, p) {
+    const cs = (await getCats())?.[mv.caja]?.[mv.tipo] || [];
+    const out = await C.form({ title: 'Editar movimiento (Finanzas)', fields: [{ k: 'fecha', label: 'Fecha', type: 'date', required: true }, { k: 'monto', label: 'Valor', type: 'money', required: true },
+      { k: 'concepto', label: 'Concepto', type: 'text', required: true, full: true }, ...(cs.length ? [{ k: 'categoria', label: 'Categoría', type: 'select', options: cs.map((c) => [c, c]) }] : []), { k: 'observaciones', label: 'Observaciones', type: 'long' }],
+      values: { ...mv } });
+    if (!out) return;
+    try { await api(`/api/cajas/movimientos/${mv.id}`, { method: 'PATCH', body: out }); toast('Movimiento guardado'); abrir(p.id); } catch (er) { toast(er.message, false); }
   }
 
   /* ---------- página de un proyecto ---------- */
@@ -192,9 +249,9 @@ DW.ready.then(async (me) => {
     // Finanzas del proyecto: soportes de cada fondo (club o alianza) + lo que se registró directo en las cajas con este proyecto
     const fondoDe = (a) => (!a ? 'Fondo' : a.origen === 'club' ? `Club · ${a.caja === 'menor' ? 'Caja menor' : 'Caja mayor'}` : (a.nombre || 'Alianza'));
     const movsP = [...d.soportes.map((x) => { const a = d.aportes.find((y) => y.id === x.aporte_id); return { fecha: x.fecha, fondo: fondoDe(a), club: a?.origen === 'club', tipo: a?.origen === 'club' ? 'egreso' : 'ingreso',
-        comp: FORMAS[x.forma] || x.forma, concepto: x.notas || '', monto: x.monto, url: x.archivo ? `/api/impacto/soportes/${x.id}/archivo` : null, soporte: x.id }; }),
+        comp: FORMAS[x.forma] || x.forma, concepto: x.notas || '', monto: x.monto, url: x.archivo ? `/api/impacto/soportes/${x.id}/archivo` : null, mime: x.mime, soporte: x, aporte: a }; }),
       ...(d.movimientos || []).map((x) => ({ fecha: x.fecha, fondo: `Club · ${x.caja === 'menor' ? 'Caja menor' : 'Caja mayor'}`, club: true, tipo: x.tipo, comp: 'Registrado en Finanzas', concepto: x.concepto, monto: x.monto,
-        url: x.comprobante ? `/api/cajas/movimientos/${x.id}/comprobante` : null }))].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+        url: x.comprobante ? `/api/cajas/movimientos/${x.id}/comprobante` : null, mv: x }))].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
     const financiadores = d.aportes.filter((a) => a.tipo_aporte === 'financiera' && (a.monto > 0 || d.soportes.some((x) => x.aporte_id === a.id)));
     const lapiz = (a) => (M ? `<button class="btn btn-sm btn-link p-0 ms-1" data-aped="${a.id}" aria-label="Editar aporte"><i class="bi bi-pencil"></i></button>` : '');
     const SEC = [['resumen', 'Resumen', 'bi-card-text'], ['docs', `Documentación (${d.docs.length})`, 'bi-folder2-open'], ['comunidad', `Comunidad (${d.beneficiarios.length})`, 'bi-house-heart'], ['alianzas', `Alianzas (${ali.length})`, 'bi-people'], ['finanzas', `Finanzas (${movsP.length})`, 'bi-cash-stack']];
@@ -208,23 +265,39 @@ DW.ready.then(async (me) => {
           ${financiadores.length ? `${financiadores.map((a) => { const n = d.soportes.filter((x) => x.aporte_id === a.id).length; return `<div class="ro-fz">
               <div class="d-flex align-items-center gap-2"><i class="bi ${a.origen === 'club' ? 'bi-safe2' : 'bi-building'} fs-5" style="color:var(--dw-p)"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${a.origen === 'club' ? `Club · ${a.caja === 'menor' ? 'Caja menor' : 'Caja mayor'}` : esc(a.nombre || 'Alianza')}</b></span><b class="text-nowrap">${C.money(a.monto)}</b>${lapiz(a)}</div>
               ${barra(a.origen === 'club' ? 'Gastado' : 'Recibido', a.recibido, a.monto, a.origen === 'club' ? 'var(--dw-p)' : '#16a34a')}
-              <button class="btn btn-sm btn-light w-100" data-sop="${a.id}"><i class="bi bi-receipt me-1"></i>Soportes (${n})${M ? ' · registrar' : ''}</button></div>`; }).join('')}
+              <button class="btn btn-sm btn-light w-100" data-sop="${a.id}"><i class="bi bi-receipt me-1"></i>Comprobantes (${n})</button></div>`; }).join('')}
             <div class="d-flex justify-content-between small pt-2"><span>Total financiado</span><b>${C.money(financiadores.reduce((s, a) => s + a.monto, 0))}</b></div>`
             : `<p class="small text-body-secondary mb-0">Aún no hay quién financie con dinero. ${M ? 'Usa «Financiador»: del club (Caja mayor o menor) o de una alianza, y cuánto aporta.' : ''}</p>`}</div></div></div>`,
       finanzas: () => {
-        const sum = (f) => movsP.filter(f).reduce((t, x) => t + x.monto, 0);
+        const sum = (xs, f = () => true) => xs.filter(f).reduce((t, x) => t + x.monto, 0);
         const fin = d.aportes.filter((a) => a.tipo_aporte === 'financiera');
-        return `<div class="row g-2 mb-3"><div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Comprometido</div><b class="fs-5">${C.money(fin.reduce((t, a) => t + a.monto, 0))}</b></div></div>
-            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Llegó de alianzas</div><b class="fs-5 text-success">${C.money(sum((x) => !x.club))}</b></div></div>
-            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Gastó el club</div><b class="fs-5 text-danger">${C.money(sum((x) => x.club && x.tipo === 'egreso'))}</b></div></div>
-            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Sin comprobante</div><b class="fs-5 ${movsP.some((x) => !x.url) ? 'text-warning' : ''}">${movsP.filter((x) => !x.url).length}</b></div></div></div>
-          <div class="dw-card"><div class="d-flex gap-2 flex-wrap align-items-center mb-2"><span class="ro-h m-0 flex-grow-1">Movimientos del proyecto</span>${M ? '<button class="btn btn-sm btn-primary" data-fmov><i class="bi bi-plus-lg me-1"></i>Registrar movimiento</button>' : ''}</div>
-          ${movsP.length ? `<div class="table-responsive-md"><table class="table dw-table align-middle mb-0"><thead><tr><th>Fecha</th><th>Fondo</th><th>Comprobante</th><th>Concepto</th><th class="text-end">Valor</th><th></th></tr></thead><tbody>
-            ${movsP.map((x) => `<tr><td class="text-nowrap">${C.day(x.fecha)}</td><td><i class="bi ${x.club ? 'bi-safe2' : 'bi-building'} me-1"></i>${esc(x.fondo)}</td><td>${esc(x.comp)}</td><td class="small">${esc(x.concepto || '—')}</td>
+        // Un cuadro por fondo: cada financiador (club por caja, cada alianza) con SOLO sus movimientos
+        const grupos = financiadores.map((a) => ({ key: `a${a.id}`, a, nombre: fondoDe(a), club: a.origen === 'club', caja: a.caja === 'menor' ? 'menor' : 'mayor', movs: [] }));
+        movsP.forEach((x, k) => {
+          x.k = k;
+          let g = x.soporte ? grupos.find((y) => y.a?.id === x.soporte.aporte_id) : grupos.find((y) => y.club && y.caja === (x.mv.caja === 'menor' ? 'menor' : 'mayor'));
+          if (!g) { const key = x.soporte ? `a${x.soporte.aporte_id}` : `caja-${x.mv.caja}`; g = grupos.find((y) => y.key === key); if (!g) { g = { key, a: x.aporte || null, nombre: x.fondo, club: x.club, caja: x.mv?.caja, movs: [] }; grupos.push(g); } }
+          g.movs.push(x);
+        });
+        const fila = (x) => `<tr><td class="text-nowrap">${C.day(x.fecha)}</td><td>${esc(x.comp)}</td><td class="small">${esc(x.concepto || (x.soporte && itemsDe(x.soporte).length ? '' : '—'))}${x.soporte ? itemsHtml(x.soporte) : ''}</td>
               <td class="text-end text-nowrap fw-semibold ${x.tipo === 'egreso' ? 'text-danger' : 'text-success'}">${x.tipo === 'egreso' ? '−' : '+'}${C.money(x.monto)}</td>
-              <td class="text-end">${x.url ? `<a class="btn btn-sm btn-light" href="${x.url}" target="_blank" rel="noopener" title="Ver comprobante"><i class="bi bi-receipt"></i></a>` : '<span class="badge text-bg-warning">sin archivo</span>'}</td></tr>`).join('')}</tbody></table></div>`
-            : window.App.empty('bi-cash-stack', `Aún no hay movimientos. ${M ? 'Registra cada recibo de caja o cuenta de cobro: del club (sale de su caja y aparece en Finanzas) o de una alianza.' : ''}`)}
-          ${movsP.some((x) => x.soporte && !x.url) && M ? '<p class="small text-body-secondary mt-2 mb-0">Para subir un comprobante que falta: Resumen → Financiadores → Soportes.</p>' : ''}</div>`;
+              <td class="text-end text-nowrap">${x.url ? `<button class="btn btn-sm btn-light" data-fver="${x.k}" title="Ver comprobante"><i class="bi bi-eye"></i></button>` : M && x.mv ? `<button class="btn btn-sm btn-light" data-fsubir="${x.k}" title="Subir comprobante"><i class="bi bi-upload"></i></button>` : '<span class="badge text-bg-warning">sin archivo</span>'}
+                ${M ? `<button class="btn btn-sm btn-light" data-fed="${x.k}" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-fborrar="${x.k}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</td></tr>`;
+        const cuadro = (g) => {
+          const mov = g.club ? sum(g.movs, (x) => x.tipo === 'egreso') - sum(g.movs, (x) => x.tipo === 'ingreso') : sum(g.movs);
+          return `<div class="dw-card mb-3 ro-fondo"><div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+              <span class="ro-av" style="width:40px;height:40px;font-size:17px"><i class="bi ${g.club ? 'bi-safe2' : 'bi-building'}"></i></span>
+              <div class="flex-grow-1 min-w-0"><b class="d-block">${esc(g.nombre)}</b><span class="small text-body-secondary">${g.club ? 'Fondo del club' : 'Alianza'} · ${g.movs.length} ${g.movs.length === 1 ? 'movimiento' : 'movimientos'}</span></div>
+              ${M && g.a ? `<button class="btn btn-sm btn-primary" data-fnuevo="${g.a.id}"><i class="bi bi-plus-lg me-1"></i>Registrar</button>` : ''}</div>
+            ${g.a?.monto ? barra(g.club ? 'Gastado' : 'Recibido', mov, g.a.monto, g.club ? 'var(--dw-p)' : '#16a34a') : `<div class="small mb-2">${g.club ? 'Gastado' : 'Recibido'}: <b>${C.money(mov)}</b></div>`}
+            ${g.movs.length ? `<div class="table-responsive-md"><table class="table dw-table align-middle mb-0"><thead><tr><th>Fecha</th><th>Comprobante</th><th>Concepto</th><th class="text-end">Valor</th><th></th></tr></thead><tbody>${g.movs.map(fila).join('')}</tbody></table></div>`
+              : '<p class="small text-body-secondary mb-0">Aún no tiene movimientos.</p>'}</div>`;
+        };
+        return `<div class="row g-2 mb-3"><div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Comprometido</div><b class="fs-5">${C.money(fin.reduce((t, a) => t + a.monto, 0))}</b></div></div>
+            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Llegó de alianzas</div><b class="fs-5 text-success">${C.money(sum(movsP, (x) => !x.club))}</b></div></div>
+            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Gastó el club</div><b class="fs-5 text-danger">${C.money(sum(movsP, (x) => x.club && x.tipo === 'egreso'))}</b></div></div>
+            <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Sin comprobante</div><b class="fs-5 ${movsP.some((x) => !x.url) ? 'text-warning' : ''}">${movsP.filter((x) => !x.url).length}</b></div></div></div>
+          ${grupos.length ? grupos.map(cuadro).join('') : `<div class="dw-card">${window.App.empty('bi-cash-stack', `Aún no hay fondos ni movimientos. ${M ? 'Agrega un financiador en Resumen → Financiadores (del club o de una alianza) y registra sus recibos de caja o cuentas de cobro.' : ''}`)}</div>`}`;
       },
       docs: () => `<div class="dw-card"><div class="d-flex gap-2 flex-wrap mb-2"><span class="ro-h m-0 flex-grow-1">Documentación del proyecto</span>${W ? '<button class="btn btn-sm btn-primary" data-dnuevo><i class="bi bi-file-earmark-plus me-1"></i>Nuevo documento</button><button class="btn btn-sm btn-outline-primary" data-dsubir><i class="bi bi-upload me-1"></i>Subir archivo</button><button class="btn btn-sm btn-outline-primary" data-denlace><i class="bi bi-link-45deg me-1"></i>Enlace</button>' : ''}</div>
         ${d.docs.length ? `<div class="ro-docs">${d.docs.map((x) => `<div class="ro-doc"><i class="bi ${x.tipo === 'documento' ? 'bi-file-earmark-richtext' : x.tipo === 'pdf' ? 'bi-file-earmark-pdf text-danger' : x.tipo === 'imagen' ? 'bi-file-earmark-image text-primary' : 'bi-link-45deg text-success'}" ${x.tipo === 'documento' ? 'style="color:var(--dw-p)"' : ''}></i>
@@ -267,12 +340,23 @@ DW.ready.then(async (me) => {
       const b = e.target.closest('[data-sec]'); if (b) { sec = b.dataset.sec; view.querySelectorAll('[data-sec]').forEach((x) => x.className = `btn btn-sm rounded-pill ${x === b ? 'btn-primary' : 'btn-light'}`); return pintar(); }
       if (e.target.closest('[data-apnuevo]')) return editarAporte(p, null, 'club');
       const so = e.target.closest('[data-sop]'); if (so) return soportes(d, Number(so.dataset.sop));
+      const fk = (a) => movsP[+e.target.closest(`[${a}]`)?.getAttribute(a)];
+      const fv = fk('data-fver'); if (fv && e.target.closest('[data-fver]')) return verArchivo(fv.url, `${fv.comp} · ${C.money(fv.monto)}`, fv.mime || '');
+      const fe = e.target.closest('[data-fed]') && fk('data-fed'); if (fe) return fe.soporte ? editarSoporte(d, fe.soporte.aporte_id, fe.soporte, () => abrir(p.id)) : editarMovDirecto(fe.mv, p);
+      const fs = e.target.closest('[data-fsubir]') && fk('data-fsubir'); if (fs) { const file = await RO.elegirArchivo(); if (!file) return; try { await RO.subir(`/api/cajas/movimientos/${fs.mv.id}/comprobante`, file); toast('Comprobante subido'); abrir(p.id); } catch (er) { toast(er.message, false); } return; }
+      const fb = e.target.closest('[data-fborrar]') && fk('data-fborrar');
+      if (fb) {
+        if (fb.soporte) return borrarSoporte(fb.soporte, fb.club, () => abrir(p.id));
+        if (!(await window.App.confirm({ title: '¿Borrar este movimiento de Finanzas?', ok: 'Borrar' }))) return;
+        try { await api(`/api/cajas/movimientos/${fb.mv.id}`, { method: 'DELETE' }); toast('Movimiento borrado'); abrir(p.id); } catch (er) { toast(er.message, false); } return;
+      }
+      const fn = e.target.closest('[data-fnuevo]'); if (fn) return editarSoporte(d, Number(fn.dataset.fnuevo), null, () => abrir(p.id));
       if (e.target.closest('[data-fmov]')) {   // elegir de qué fondo es el movimiento
         if (!financiadores.length) { toast('Primero agrega un financiador (del club o de una alianza)', false); return editarAporte(p, null, 'club'); }
-        if (financiadores.length === 1) return soportes(d, financiadores[0].id);
+        if (financiadores.length === 1) return editarSoporte(d, financiadores[0].id, null, () => abrir(p.id));
         const { el, m } = modal(`<div class="modal-header border-0 pb-0"><h2 class="modal-title h5">¿De qué fondo es?</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
           <div class="modal-body d-grid gap-2">${financiadores.map((a) => `<button class="btn btn-outline-primary text-start" data-fz="${a.id}"><i class="bi ${a.origen === 'club' ? 'bi-safe2' : 'bi-building'} me-2"></i>${esc(fondoDe(a))}</button>`).join('')}</div>`);
-        el.addEventListener('click', (ev) => { const b = ev.target.closest('[data-fz]'); if (b) { m.hide(); soportes(d, Number(b.dataset.fz)); } });
+        el.addEventListener('click', (ev) => { const b = ev.target.closest('[data-fz]'); if (b) { m.hide(); editarSoporte(d, Number(b.dataset.fz), null, () => abrir(p.id)); } });
         return;
       }
       if (e.target.closest('[data-apali]')) return editarAporte(p, null, 'alianza');
@@ -305,8 +389,20 @@ DW.ready.then(async (me) => {
       <div class="row g-3 my-1"><div class="col-lg-4"><div class="dw-card h-100"><div class="ro-pstats mb-2"><span><b>${C.num(cm.beneficiarios)}</b>beneficiarios</span><span><b>${cm.proyectos}</b>proyectos</span><span><b>${C.num(d.proyectos.reduce((s, p) => s + (p.horas_servicio || 0), 0))}</b>horas</span></div>
           ${cm.descripcion ? `<p class="small mb-2" style="white-space:pre-wrap">${esc(cm.descripcion)}</p>` : ''}<div class="ro-h">Proyectos con esta comunidad</div>
           ${d.proyectos.length ? d.proyectos.map((p) => `<a href="#p=${p.id}" data-p="${p.id}" class="d-flex gap-2 align-items-center small py-1 border-bottom text-reset text-decoration-none"><i class="bi bi-globe-americas"></i><span class="flex-grow-1">${esc(p.nombre)}</span>${C.chip(...(EST[p.estado] || EST.propuesta))}</a>`).join('') : '<p class="small text-body-secondary mb-0">Aún ningún proyecto la tiene. Elígela en la Comunidad de un proyecto.</p>'}</div></div>
-        <div class="col-lg-8"><div data-benef></div></div></div>`;
-    view.onclick = (e) => { const a = e.target.closest('[data-p]'); if (a) { e.preventDefault(); tab = 'proyectos'; sec = 'resumen'; abrir(a.dataset.p); } };
+        <div class="col-lg-8"><div class="d-flex gap-2 mb-2" data-ctabs><button class="btn btn-sm rounded-pill btn-primary" data-ctab="benef"><i class="bi bi-people me-1"></i>Beneficiarios</button><button class="btn btn-sm rounded-pill btn-light" data-ctab="enc"><i class="bi bi-clipboard2-data me-1"></i>Encuestas</button></div>
+          <div data-benef></div><div data-enc hidden></div></div></div>`;
+    let encMontada = false;
+    view.onclick = async (e) => {
+      const a = e.target.closest('[data-p]'); if (a) { e.preventDefault(); tab = 'proyectos'; sec = 'resumen'; abrir(a.dataset.p); return; }
+      const t = e.target.closest('[data-ctab]'); if (!t) return;
+      view.querySelectorAll('[data-ctab]').forEach((x) => { x.className = `btn btn-sm rounded-pill ${x === t ? 'btn-primary' : 'btn-light'}`; });
+      const enc = t.dataset.ctab === 'enc'; view.querySelector('[data-benef]').hidden = enc; view.querySelector('[data-enc]').hidden = !enc;
+      if (enc && !encMontada) {
+        encMontada = true;
+        const bens = (await api(`/api/impacto/beneficiarios?f_comunidad_id=${cm.id}&limit=1000`)).rows;
+        window.ROEnc.montar(view.querySelector('[data-enc]'), { comunidad: cm, beneficiarios: bens, M, W });
+      }
+    };
     const proys = d.proyectos.length ? d.proyectos : [];
     C.table({ el: view.querySelector('[data-benef]'), base: '/api/impacto', entity: 'beneficiarios', title: 'beneficiario', newText: 'Nuevo beneficiario', readOnly: !W, emptyIcon: 'bi-person-heart', empty: 'Esta comunidad aún no tiene beneficiarios registrados.',
       fixed: { comunidad_id: cm.id }, fields: camposB(proys),
@@ -351,7 +447,7 @@ DW.ready.then(async (me) => {
     .ro-phero{position:relative;border-radius:18px;overflow:hidden;min-height:150px;display:flex;align-items:flex-end;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.6)),var(--img,linear-gradient(135deg,var(--dw-p),color-mix(in srgb,var(--dw-p) 50%,#000))) center/cover;color:#fff}.ro-phero-in{padding:18px}
     .ro-docs{display:grid;gap:6px}.ro-doc{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--bs-border-color)}.ro-doc .bi{font-size:1.3rem}
     .ro-benef{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));max-height:420px;overflow:auto}.ro-b{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:10px;background:rgba(var(--dw-p-rgb),.04)}
-    .ro-fz{border:1px solid var(--bs-border-color);border-radius:12px;padding:10px;margin-bottom:8px}
+    .ro-items td{padding:.25rem}.ro-fz{border:1px solid var(--bs-border-color);border-radius:12px;padding:10px;margin-bottom:8px}
     .ro-fin{display:inline-flex;gap:6px;align-items:center;font-size:.78rem;font-weight:600;color:var(--f);background:color-mix(in srgb,var(--f) 14%,transparent);border-radius:999px;padding:3px 10px}</style>`);
   RO.nav(tab, (k) => { tab = k; abierto = null; cargar(); });
   const ini = /^#([pc])=(\d+)$/.exec(location.hash);
