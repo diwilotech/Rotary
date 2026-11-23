@@ -28,8 +28,8 @@
     "run_worker_first": ["/*", "!/css/*", "!/js/*", "!/icons/*", "!/assets/*", "!/manifest.json", "!/sw.js", "!/privacidad", "!/dmca", "!/404.html"]
   },
 
-  // Tareas diarias de los módulos (gastos recurrentes, automatizaciones…): 3:00 a. m. en Colombia.
-  "triggers": { "crons": ["0 8 * * *"] },
+  // Sin cron: la cuenta gratuita de Workers ya usa sus 5 tareas programadas y los módulos de Rotaract no tienen tareas diarias.
+  // Si se agrega una, va aquí: "triggers": { "crons": ["0 8 * * *"] },
 
   // Llave pública de Cloudflare Turnstile (el secret va aparte: npx wrangler secret put TURNSTILE_SECRET_KEY).
   // Esta es la de PRUEBA de Cloudflare (siempre pasa): cámbiala por la del widget de cdrotaract.diwilo.com.
@@ -44,7 +44,7 @@
       "binding": "DB",
       // Base de CD Rotaract.
       "database_name": "control-de-rotaract-db",
-      "database_id": "PENDIENTE-crear-con-wrangler-d1-create",
+      "database_id": "3b5dc69a-ad40-408d-b832-41bec12e9578",
       "migrations_dir": "migrations"
     }
   ],

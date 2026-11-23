@@ -1,7 +1,7 @@
 # CD Rotaract (cdrotaract.diwilo.com)
 
 App de Diwilo para clubes Rotaract (club piloto: Rotaract Club de Medellín).
-Reglas: skill `diwilo-nueva-app` (partió de CD Academia) · Fecha: 2026-11-22 · Estado: **Revisión** (falta desplegar).
+Reglas: skill `diwilo-nueva-app` (partió de CD Academia) · Fecha: 2026-11-22 · Estado: **Producción** (publicada con wrangler el 2026-11-22; falta Turnstile propio y repo).
 
 ## Qué tiene (primera entrega)
 - **Club**
