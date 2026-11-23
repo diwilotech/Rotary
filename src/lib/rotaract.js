@@ -209,17 +209,17 @@ const fechaLarga = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split('
 // Certificado de activación de un socio: página para imprimir o «Guardar como PDF».
 // Certificado de activación en el club: A4 horizontal para imprimir o «Guardar como PDF». Marco azul Rotary y oro, acento
 // arándano Rotaract, logo del club si lo tiene, las 3 fechas del socio (ingreso, activación, My Rotary) y las firmas.
+// Fondo del certificado (engranaje de My Rotary): public/img/certificado-fondo.png. Mientras no exista, un aro suave.
+const FONDO = false;
 export async function certificadoHtml(c, socio) {
   if (!socio.activado_at) throw new HttpError(409, 'Este socio aún no está activado');
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
   const st = await one(c.env, 'SELECT logo_key FROM business_settings WHERE business_id = ?', c.businessId);
-  const junta = await all(c.env, "SELECT nombre, cargo FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
+  const junta = await all(c.env, "SELECT id, nombre, cargo, firma_key FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
   const pres = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/.test(String(j.cargo).toLowerCase()));
   const club = biz?.name || 'Club Rotaract';
-  const ini = club.split(/\s+/).filter((w) => /^[A-ZÁÉÍÓÚÑ]/.test(w)).slice(0, 3).map((w) => w[0]).join('') || 'RC';
-  const como = socio.cargo && esJunta(socio.cargo) ? esc(socio.cargo) : 'Socio activo';
   const anio = String(socio.activado_at).slice(0, 4);
-  const dato = (t, v, sub = '') => `<div class="dato"><span>${t}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const firma = (j, rol) => `<div class="firma"><div class="fimg">${j?.firma_key ? `<img src="/api/socios/firma/${j.id}" alt="Firma">` : ''}</div><div class="l"></div>${esc(j?.nombre || '')}<small>${rol}</small></div>`;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Certificado de activación · ${esc(socio.nombre)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Great+Vibes&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -232,45 +232,37 @@ body{margin:0;background:#e9edf4;color:var(--tinta);font-family:'Cormorant Garam
 .marco:after{content:"";position:absolute;inset:2.5mm;border:.6mm solid var(--oro)}
 .esq{position:absolute;width:22mm;height:22mm;border:1.2mm solid var(--oro);z-index:2}
 .e1{top:12mm;left:12mm;border-right:0;border-bottom:0}.e2{top:12mm;right:12mm;border-left:0;border-bottom:0}.e3{bottom:12mm;left:12mm;border-right:0;border-top:0}.e4{bottom:12mm;right:12mm;border-left:0;border-top:0}
-.marca{position:absolute;right:-30mm;top:50%;transform:translateY(-50%);width:150mm;height:150mm;border-radius:50%;border:14mm solid rgba(23,69,143,.045);z-index:0}
+.marca{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150mm;height:150mm;border-radius:50%;border:14mm solid rgba(23,69,143,.045);z-index:0}
+.marca.img{border:0;border-radius:0;background:url('/img/certificado-fondo.png') center/contain no-repeat;opacity:.07}
 .cont{position:relative;z-index:1;height:100%;padding:20mm 30mm 16mm;display:flex;flex-direction:column;align-items:center;text-align:center}
-.top{display:flex;align-items:center;gap:5mm}.logo{height:20mm}.logo img{height:100%}
-.mono{width:18mm;height:18mm;border-radius:50%;background:var(--azul);color:#fff;display:grid;place-items:center;font:600 13pt Inter,sans-serif;box-shadow:0 0 0 1.2mm #fff,0 0 0 1.8mm var(--oro)}
+.top{display:flex;align-items:center;justify-content:center;height:24mm}.logo{height:24mm}.logo img{height:100%;max-width:120mm;object-fit:contain}
 .club{font:600 11pt Inter,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:var(--azul)}
 h1{margin:7mm 0 0;font-weight:700;font-size:38pt;letter-spacing:.06em;text-transform:uppercase;color:var(--azul);line-height:1}
 .h1sub{font:600 10pt Inter,sans-serif;letter-spacing:.4em;text-transform:uppercase;color:var(--rojo);margin-top:2.5mm}
 .otorga{margin-top:8mm;font-style:italic;font-size:15pt;color:#5b6475}
 .nombre{font-family:'Great Vibes',cursive;font-size:46pt;color:var(--tinta);line-height:1.1;margin-top:1mm;padding:0 14mm 1mm;border-bottom:.5mm solid var(--oro)}
-.texto{margin-top:5mm;font-size:14.5pt;max-width:205mm;line-height:1.45;color:#2f3749}.texto b{color:var(--rojo)}
-.datos{display:flex;gap:4mm;margin-top:6mm}.dato{min-width:52mm;padding:2.5mm 4mm;border:.4mm solid rgba(23,69,143,.25);border-radius:2mm;background:rgba(23,69,143,.035);font-family:Inter,sans-serif}
-.dato span{display:block;font-size:7pt;letter-spacing:.16em;text-transform:uppercase;color:#6b7385}.dato b{display:block;font-size:11pt;color:var(--azul);margin-top:.6mm}.dato small{font-size:7.5pt;color:#6b7385}
+.texto{margin-top:6mm;font-size:15pt;max-width:200mm;line-height:1.45;color:#2f3749}.texto b{color:var(--rojo)}
 .pie{margin-top:auto;width:100%;display:flex;align-items:flex-end;justify-content:space-between}
-.firma{width:68mm;text-align:center;font-size:13pt}.firma .l{border-top:.4mm solid var(--tinta);margin-bottom:1.5mm}.firma small{display:block;font:600 7.5pt Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#6b7385}
+.firma{width:68mm;text-align:center;font-size:13pt}.fimg{height:16mm;display:flex;align-items:flex-end;justify-content:center}.fimg img{max-height:16mm;max-width:60mm;object-fit:contain;margin-bottom:-2mm}.firma .l{border-top:.4mm solid var(--tinta);margin-bottom:1.5mm}.firma small{display:block;font:600 7.5pt Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#6b7385}
 .sello{width:30mm;height:30mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd36b,var(--oro) 60%,#c98400);display:grid;place-items:center;text-align:center;color:#fff;box-shadow:0 0 0 1.2mm #fff,0 0 0 2mm var(--oro);font-family:Inter,sans-serif}
 .sello b{display:block;font-size:9pt;letter-spacing:.18em}.sello span{display:block;font-size:15pt;font-weight:600}
 .cod{position:absolute;bottom:10mm;left:0;right:0;text-align:center;font:7.5pt Inter,sans-serif;color:#8a91a1;z-index:3}
 @media print{body{background:#fff}.bar{display:none}.hoja{margin:0;box-shadow:none}}
 </style></head><body>
 <div class="bar"><button onclick="print()">Descargar PDF / Imprimir</button></div>
-<div class="hoja"><div class="marco"></div><i class="esq e1"></i><i class="esq e2"></i><i class="esq e3"></i><i class="esq e4"></i><div class="marca"></div>
+<div class="hoja"><div class="marco"></div><i class="esq e1"></i><i class="esq e2"></i><i class="esq e3"></i><i class="esq e4"></i><div class="marca${FONDO ? ' img' : ''}"></div>
  <div class="cont">
-  <div class="top">${st?.logo_key ? '<span class="logo"><img src="/api/settings/logo" alt=""></span>' : `<span class="mono">${esc(ini)}</span>`}<span class="club">${esc(club)}</span></div>
+  <div class="top">${st?.logo_key ? '<span class="logo"><img src="/api/settings/logo" alt=""></span>' : `<span class="club">${esc(club)}</span>`}</div>
   <h1>Certificado</h1><div class="h1sub">de activación</div>
   <div class="otorga">Se otorga a</div>
   <div class="nombre">${esc(socio.nombre)}</div>
-  <div class="texto">por completar su proceso de ingreso y quedar activo como <b>${como}</b> de ${esc(club)}, comprometido con el servicio, el compañerismo y el liderazgo.</div>
-  <div class="datos">
-    ${dato('Ingreso al club', socio.fecha_ingreso ? fechaLarga(socio.fecha_ingreso) : '—')}
-    ${dato('Activación en el club', fechaLarga(socio.activado_at))}
-    ${dato('My Rotary', socio.myrotary_id ? `ID ${esc(socio.myrotary_id)}` : 'En proceso', socio.myrotary_at ? `desde ${fechaLarga(socio.myrotary_at)}` : '')}
-  </div>
+  <div class="texto">por haber ingresado a ${esc(club)} y cumplido con todo lo necesario para ser socio del club.<br>Es <b>socio del club</b> a partir del <b>${fechaLarga(socio.activado_at)}</b>.</div>
   <div class="pie">
-    <div class="firma"><div style="height:9mm"></div><div class="l"></div>${esc(pres?.nombre || '')}<small>Presidencia del club</small></div>
-    <div class="sello"><div><b>ACTIVO</b><span>${anio}</span></div></div>
-    <div class="firma"><div style="height:9mm"></div><div class="l"></div>${esc(sec?.nombre || '')}<small>Secretaría del club</small></div>
+    ${firma(pres, 'Presidencia del club')}
+    <div class="sello"><div><b>SOCIO</b><span>${anio}</span></div></div>
+    ${firma(sec, 'Secretaría del club')}
   </div>
  </div>
- <div class="cod">Expedido el ${fechaLarga(socio.activado_at)}${socio.activacion_codigo ? ` · verificación ${esc(socio.activacion_codigo)}` : ''}</div>
 </div>
 <script>/* en pantallas pequeñas la hoja se ve completa (al imprimir vuelve a su tamaño) */(function(){var h=document.querySelector('.hoja');function f(){var w=h.offsetWidth,k=Math.min(1,(innerWidth-16)/w);h.style.transform=k<1?'scale('+k+')':'';h.style.transformOrigin='top left';h.style.marginBottom=k<1?(-(1-k)*h.offsetHeight)+'px':'';h.style.marginLeft=k<1?'8px':''}addEventListener('resize',f);f();matchMedia('print').addEventListener('change',function(e){if(e.matches){h.style.transform='';h.style.margin='0'}else f()})})()</script>
 </body></html>`;

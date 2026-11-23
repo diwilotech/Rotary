@@ -62,6 +62,10 @@ DW.ready.then(async (me) => {
           ${cu?.meses?.length ? `<div class="ro-meses mb-2">${cu.meses.map((m) => `<div class="ro-mes ${m.estado} ${m.mes === hoy.slice(0, 7) ? 'hoy' : ''}" title="${CEL[m.estado]}${m.monto ? ` · ${C.money(m.aplicado)} de ${C.money(m.monto)}` : ''}"><b>${MES[+m.mes.slice(5)]}</b>${CEL[m.estado]}</div>`).join('')}</div>` : ''}
           ${d.pagos.length ? `<details><summary class="small">Mis pagos (${d.pagos.length})</summary>${window.App.table([{ label: 'Fecha', html: (p) => C.day(p.fecha) }, { label: 'Monto', main: true, html: (p) => C.money(p.monto) }, { label: 'Estado', html: (p) => `${C.chip(...(PEST[p.estado] || PEST.pendiente))}${p.motivo_rechazo ? `<div class="small text-danger">${esc(p.motivo_rechazo)}</div>` : ''}` },
             { label: 'Comprobante', html: (p) => (p.comprobante ? `<a class="btn btn-sm btn-light" href="/api/lotuyo/pagos/${p.id}/comprobante" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i></a>` : '') + (W && ['pendiente', 'rechazado'].includes(p.estado) ? ` <button class="btn btn-sm btn-outline-primary" data-comp="${p.id}">${p.comprobante ? 'Cambiar' : 'Adjuntar'}</button>` : '') }], d.pagos)}</details>` : '<p class="small text-body-secondary mb-0">Aún no hay pagos registrados.</p>'}</div></div>` : ''}
+        ${s.junta ? `<div class="col-12"><div class="dw-card d-flex align-items-center gap-3 flex-wrap"><i class="bi bi-pen fs-3" style="color:#17458f"></i>
+          <div class="flex-grow-1"><b>Mi firma para los certificados</b><div class="small text-body-secondary">${s.tiene_firma ? 'Ya está guardada: sale en los certificados que firma tu cargo.' : 'Aún no la has puesto. Como eres de la junta, tu firma va en los certificados.'}</div>
+          ${s.tiene_firma ? `<img src="/api/socios/firma/${s.id}?v=${Date.now()}" alt="Mi firma" style="max-height:48px;max-width:220px" class="mt-1">` : ''}</div>
+          ${W ? `<button class="btn ${s.tiene_firma ? 'btn-outline-primary' : 'btn-primary'}" data-firma><i class="bi bi-pen me-1"></i>${s.tiene_firma ? 'Cambiar firma' : 'Poner mi firma'}</button>` : ''}</div></div>` : ''}
         ${s.activado_at ? `<div class="col-12" id="lt-certificado"><div class="dw-card d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #17458f"><i class="bi bi-patch-check-fill fs-2" style="color:#17458f"></i><div class="flex-grow-1"><b>Certificado de activación</b><div class="small text-body-secondary">Activo en el club desde el ${C.day(s.activado_at)} · ${s.myrotary_id ? `My Rotary ${esc(s.myrotary_id)}` : 'aún no está en My Rotary'}</div></div><a class="btn btn-primary" href="/api/lotuyo/certificado" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver y descargar</a></div></div>` : ''}
       </div>`;
     if (!document.querySelector('nav.ro-club')) {   // botones de sección: llevan a cada bloque de la página
@@ -74,6 +78,7 @@ DW.ready.then(async (me) => {
   view.addEventListener('click', async (e) => {
     if (e.target.closest('[data-carnet]')) return window.DW.carnet?.();
     if (e.target.closest('[data-reportar]')) return reportar();
+    if (e.target.closest('[data-firma]')) { if (await RO.firmar('/api/lotuyo/firma', { titulo: 'Mi firma' })) cargar(); return; }
     const r = e.target.closest('[data-resp]');
     if (r) { try { await api(`/api/reuniones/reuniones/${r.dataset.r}/responder`, { method: 'POST', body: { respuesta: r.dataset.resp } }); toast('Respuesta guardada'); cargar(); } catch (x) { toast(x.message, false); } return; }
     const c = e.target.closest('[data-comp]');

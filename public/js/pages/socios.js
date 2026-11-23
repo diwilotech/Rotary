@@ -69,10 +69,11 @@ DW.ready.then(async (me) => {
       </div>
       <div class="modal-footer border-0 flex-wrap gap-2 justify-content-start">
         ${s.activado ? (M || mio ? '<button class="btn btn-outline-primary" data-cert><i class="bi bi-download me-1"></i>Descargar activación</button>' : '') : M && !RO_APP ? '<button class="btn btn-primary" data-act><i class="bi bi-patch-check me-1"></i>Activar</button>' : ''}
-        ${M && !RO_APP ? `<button class="btn btn-light" data-edit><i class="bi bi-pencil me-1"></i>Editar</button><button class="btn btn-light" data-foto><i class="bi bi-camera me-1"></i>Foto</button>${s.user_id ? '' : '<button class="btn btn-light" data-acceso><i class="bi bi-key me-1"></i>Dar acceso a la app</button>'}` : ''}
+        ${M && !RO_APP ? `<button class="btn btn-light" data-edit><i class="bi bi-pencil me-1"></i>Editar</button><button class="btn btn-light" data-foto><i class="bi bi-camera me-1"></i>Foto</button>${s.junta ? `<button class="btn btn-light" data-firma><i class="bi bi-pen me-1"></i>${R0.tiene_firma ? 'Cambiar firma' : 'Firma'}</button>` : ''}${s.user_id ? '' : '<button class="btn btn-light" data-acceso><i class="bi bi-key me-1"></i>Dar acceso a la app</button>'}` : ''}
       </div>`;
     const on = (sel, f) => el.querySelector(sel)?.addEventListener('click', f);
     on('[data-cert]', () => certificado(s));
+    on('[data-firma]', async () => { m.hide(); if (await RO_.firmar(`/api/socios/socios/${s.id}/firma`, { titulo: `Firma de ${s.nombre}`, actual: R0.tiene_firma ? `/api/socios/firma/${s.id}?v=${Date.now()}` : null })) cargar(); });
     on('[data-act]', async () => { if (await activar(s)) { m.hide(); ficha(s); } });
     on('[data-edit]', () => { m.hide(); editar(rows.find((x) => x.id === s.id) || s); });
     on('[data-foto]', async () => { const f = await RO_.elegirArchivo('image/*'); if (!f) return; try { await RO_.subir(`/api/socios/socios/${s.id}/foto`, f); toast('Foto actualizada'); m.hide(); await cargar(); ficha(s); } catch (x) { toast(x.message, false); } });

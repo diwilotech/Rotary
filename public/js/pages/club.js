@@ -60,6 +60,37 @@
       if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
       return d;
     },
+    // Firma para los certificados: se dibuja con el dedo o el mouse (o se sube una imagen). `url` recibe el PNG.
+    firmar(url, { titulo = 'Tu firma', actual = null } = {}) {
+      const { modal, toast } = window.App;
+      return new Promise((listo) => {
+        const { el, m } = modal(`<div class="modal-header"><h2 class="modal-title h5">${esc(titulo)}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+          <div class="modal-body"><p class="small text-body-secondary mb-2">Firma dentro del recuadro. Sale en los certificados del club.</p>
+            ${actual ? `<div class="small mb-1">Firma actual:</div><img src="${esc(actual)}" alt="" style="max-height:60px;max-width:100%" class="mb-2 d-block">` : ''}
+            <canvas data-pad style="width:100%;height:180px;border:2px dashed var(--bs-border-color);border-radius:12px;touch-action:none;background:#fff;cursor:crosshair"></canvas></div>
+          <div class="modal-footer flex-wrap"><button class="btn btn-light me-auto" data-limpiar><i class="bi bi-eraser me-1"></i>Borrar</button><button class="btn btn-outline-secondary" data-img><i class="bi bi-image me-1"></i>Subir imagen</button><button class="btn btn-primary" data-ok>Guardar firma</button></div>`);
+        const cv = el.querySelector('[data-pad]'); let ctx, trazo = false, hay = false, ok = false;
+        const prep = () => { const r = cv.getBoundingClientRect(), k = devicePixelRatio || 1; cv.width = r.width * k; cv.height = r.height * k; ctx = cv.getContext('2d'); ctx.scale(k, k); ctx.lineWidth = 2.4; ctx.lineCap = ctx.lineJoin = 'round'; ctx.strokeStyle = '#0b1f4d'; hay = false; };
+        el.addEventListener('shown.bs.modal', prep, { once: true });
+        const pt = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+        cv.addEventListener('pointerdown', (e) => { trazo = true; cv.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...pt(e)); });
+        cv.addEventListener('pointermove', (e) => { if (!trazo) return; ctx.lineTo(...pt(e)); ctx.stroke(); hay = true; });
+        ['pointerup', 'pointercancel'].forEach((v) => cv.addEventListener(v, () => { trazo = false; }));
+        el.querySelector('[data-limpiar]').onclick = prep;
+        const enviar = async (file) => { try { await RO.subir(url, file); ok = true; toast('Firma guardada'); m.hide(); } catch (x) { toast(x.message, false); } };
+        el.querySelector('[data-img]').onclick = async () => { const f = await RO.elegirArchivo('image/png,image/jpeg,image/webp'); if (f) enviar(f); };
+        el.querySelector('[data-ok]').onclick = () => {
+          if (!hay) return toast('Dibuja tu firma primero', false);
+          // recorta el espacio en blanco alrededor del trazo
+          const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let x0 = cv.width, y0 = cv.height, x1 = 0, y1 = 0;
+          for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) if (d[(y * cv.width + x) * 4 + 3]) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+          const out = document.createElement('canvas'), pad = 8; out.width = x1 - x0 + pad * 2; out.height = y1 - y0 + pad * 2;
+          out.getContext('2d').drawImage(cv, x0 - pad, y0 - pad, out.width, out.height, 0, 0, out.width, out.height);
+          out.toBlob((b) => enviar(new File([b], 'firma.png', { type: 'image/png' })), 'image/png');
+        };
+        el.addEventListener('hidden.bs.modal', () => listo(ok), { once: true });
+      });
+    },
     elegirArchivo(accept = 'image/*,application/pdf') {
       return new Promise((ok) => { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => ok(i.files[0] || null); i.click(); });
     },

@@ -12,7 +12,7 @@ import { crud, all, one, today, cast } from '../lib/crud.js';
 import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
-import { guardarArchivo, borrarArchivo } from '../lib/archivos.js';
+import { guardarArchivo, borrarArchivo, servirArchivo } from '../lib/archivos.js';
 import { cargoOrden, cartera, certificadoHtml, socioDeSesion } from '../lib/rotaract.js';
 
 const MOD = 'socios';
@@ -23,8 +23,8 @@ const manager = (c) => ['owner', 'admin'].includes(c.role);
 
 const fotoDe = (s) => (s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null);
 export const publico = (c, s) => {
-  const out = { ...s, foto: fotoDe(s), orden_cargo: cargoOrden(s.cargo), junta: cargoOrden(s.cargo) < 99, activado: !!s.activado_at, en_myrotary: !!(s.myrotary_at || s.myrotary_id) };
-  delete out.foto_key; delete out.origen_id;
+  const out = { ...s, foto: fotoDe(s), orden_cargo: cargoOrden(s.cargo), junta: cargoOrden(s.cargo) < 99, activado: !!s.activado_at, en_myrotary: !!(s.myrotary_at || s.myrotary_id), tiene_firma: !!s.firma_key };
+  delete out.foto_key; delete out.firma_key; delete out.origen_id;
   if (!manager(c) && s.user_id !== c.session?.user_id) for (const k of PRIVADOS) delete out[k];
   return out;
 };
@@ -145,6 +145,15 @@ export function routes(r) {
     return json({ invite_url: new URL(invitePath(await createInvite(c.env, user.id)), c.url.origin).toString() });
   });
 
+  // Firma: la presidencia/junta o el propio socio de la junta; se ve con cualquier sesión del negocio (va en los certificados)
+  const puedeFirma = (c, s) => { if (!manager(c) && s.user_id !== c.session.user_id) throw new HttpError(403, 'Solo puedes cambiar tu propia firma'); };
+  r.post('/api/socios/socios/:id/firma', `tenant:${MOD}`, async (c) => { const s = await socioOr404(c, c.params.id); puedeFirma(c, s); return json(await subirFirma(c, s)); });
+  r.delete('/api/socios/socios/:id/firma', `tenant:${MOD}`, async (c) => { const s = await socioOr404(c, c.params.id); puedeFirma(c, s); return json(await quitarFirma(c, s)); });
+  r.get('/api/socios/firma/:id', 'tenant', async (c) => {
+    const s = await socioOr404(c, c.params.id);
+    return servirArchivo(c, { key: s.firma_key, mime: s.firma_key?.endsWith('.png') ? 'image/png' : s.firma_key?.endsWith('.webp') ? 'image/webp' : 'image/jpeg', nombre: 'firma' });
+  });
+
   // Foto: la junta o el propio socio
   r.post('/api/socios/socios/:id/foto', `tenant:${MOD}`, async (c) => {
     const s = await socioOr404(c, c.params.id);
@@ -170,6 +179,22 @@ export async function subirFoto(c, s) {
   await c.env.DB.prepare('UPDATE ro_socios SET foto_key = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(f.key, Date.now(), s.id, c.businessId).run();
   await borrarArchivo(c.env, s.foto_key);
   return { foto: `/api/socios/foto/${s.id}?v=${Date.now()}` };
+}
+
+// Firma (imagen PNG/JPG, máx. 1 MB) de un socio de la junta para los certificados
+export async function subirFirma(c, s) {
+  if (cargoOrden(s.cargo) >= 99) throw new HttpError(400, 'Solo la junta firma los certificados');
+  const f = await guardarArchivo(c, 'firmas', { max: 1024 * 1024 });
+  if (!f.mime.startsWith('image/')) { await borrarArchivo(c.env, f.key); throw new HttpError(400, 'La firma debe ser una imagen'); }
+  await c.env.DB.prepare('UPDATE ro_socios SET firma_key = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(f.key, Date.now(), s.id, c.businessId).run();
+  await borrarArchivo(c.env, s.firma_key);
+  await audit(c, `Actualizó la firma de ${s.nombre}`, { modulo: MOD });
+  return { ok: true };
+}
+export async function quitarFirma(c, s) {
+  await c.env.DB.prepare('UPDATE ro_socios SET firma_key = NULL, updated_at = ? WHERE id = ? AND business_id = ?').bind(Date.now(), s.id, c.businessId).run();
+  await borrarArchivo(c.env, s.firma_key);
+  return { ok: true };
 }
 
 export { socioDeSesion };
