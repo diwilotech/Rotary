@@ -10,6 +10,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { crud, all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
+import { recalcularAporte } from './impacto.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
 import { CAJAS, CATEGORIAS, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe, RUBROS, RUBRO_DISTRITO, finDeAnio, obligacionesClub } from '../lib/rotaract.js';
 
@@ -30,6 +31,18 @@ export const ENTITIES = {
       if (before.pago_id) throw new HttpError(409, 'Este ingreso viene de una cuota: anúlalo desde Cuotas');
       if (before.traslado) await c.env.DB.prepare('DELETE FROM ro_movimientos WHERE business_id = ? AND traslado = ? AND id <> ?').bind(c.businessId, before.traslado, before.id).run();
       await borrarArchivo(c.env, before.comprobante_key);
+    },
+    // Gastos de un proyecto registrados como soporte de un aporte del club (Impacto): lo ejecutado sigue a Finanzas
+    async afterUpdate(c, id) {
+      const s = await one(c.env, 'SELECT aporte_id FROM ro_aporte_soportes WHERE business_id = ? AND movimiento_id = ?', c.businessId, id);
+      if (s) await recalcularAporte(c.env, c.businessId, s.aporte_id);
+    },
+    async afterDelete(c, before) {
+      const ss = await all(c.env, 'SELECT id, aporte_id FROM ro_aporte_soportes WHERE business_id = ? AND movimiento_id = ?', c.businessId, before.id);
+      for (const s of ss) {
+        await c.env.DB.prepare('DELETE FROM ro_aporte_soportes WHERE id = ? AND business_id = ?').bind(s.id, c.businessId).run();
+        await recalcularAporte(c.env, c.businessId, s.aporte_id);
+      }
     },
     async decorate(c, rows) {
       if (!rows.length) return rows;

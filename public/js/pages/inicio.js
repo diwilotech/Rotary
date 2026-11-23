@@ -1,13 +1,6 @@
 // Inicio = el módulo Dashboard de Diwilo Modulos. Aquí se registra lo PROPIO del club: la próxima reunión, mis pendientes
 // y una tarjeta por módulo activo con su número clave (lleva a su pantalla).
 window.DwSinFigura = true;    // sin «Así funciona tu negocio»
-// Club nuevo sin logo: la primera vez que entra la presidencia o la junta se crean solos los 6 logos del club (Marca)
-DW.ready.then(async (me) => {
-  if (!me.canManage || me.business.readOnly || me.settings.logo || me.distrito?.es_distrito || !me.modules.some((m) => m.id === 'marca')) return;
-  const k = `ro_logos_${me.business.id}`; try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (_) { /* sin almacenamiento: igual se intenta una vez */ }
-  if (!window.RoLogos) await new Promise((ok) => { const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = ok; sc.onerror = ok; document.head.appendChild(sc); });
-  try { await window.RoLogos?.crear(me, { silencioso: true }); window.App.toast('Creamos los logos de tu club. Míralos en Marca → Identidad.'); setTimeout(() => (window.top || window).location.reload(), 1800); } catch (_) { /* se puede hacer luego desde Marca */ }
-});
 (window.DwDashboard = window.DwDashboard || []).push({
   id: 'club',
   titulo: 'Tu club',
@@ -39,7 +32,13 @@ DW.ready.then(async (me) => {
       caj && ['Caja menor · Club', C.money(caj.cajas[0].saldo), `Caja mayor ${C.money(caj.cajas[1].saldo)}`, 'bi-cash-stack', '/staff/cajas.html'],
       cuo && ['Cuotas por cobrar', C.money(cuo.por_cobrar), cuo.por_verificar ? `${cuo.por_verificar} por verificar` : `${cuo.deben} socios deben`, 'bi-wallet2', '/staff/cuotas.html'],
     ].filter(Boolean);
-    host.innerHTML = `<div class="row g-3 mb-3">
+    // Club sin logos: tarjeta para crearlos con los archivos oficiales de Rotary (solo si la app ya los tiene)
+    const logosCard = me.canManage && !me.business.readOnly && !me.settings.logo && tiene('marca')
+      ? await new Promise((ok) => { if (window.RoLogos) return ok(true); const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = () => ok(true); sc.onerror = () => ok(false); document.head.appendChild(sc); })
+        .then(async (ok) => ok && (await window.RoLogos.archivos()).logo) : false;
+    host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>
+        <div class="flex-grow-1"><b>Crea los logos de tu club</b><div class="small text-body-secondary">Con los logotipos oficiales de Rotary y el nombre «${esc(window.RoLogos.club(me.business.name))}»: el de la app, horizontal, solo ícono y para fondo oscuro. Quedan en Marca.</div></div>
+        <button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Crear los logos</button></div>` : ''}<div class="row g-3 mb-3">
         <div class="col-lg-5"><div class="dw-card h-100" style="border-left:4px solid var(--dw-p)"><div class="small text-body-secondary">Próxima reunión</div>
           ${prox ? `<div class="fs-5 fw-bold">${esc(prox.titulo)}</div><div class="small text-capitalize">${new Date(`${prox.fecha}T12:00:00Z`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}${prox.hora_ini ? ` · ${esc(prox.hora_ini)}` : ''} · <b>${cuando(prox.fecha)}</b></div>${prox.lugar ? `<div class="small text-body-secondary"><i class="bi bi-geo-alt me-1"></i>${esc(prox.lugar)}</div>` : ''}
             <a class="btn btn-sm btn-outline-primary mt-2" href="/staff/reuniones.html">Ver calendario</a>` : '<div class="text-body-secondary">No hay reuniones programadas.</div>'}</div></div>
@@ -47,6 +46,11 @@ DW.ready.then(async (me) => {
           ${yo?.socio ? `<div class="d-flex flex-wrap gap-3"><span><b>${yo.tareas ? yo.tareas.length : 0}</b> tareas tuyas</span><span><b>${yo.asistencia.pct ?? '—'}${yo.asistencia.pct != null ? '%' : ''}</b> de asistencia</span><span>${yo.cuota ? (yo.cuota.saldo ? `Cuotas: debes <b class="text-danger">${C.money(yo.cuota.saldo)}</b>` : '<b class="text-success">Cuotas al día</b>') : ''}</span></div>
             <a class="btn btn-sm btn-outline-primary mt-2" href="/staff/lotuyo.html">Ir a lo tuyo</a>` : '<div class="text-body-secondary small">Tu usuario aún no está enlazado a una ficha de socio.</div>'}</div></div></div>
       ${tiles.length ? `<div class="dw-grid">${tiles.map(([t, v, d, i, r]) => window.App.kpi({ titulo: t, valor: v, detalle: d, icono: i, ruta: r })).join('')}</div>` : ''}`;
+    host.querySelector('[data-rologos]')?.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creando…';
+      try { const n = await window.RoLogos.crear(me); window.App.toast(`Listo: ${n} logos del club en Marca`); setTimeout(() => (window.top || window).location.reload(), 1200); }
+      catch (x) { window.App.toast(x.message, false); b.disabled = false; b.textContent = 'Crear los logos'; }
+    });
   },
 });
 

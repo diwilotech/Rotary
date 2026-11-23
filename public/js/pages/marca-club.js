@@ -1,70 +1,51 @@
-// Logos del club, creados automáticamente con el nombre del club y los colores de Rotaract (arándano, oro, azul real).
-// Arma los 6 logos que pide Marca → Identidad: el cuadrado de la app, horizontal, vertical, solo ícono, solo letras y para
-// fondo oscuro, en SVG, y los sube a Marca (y el cuadrado también como logo de la app).
-//  · Se cargan solos la primera vez que la presidencia o la junta abre la app y el club aún no tiene logo (Inicio).
-//  · En Marca → Identidad aparece «Crear los logos del club» para hacerlos (o rehacerlos) cuando quieran.
-// Se carga antes de /m/marca.js (EXTRA_CENTRAL en src/lib/central.js) y desde Inicio.
+// Logos del club con los archivos OFICIALES de Rotary (public/img/marca/): nada inventado.
+//  · rotaract.png  logotipo oficial de Rotaract (rueda + palabra), a todo color, fondo transparente
+//  · rueda.png     solo la rueda (el engranaje), fondo transparente
+//  · letras.png    (opcional) solo la palabra «Rotaract»
+// Con ellos arma: el cuadrado de la app (la rueda), horizontal (logotipo + nombre del club debajo, alineado con la palabra),
+// solo ícono (la rueda), solo letras (si está letras.png) y para fondo oscuro (palabra y nombre en blanco, rueda en oro).
+// La versión vertical no se genera. Se ofrece desde Inicio (tarjeta para la presidencia o la junta si el club no tiene logos).
 (function () {
-  const ROJO = '#D41367', ORO = '#F7A81B', AZUL = '#17458F', F = "'Open Sans', Arial, Helvetica, sans-serif";
-  const e = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-  // «Rotaract Club de Medellín» → programa «Rotaract», club «Club de Medellín», inicial «M»
-  function partes(nombre) {
-    const n = String(nombre || '').trim(), m = /^(rotaract|rotary|interact)\s+(.*)$/i.exec(n);
-    const programa = m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : 'Rotaract', club = (m ? m[2] : n) || 'Club';
-    const pal = club.split(/\s+/).filter((w) => w.length > 2 && !/^(club|de|del|la|las|los|el)$/i.test(w));
-    return { programa, club, inicial: (pal[pal.length - 1] || club)[0].toUpperCase() };
+  const BASE = '/img/marca/', ROJO = '#D41367', F = "'Open Sans', Arial, Helvetica, sans-serif";
+  const ALINEAR = 0.335;   // dónde empieza la palabra dentro del logotipo oficial (fracción del ancho): ahí arranca el nombre del club
+  const cargar = (n) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = BASE + n; });
+  const club = (nombre) => String(nombre || '').replace(/^\s*(rotaract|rotary|interact)\s+/i, '').trim() || 'Club';
+  const lienzo = (w, h) => { const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h); return c; };
+  // Pinta de blanco lo que no es oro (la palabra), para la versión de fondo oscuro
+  function enBlanco(img) {
+    const c = lienzo(img.naturalWidth, img.naturalHeight), x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+    for (let i = 0; i < p.length; i += 4) { if (!p[i + 3]) continue; const oro = p[i] > 200 && p[i + 1] > 120 && p[i + 2] < 110; if (!oro) { p[i] = p[i + 1] = p[i + 2] = 255; } }
+    x.putImageData(d, 0, 0); return c;
   }
-  // Ícono: círculo arándano con aro de oro y la inicial del club
-  const icono = (cx, cy, r, { letra, fondo = ROJO, aro = ORO, txt = '#FFFFFF' }) =>
-    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fondo}"/><circle cx="${cx}" cy="${cy}" r="${r * 0.84}" fill="none" stroke="${aro}" stroke-width="${r * 0.09}"/>
-     <text x="${cx}" y="${cy + r * 0.36}" text-anchor="middle" font-family="${F}" font-weight="800" font-size="${r * 1.02}" fill="${txt}">${e(letra)}</text>`;
-  const svg = (w, h, inner, bg = '') => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${bg}${inner}</svg>`;
-  // Ancho aproximado del texto (Open Sans/Arial) para dimensionar sin medir en pantalla
-  const ancho = (t, px, peso = 700) => [...String(t)].reduce((s, ch) => s + (/[mwMW]/.test(ch) ? 0.9 : /[il.,'|]/.test(ch) ? 0.3 : /[A-Z]/.test(ch) ? 0.7 : ch === ' ' ? 0.28 : 0.55), 0) * px * (peso >= 700 ? 1.04 : 1);
-  function logos(nombre) {
-    const { programa, club, inicial } = partes(nombre);
-    const p1 = 96, p2 = 50, palabras = (x, y, colA, colB, anchor = 'start') => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${F}" font-weight="800" font-size="${p1}" fill="${colA}">${e(programa)}</text>
-      <text x="${x}" y="${y + p2 * 1.35}" text-anchor="${anchor}" font-family="${F}" font-weight="600" font-size="${p2}" fill="${colB}">${e(club)}</text>`;
-    const tw = Math.max(ancho(programa, p1, 800), ancho(club, p2, 600));
-    const hW = Math.ceil(40 + 220 + 40 + tw + 40), hH = 300;
-    const horizontal = (colA, colB, ico) => svg(hW, hH, icono(150, 150, 110, { letra: inicial, ...ico }) + palabras(300, 145, colA, colB));
-    const vW = Math.ceil(Math.max(tw + 80, 360)), vH = 470;
-    return {
-      app: svg(512, 512, icono(256, 256, 178, { letra: inicial, fondo: '#FFFFFF', txt: ROJO }), `<rect width="512" height="512" rx="96" fill="${ROJO}"/>`),
-      horizontal: horizontal(ROJO, AZUL, {}),
-      vertical: svg(vW, vH, icono(vW / 2, 130, 110, { letra: inicial }) + palabras(vW / 2, 340, ROJO, AZUL, 'middle')),
-      icono: svg(260, 260, icono(130, 130, 120, { letra: inicial })),
-      letras: svg(Math.ceil(tw + 80), 210, palabras(40, 110, ROJO, AZUL)),
-      oscuro: horizontal('#FFFFFF', ORO, { fondo: ROJO, aro: '#FFFFFF' }),
-    };
+  const ancho = (i) => i.naturalWidth || i.width, alto = (i) => i.naturalHeight || i.height;
+  function horizontal(logo, nombre, color) {
+    const W = 1000, h = Math.round(alto(logo) * (W / ancho(logo))), fs = Math.round(h * 0.2), pad = 24;
+    const c = lienzo(W + pad * 2, h + fs * 1.5 + pad * 2), x = c.getContext('2d');
+    x.drawImage(logo, pad, pad, W, h);
+    x.fillStyle = color; x.font = `700 ${fs}px ${F}`; x.textBaseline = 'top'; x.fillText(nombre, pad + W * ALINEAR, pad + h + fs * 0.2);
+    return c;
   }
-  const dataUrl = (s) => `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(s)))}`;
-  async function crear(me, { silencioso = false } = {}) {
-    const { api, toast } = window.App, L = logos(me.business.name);
-    await api('/api/settings/logo', { method: 'PUT', body: { dataUrl: dataUrl(L.app) } });
-    await api('/api/marca/logo', { method: 'PUT', body: { dataUrl: dataUrl(L.app) } }).catch(() => {});
-    for (const t of ['horizontal', 'vertical', 'icono', 'letras', 'oscuro']) await api(`/api/marca/logos/${t}`, { method: 'PUT', body: { dataUrl: dataUrl(L[t]) } });
-    if (!silencioso) toast('Listo: los 6 logos del club quedaron creados');
-    return true;
+  function cuadrado(rueda, fondo = '#FFFFFF') {
+    const c = lienzo(512, 512), x = c.getContext('2d'), s = 380;
+    x.fillStyle = fondo; x.fillRect(0, 0, 512, 512);
+    const k = s / Math.max(rueda.naturalWidth, rueda.naturalHeight); x.drawImage(rueda, (512 - rueda.naturalWidth * k) / 2, (512 - rueda.naturalHeight * k) / 2, rueda.naturalWidth * k, rueda.naturalHeight * k);
+    return c;
   }
-  window.RoLogos = { crear, logos, partes };
+  function sola(img, alto = 600) { const k = alto / img.naturalHeight, c = lienzo(img.naturalWidth * k, alto); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c; }
 
-  // Marca → Identidad: tarjeta «Crear los logos del club» arriba de los logos (solo presidencia o junta)
-  DW.ready.then((me) => {
-    if (!document.querySelector('main[data-modulo="marca"]') || !me.canManage || me.business.readOnly) return;
-    const poner = () => {
-      const grid = document.querySelector('[data-logos]');
-      if (!grid || grid.previousElementSibling?.matches('[data-rologos]')) return;
-      const { programa, club } = partes(me.business.name);
-      grid.insertAdjacentHTML('beforebegin', `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" data-rologos style="border-left:4px solid ${ROJO}">
-        <i class="bi bi-magic fs-3" style="color:${ROJO}"></i><div class="flex-grow-1"><b>Crear los logos del club automáticamente</b>
-        <div class="small text-body-secondary">Con el nombre «${e(programa)} ${e(club)}» y los colores de Rotaract arma los 6 logos de abajo (cuadrado de la app, horizontal, vertical, solo ícono, solo letras y fondo oscuro). Reemplaza los que haya.</div></div>
-        <button class="btn btn-primary" data-rocrear><i class="bi bi-stars me-1"></i>Crear los logos</button></div>`);
-      grid.previousElementSibling.querySelector('[data-rocrear]').onclick = async (ev) => {
-        const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creando…';
-        try { await crear(me); location.hash = 'identidad'; location.reload(); } catch (x) { window.App.toast(x.message, false); b.disabled = false; b.textContent = 'Crear los logos'; }
-      };
-    };
-    new MutationObserver(poner).observe(document.body, { childList: true, subtree: true });
-  });
+  async function archivos() { const [logo, rueda, letras] = await Promise.all([cargar('rotaract.png'), cargar('rueda.png'), cargar('letras.png')]); return { logo, rueda, letras }; }
+  async function crear(me) {
+    const { api } = window.App, A = await archivos();
+    if (!A.logo || !A.rueda) throw new Error('Faltan los archivos oficiales de Rotary en la app');
+    await document.fonts.load(`700 40px ${F}`).catch(() => {});
+    const n = club(me.business.name), png = (c) => c.toDataURL('image/png');
+    const L = { horizontal: horizontal(A.logo, n, ROJO), icono: sola(A.rueda, 400), oscuro: horizontal(enBlanco(A.logo), n, '#FFFFFF'), ...(A.letras ? { letras: sola(A.letras, 300) } : {}) };
+    const app = png(cuadrado(A.rueda));
+    await api('/api/settings/logo', { method: 'PUT', body: { dataUrl: app } });
+    await api('/api/marca/logo', { method: 'PUT', body: { dataUrl: app } }).catch(() => {});
+    for (const [t, c] of Object.entries(L)) await api(`/api/marca/logos/${t}`, { method: 'PUT', body: { dataUrl: png(c) } });
+    return Object.keys(L).length + 1;
+  }
+  window.RoLogos = { crear, archivos, club };
 })();

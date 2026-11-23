@@ -85,7 +85,7 @@ export const centralModuleOf = centralOf;
 
 // Página de un módulo central: el shell de esta app (public/staff/index.html) con el <main> y el script del módulo.
 // Scripts propios que la app carga antes de la pantalla de un módulo central
-const EXTRA_CENTRAL = { marca: ['/js/pages/marca-club.js'] };
+const EXTRA_CENTRAL = {};
 export async function centralPage(env, req, id) {
   const [shellRes, main] = await Promise.all([env.ASSETS.fetch(new Request(new URL('/staff/', req.url), { headers: req.headers })), need(env).asset(`/m/${id}.html`)]);
   if (main.status !== 200) throw new HttpError(404, 'Página no encontrada');

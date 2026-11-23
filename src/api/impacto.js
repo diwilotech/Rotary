@@ -10,6 +10,7 @@ import { crud, all, one, cast } from '../lib/crud.js';
 import { readJson } from '../lib/http.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
+import { CATEGORIAS } from '../lib/rotaract.js';
 
 const MOD = 'impacto';
 export const ESTADOS = ['propuesta', 'planeacion', 'en_curso', 'finalizado', 'cancelado'];
@@ -39,8 +40,19 @@ function aporteValido(row, before = {}) {
   const f = { ...before, ...row };
   if (!f.proyecto_id) throw new HttpError(400, 'Elige el proyecto');
   if (f.origen === 'alianza' && !f.alianza_id) throw new HttpError(400, 'Elige la alianza que aporta');
-  if (f.origen === 'club' && 'origen' in row) row.alianza_id = null;
+  if (f.origen === 'club' && 'origen' in row) { row.alianza_id = null; if (!f.caja) row.caja = 'mayor'; }
+  if (f.origen === 'alianza' && 'origen' in row) row.caja = null;
   if ((f.monto || 0) < 0 || (f.recibido || 0) < 0) throw new HttpError(400, 'Los montos no pueden ser negativos');
+}
+
+// Soportes de un financiador (recibo, cuenta de cobro…). Del club: cada soporte es un egreso en su caja (Finanzas) y lo
+// ejecutado sale de esos movimientos; de una alianza: lo recibido es la suma de sus soportes.
+export const FORMAS = { recibo: 'Recibo de caja', cuenta_cobro: 'Cuenta de cobro', factura: 'Factura', transferencia: 'Transferencia', efectivo: 'Efectivo', otro: 'Otro' };
+export async function recalcularAporte(env, businessId, aporteId) {
+  if (!aporteId) return;
+  const x = await one(env, `SELECT COALESCE(SUM(CASE WHEN s.movimiento_id IS NOT NULL THEN COALESCE(m.monto, 0) ELSE s.monto END), 0) t FROM ro_aporte_soportes s
+    LEFT JOIN ro_movimientos m ON m.id = s.movimiento_id AND m.business_id = s.business_id WHERE s.business_id = ? AND s.aporte_id = ?`, businessId, aporteId);
+  await env.DB.prepare('UPDATE ro_proyecto_aportes SET recibido = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(x.t, Date.now(), aporteId, businessId).run();
 }
 
 export const ENTITIES = {
@@ -78,7 +90,9 @@ export const ENTITIES = {
     refs: { proyecto_id: 'ro_proyectos', comunidad_id: 'ro_comunidades' },
     async beforeCreate(c, row) {   // si llega solo el proyecto, queda en la comunidad del proyecto
       if (!row.comunidad_id && row.proyecto_id) row.comunidad_id = (await one(c.env, 'SELECT comunidad_id FROM ro_proyectos WHERE id = ? AND business_id = ?', row.proyecto_id, c.businessId))?.comunidad_id ?? null;
-    } },
+      if (!row.comunidad_id) throw new HttpError(400, 'Elige la comunidad del beneficiario');   // todo beneficiario va en una comunidad
+    },
+    beforeUpdate(c, row) { if ('comunidad_id' in row && !row.comunidad_id) throw new HttpError(400, 'El beneficiario debe quedar en una comunidad'); } },
   alianzas: { table: 'ro_alianzas', label: 'la alianza', title: 'nombre', search: ['nombre', 'tipo', 'contacto', 'municipio'], order: "CASE estado WHEN 'activa' THEN 0 WHEN 'seguimiento' THEN 1 WHEN 'prospecto' THEN 2 ELSE 3 END, nombre",
     fields: { proyecto_id: 'int', nombre: 'text!', tipo: 'text', contacto: 'text', telefono: 'text', correo: 'email', municipio: 'text', estado: ['prospecto', 'seguimiento', 'activa', 'cerrada', 'descartada'],
       descripcion: 'long', proximo_paso: 'text', proximo_paso_fecha: 'date', ultimo_contacto: 'date', tipo_aporte: APORTES, aporte_comprometido: 'money', aporte_recibido: 'money' },
@@ -102,11 +116,14 @@ export const ENTITIES = {
       return rows.map((r) => ({ ...r, proyectos: m[r.id]?.n || 0, proyectos_nombres: (m[r.id]?.nombres || '').replace(/,/g, ' · '), aporta: m[r.id]?.monto || 0, aporto: m[r.id]?.recibido || 0 }));
     } },
   aportes: { table: 'ro_proyecto_aportes', label: 'el aporte', crear: 'manager', borrar: 'manager', order: "origen = 'alianza', id",
-    fields: { proyecto_id: 'int', origen: ['club', 'alianza'], alianza_id: 'int', tipo_aporte: APORTES, monto: 'money', recibido: 'money', notas: 'long' },
+    fields: { proyecto_id: 'int', origen: ['club', 'alianza'], caja: ['mayor', 'menor'], alianza_id: 'int', tipo_aporte: APORTES, monto: 'money', recibido: 'money', notas: 'long' },
     refs: { proyecto_id: 'ro_proyectos', alianza_id: 'ro_alianzas' },
     beforeCreate: (c, row) => aporteValido(row), beforeUpdate: (c, row, before) => aporteValido(row, before),
     afterCreate: (c, id, row) => sincronizar(c, row.proyecto_id),
     async afterUpdate(c, id, row, before) { await sincronizar(c, before.proyecto_id); if (row.proyecto_id && row.proyecto_id !== before.proyecto_id) await sincronizar(c, row.proyecto_id); },
+    async beforeDelete(c, before) {
+      if ((await one(c.env, 'SELECT COUNT(*) n FROM ro_aporte_soportes WHERE business_id = ? AND aporte_id = ?', c.businessId, before.id)).n) throw new HttpError(409, 'El aporte tiene soportes registrados: bórralos primero');
+    },
     afterDelete: (c, before) => sincronizar(c, before.proyecto_id) },
 };
 
@@ -114,7 +131,7 @@ async function tarjetas(c, id = null) {
   const ps = await all(c.env, `SELECT * FROM ro_proyectos WHERE business_id = ? ${id ? 'AND id = ?' : ''} ORDER BY ${ENTITIES.proyectos.order}`, c.businessId, ...(id ? [id] : []));
   if (!ps.length) return [];
   const agg = async (sql) => Object.fromEntries((await all(c.env, sql, c.businessId)).map((x) => [x.pid, x]));
-  const [benP, benC, tar, ali, mov, lid, com] = await Promise.all([
+  const [benP, benC, tar, ali, mov, lid, com, comB] = await Promise.all([
     agg('SELECT proyecto_id pid, COUNT(*) n FROM ro_beneficiarios WHERE business_id = ? AND proyecto_id IS NOT NULL GROUP BY proyecto_id'),
     agg('SELECT comunidad_id pid, COUNT(*) n FROM ro_beneficiarios WHERE business_id = ? AND comunidad_id IS NOT NULL GROUP BY comunidad_id'),
     agg("SELECT proyecto_id pid, COUNT(*) n, SUM(estado = 'hecha') hechas FROM ro_tareas WHERE business_id = ? AND proyecto_id IS NOT NULL AND estado <> 'cancelada' GROUP BY proyecto_id"),
@@ -123,11 +140,13 @@ async function tarjetas(c, id = null) {
     agg("SELECT proyecto_id pid, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) gastado, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos FROM ro_movimientos WHERE business_id = ? AND caja = 'mayor' AND proyecto_id IS NOT NULL GROUP BY proyecto_id"),
     agg('SELECT id pid, nombre FROM ro_socios WHERE business_id = ?'),
     agg('SELECT id pid, nombre, lugar FROM ro_comunidades WHERE business_id = ?'),
+    agg('SELECT DISTINCT b.proyecto_id pid, GROUP_CONCAT(DISTINCT b.comunidad_id) ids FROM ro_beneficiarios b WHERE b.business_id = ? AND b.proyecto_id IS NOT NULL AND b.comunidad_id IS NOT NULL GROUP BY b.proyecto_id'),
   ]);
   return ps.map((p) => {
     const registrados = p.comunidad_id ? benC[p.comunidad_id]?.n || 0 : benP[p.id]?.n || 0;
     const cm = com[p.comunidad_id];
-    return { ...p, lider: lid[p.socio_lider_id]?.nombre || null, comunidad: cm?.nombre || p.comunidad || null, comunidad_lugar: cm ? cm.lugar : p.comunidad_lugar,
+    const cids = [...new Set([p.comunidad_id, ...String(comB[p.id]?.ids || '').split(',').map(Number)].filter(Boolean))];
+    return { ...p, lider: lid[p.socio_lider_id]?.nombre || null, comunidad: cm?.nombre || p.comunidad || null, comunidades: cids.map((i) => com[i]?.nombre).filter(Boolean), comunidad_lugar: cm ? cm.lugar : p.comunidad_lugar,
       beneficiados_total: Math.max(p.beneficiados || 0, registrados), beneficiarios_registrados: registrados,
       tareas: tar[p.id]?.n || 0, tareas_hechas: tar[p.id]?.hechas || 0, alianzas: ali[p.id]?.n || 0, alianzas_nombres: (ali[p.id]?.nombres || '').replace(/,/g, ' · '),
       gastado_caja_mayor: mov[p.id]?.gastado || 0, ingresos_caja_mayor: mov[p.id]?.ingresos || 0 };
@@ -183,10 +202,14 @@ export function routes(r) {
       all(c.env, "SELECT t.id, t.titulo, t.estado, t.fecha_limite, s.nombre responsable FROM ro_tareas t LEFT JOIN ro_socios s ON s.id = t.socio_id AND s.business_id = t.business_id WHERE t.business_id = ? AND t.proyecto_id = ? AND t.estado <> 'cancelada' ORDER BY t.estado = 'hecha', t.fecha_limite", c.businessId, p.id),
       all(c.env, `SELECT a.*, al.nombre, al.tipo, al.estado, al.contacto, al.telefono, al.correo FROM ro_proyecto_aportes a LEFT JOIN ro_alianzas al ON al.id = a.alianza_id AND al.business_id = a.business_id
         WHERE a.business_id = ? AND a.proyecto_id = ? ORDER BY a.origen = 'alianza', a.id`, c.businessId, p.id),
-      ['owner', 'admin'].includes(c.role) ? all(c.env, "SELECT id, fecha, tipo, concepto, categoria, monto FROM ro_movimientos WHERE business_id = ? AND proyecto_id = ? AND caja = 'mayor' ORDER BY fecha DESC", c.businessId, p.id) : [],
+      // movimientos del proyecto hechos directo en Finanzas (los de los soportes ya vienen en soportes)
+      ['owner', 'admin'].includes(c.role) ? all(c.env, `SELECT m.id, m.caja, m.fecha, m.tipo, m.concepto, m.categoria, m.monto, m.comprobante_key IS NOT NULL OR m.comprobante_url IS NOT NULL comprobante FROM ro_movimientos m
+        WHERE m.business_id = ? AND m.proyecto_id = ? AND NOT EXISTS (SELECT 1 FROM ro_aporte_soportes s WHERE s.business_id = m.business_id AND s.movimiento_id = m.id) ORDER BY m.fecha DESC, m.id DESC`, c.businessId, p.id) : [],
       all(c.env, 'SELECT id, nombre, tipo, mime, url, archivo_key IS NOT NULL archivo, notas, created_at, updated_at FROM ro_proyecto_docs WHERE business_id = ? AND proyecto_id = ? ORDER BY created_at DESC', c.businessId, p.id),
     ]);
-    return json({ proyecto: p, comunidad, beneficiarios, tareas, aportes, alianzas: aportes.filter((a) => a.origen === 'alianza'), movimientos, docs });
+    const soportes = await all(c.env, `SELECT s.id, s.aporte_id, s.fecha, COALESCE(m.monto, s.monto) monto, s.forma, s.notas, s.archivo_key IS NOT NULL archivo, s.movimiento_id, m.caja
+      FROM ro_aporte_soportes s LEFT JOIN ro_movimientos m ON m.id = s.movimiento_id AND m.business_id = s.business_id WHERE s.business_id = ? AND s.proyecto_id = ? ORDER BY s.fecha DESC, s.id DESC`, c.businessId, p.id);
+    return json({ proyecto: p, comunidad, beneficiarios, tareas, aportes, soportes, alianzas: aportes.filter((a) => a.origen === 'alianza'), movimientos, docs });
   });
   r.get('/api/impacto/comunidades/:id/detalle', `tenant:${MOD}`, async (c) => {
     const id = Number(c.params.id) || 0;
@@ -247,6 +270,49 @@ export function routes(r) {
     for (const k of llavesDe(d.bloques)) await borrarArchivo(c.env, k);
     return json({ ok: true });
   });
+  /* Soportes de los financiadores */
+  const aporteOr404 = async (c, id) => { const a = await one(c.env, `SELECT a.*, p.nombre proyecto, al.nombre alianza FROM ro_proyecto_aportes a JOIN ro_proyectos p ON p.id = a.proyecto_id AND p.business_id = a.business_id
+    LEFT JOIN ro_alianzas al ON al.id = a.alianza_id AND al.business_id = a.business_id WHERE a.id = ? AND a.business_id = ?`, Number(id) || 0, c.businessId); if (!a) throw new HttpError(404, 'Aporte no encontrado'); return a; };
+  const soporteOr404 = async (c, id) => { const s = await one(c.env, 'SELECT * FROM ro_aporte_soportes WHERE id = ? AND business_id = ?', Number(id) || 0, c.businessId); if (!s) throw new HttpError(404, 'Soporte no encontrado'); return s; };
+  r.post('/api/impacto/aportes/:id/soportes', `manager:${MOD}`, async (c) => {
+    const a = await aporteOr404(c, c.params.id), b = await readJson(c.req), t = Date.now();
+    const fecha = cast('fecha', 'date', b.fecha), monto = cast('monto', 'money', b.monto), forma = FORMAS[b.forma] ? b.forma : 'otro', notas = cast('notas', 'long', b.notas);
+    if (!fecha || !(monto > 0)) throw new HttpError(400, 'Escribe la fecha y el valor');
+    let movimiento = null;
+    if (a.origen === 'club') {   // el mismo gasto queda en Finanzas, en la caja del aporte y con el nombre del proyecto
+      const caja = a.caja === 'menor' ? 'menor' : 'mayor', cats = CATEGORIAS[caja].egreso;
+      const categoria = cats.includes(b.categoria) ? b.categoria : cats.includes('Otros gastos') ? 'Otros gastos' : cats.at(-1);
+      const x = await c.env.DB.prepare('INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, proyecto_id, observaciones, registrado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(c.businessId, caja, 'egreso', fecha, `Proyecto ${a.proyecto} · ${FORMAS[forma]}${notas ? `: ${notas.slice(0, 120)}` : ''}`.slice(0, 300), categoria, monto, a.proyecto_id, notas, c.session.user_id, t, t).run();
+      movimiento = x.meta.last_row_id;
+    }
+    const x = await c.env.DB.prepare('INSERT INTO ro_aporte_soportes (business_id, aporte_id, proyecto_id, fecha, monto, forma, notas, movimiento_id, registrado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, a.id, a.proyecto_id, fecha, monto, forma, notas, movimiento, c.session.user_id, t, t).run();
+    await recalcularAporte(c.env, c.businessId, a.id);
+    await audit(c, `Registró ${FORMAS[forma].toLowerCase()} de ${monto} (${a.origen === 'club' ? 'club' : a.alianza}) en el proyecto ${a.proyecto}`, { modulo: MOD });
+    return json({ id: x.meta.last_row_id, movimiento_id: movimiento }, 201);
+  });
+  r.post('/api/impacto/soportes/:id/archivo', `manager:${MOD}`, async (c) => {
+    const s = await soporteOr404(c, c.params.id);
+    const f = await guardarArchivo(c, 'proyectos/soportes', { max: 8 * 1024 * 1024 });
+    await c.env.DB.prepare('UPDATE ro_aporte_soportes SET archivo_key = ?, mime = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(f.key, f.mime, Date.now(), s.id, c.businessId).run();
+    if (s.movimiento_id) await c.env.DB.prepare('UPDATE ro_movimientos SET comprobante_key = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(f.key, Date.now(), s.movimiento_id, c.businessId).run();
+    if (s.archivo_key && s.archivo_key !== f.key) await borrarArchivo(c.env, s.archivo_key);
+    return json({ ok: true });
+  });
+  r.get('/api/impacto/soportes/:id/archivo', `tenant:${MOD}`, async (c) => {
+    const s = await soporteOr404(c, c.params.id);
+    return servirArchivo(c, { key: s.archivo_key, mime: s.mime || 'application/pdf', nombre: `soporte-${s.id}` });
+  });
+  r.delete('/api/impacto/soportes/:id', `manager:${MOD}`, async (c) => {
+    const s = await soporteOr404(c, c.params.id);
+    await c.env.DB.prepare('DELETE FROM ro_aporte_soportes WHERE id = ? AND business_id = ?').bind(s.id, c.businessId).run();
+    if (s.movimiento_id) await c.env.DB.prepare('DELETE FROM ro_movimientos WHERE id = ? AND business_id = ?').bind(s.movimiento_id, c.businessId).run();
+    await borrarArchivo(c.env, s.archivo_key);
+    await recalcularAporte(c.env, c.businessId, s.aporte_id);
+    return json({ ok: true });
+  });
+
   // Imágenes y PDF que van dentro de un documento
   const llave = (c) => { const k = String(c.params.key || ''); if (!k.startsWith(`${c.businessId}/proyectos/`) || k.includes('..')) throw new HttpError(404, 'Archivo no encontrado'); return k; };
   r.post('/api/impacto/archivos', `tenant:${MOD}`, async (c) => {

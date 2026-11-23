@@ -55,7 +55,7 @@ export default async function ({ check, newBusiness, newMember }) {
   /* Impacto */
   check('Impacto: externa sin financiador se rechaza', (await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Pinta', financiacion: 'externa' } })).status === 400);
   const p = await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Pinta Colombia', estado: 'en_curso', financiacion: 'doble', financiador: 'Alcaldía', monto_caja_mayor: 500000, monto_externo: 2000000, beneficiados: 145 } });
-  await A.app('/api/impacto/beneficiarios', { method: 'POST', body: { nombre: 'Niña 1', proyecto_id: p.data.id } });
+  check('Impacto: un beneficiario sin comunidad se rechaza', (await A.app('/api/impacto/beneficiarios', { method: 'POST', body: { nombre: 'Niña 1', proyecto_id: p.data.id } })).status === 400);
   await A.app('/api/impacto/alianzas', { method: 'POST', body: { nombre: 'Proquident', proyecto_id: p.data.id, estado: 'seguimiento' } });
   await A.app('/api/tareas/tareas', { method: 'POST', body: { titulo: 'Visita', proyecto_id: p.data.id } });
   await A.app('/api/cajas/movimientos', { method: 'POST', body: { caja: 'mayor', tipo: 'egreso', fecha: hoy, concepto: 'Pintura', monto: 120000, proyecto_id: p.data.id } });
@@ -156,10 +156,28 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Impacto: no se borra una comunidad con beneficiarios', (await A.app(`/api/impacto/comunidades/${com.data.id}`, { method: 'DELETE' })).status === 409);
   check('Impacto: B no ve los documentos ni las comunidades de A', (await B.app(`/api/impacto/docs/${dl.data.id}`)).status === 404 && (await B.app('/api/impacto/comunidades')).data.rows.length === 0);
 
-  const pj3 = await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Sin comunidad aún' } });
-  await A.app('/api/impacto/beneficiarios', { method: 'POST', body: { nombre: 'Viejo', proyecto_id: pj3.data.id } });
-  await A.app(`/api/impacto/proyectos/${pj3.data.id}`, { method: 'PATCH', body: { comunidad_id: com.data.id } });
-  check('Impacto: al elegir comunidad, los beneficiarios del proyecto pasan a ella', (await A.app(`/api/impacto/proyectos/${pj3.data.id}/detalle`)).data.beneficiarios.some((b) => b.nombre === 'Viejo'));
+  /* Financiadores con soportes: el gasto del club va a Finanzas con el nombre del proyecto */
+  const apC = await A.app('/api/impacto/aportes', { method: 'POST', body: { proyecto_id: pj2.data.id, origen: 'club', caja: 'menor', monto: 100000 } });
+  const so1 = await A.app(`/api/impacto/aportes/${apC.data.id}/soportes`, { method: 'POST', body: { fecha: '2026-11-20', monto: 40000, forma: 'factura', notas: 'Dulces' } });
+  const soA = await A.app(`/api/impacto/soportes/${so1.data.id}/archivo?nombre=f.png`, { method: 'POST', body: PNG, headers: raw });
+  const mv = (await A.app('/api/cajas/movimientos?f_caja=menor')).data.rows.find((x) => x.id === so1.data.movimiento_id);
+  check('Impacto: el gasto del club queda en Finanzas (caja elegida, nombre del proyecto y comprobante)', mv && mv.tipo === 'egreso' && mv.monto === 40000 && mv.concepto.includes('Navidad en Jardín de Amor') && mv.proyecto_id === pj2.data.id && mv.comprobante && soA.status === 200, JSON.stringify(mv));
+  const apRow = () => A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`).then((x) => x.data.aportes.find((a) => a.id === apC.data.id));
+  check('Impacto: lo gastado del club sale de sus soportes', (await apRow()).recibido === 40000);
+  await A.app(`/api/cajas/movimientos/${mv.id}`, { method: 'PATCH', body: { monto: 45000 } });
+  check('Impacto: si Finanzas corrige el valor, el proyecto lo refleja', (await apRow()).recibido === 45000);
+  await A.app(`/api/impacto/soportes/${so1.data.id}`, { method: 'DELETE' });
+  check('Impacto: borrar el soporte borra el egreso de Finanzas', !(await A.app('/api/cajas/movimientos?f_caja=menor')).data.rows.some((x) => x.id === mv.id) && (await apRow()).recibido === 0);
+  const apB = await A.app('/api/impacto/aportes', { method: 'POST', body: { proyecto_id: pj2.data.id, origen: 'alianza', alianza_id: alc.data.id, monto: 50000 } });
+  const so2 = await A.app(`/api/impacto/aportes/${apB.data.id}/soportes`, { method: 'POST', body: { fecha: '2026-11-21', monto: 20000, forma: 'cuenta_cobro' } });
+  check('Impacto: el soporte de una alianza suma lo recibido sin tocar las cajas', so2.status === 201 && !so2.data.movimiento_id && (await A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`)).data.aportes.find((a) => a.id === apB.data.id).recibido === 20000);
+  const so3 = await A.app(`/api/impacto/aportes/${apC.data.id}/soportes`, { method: 'POST', body: { fecha: '2026-11-22', monto: 10000, forma: 'recibo' } });
+  await A.app('/api/cajas/movimientos', { method: 'POST', body: { caja: 'mayor', tipo: 'egreso', fecha: '2026-11-22', concepto: 'Transporte directo', categoria: 'Transporte', monto: 5000, proyecto_id: pj2.data.id } });
+  const fz = (await A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`)).data;
+  check('Impacto: Finanzas del proyecto = soportes + movimientos directos, sin duplicar', fz.soportes.some((x) => x.id === so3.data.id) && fz.movimientos.some((x) => x.concepto === 'Transporte directo') && !fz.movimientos.some((x) => x.id === so3.data.movimiento_id), JSON.stringify(fz.movimientos));
+  check('Impacto: B no ve soportes de A', (await B.app(`/api/impacto/soportes/${so2.data.id}/archivo`)).status === 404);
+  const card2 = (await A.app('/api/impacto/tarjetas')).data.rows.find((x) => x.id === pj2.data.id);
+  check('Impacto: la tarjeta trae responsable y comunidades', Array.isArray(card2.comunidades) && card2.comunidades.includes('Fundación Jardín de Amor') && 'lider' in card2);
 
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
