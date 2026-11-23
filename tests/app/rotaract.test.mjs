@@ -129,14 +129,32 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Equipo: la junta entra sola al equipo con acceso de Junta', vu?.acceso?.rol === 'admin' && eq.users.some((u) => u.id === vu.user_id && u.role === 'admin'), JSON.stringify(vu?.acceso));
   check('Equipo: avisa quién de la junta no tiene correo', eq.junta?.sin_correo?.includes('Camila Presidenta') === false && Array.isArray(eq.junta?.sin_correo), JSON.stringify(eq.junta));
 
-  /* Impacto: página del proyecto con comunidad, documentación y alianzas financieras */
-  const pj2 = await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Navidad en Jardín de Amor', financiacion: 'doble', financiador: 'Alcaldía', monto_caja_mayor: 200000, monto_externo: 300000, comunidad: 'Fundación Jardín de Amor', comunidad_lugar: 'Medellín' } });
-  await A.app('/api/impacto/alianzas', { method: 'POST', body: { nombre: 'Alcaldía', proyecto_id: pj2.data.id, tipo_aporte: 'financiera', aporte_comprometido: 300000, aporte_recibido: 100000 } });
+  /* Impacto: comunidades con beneficiarios, aportes del club o de alianzas, documentos con tablas */
+  const com = await A.app('/api/impacto/comunidades', { method: 'POST', body: { nombre: 'Fundación Jardín de Amor', lugar: 'Medellín' } });
+  const pj2 = await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Navidad en Jardín de Amor', comunidad_id: com.data.id, presupuesto: 500000 } });
+  await A.app('/api/impacto/beneficiarios', { method: 'POST', body: { nombre: 'Niño Jardín', comunidad_id: com.data.id } });
+  await A.app('/api/impacto/beneficiarios', { method: 'POST', body: { nombre: 'Niña Jardín', proyecto_id: pj2.data.id } });
+  const alc = await A.app('/api/impacto/alianzas', { method: 'POST', body: { nombre: 'Alcaldía', tipo_aporte: 'financiera' } });
+  check('Impacto: aporte de alianza sin elegir la alianza se rechaza', (await A.app('/api/impacto/aportes', { method: 'POST', body: { proyecto_id: pj2.data.id, origen: 'alianza', monto: 1 } })).status === 400);
+  await A.app('/api/impacto/aportes', { method: 'POST', body: { proyecto_id: pj2.data.id, origen: 'club', monto: 200000 } });
+  const apA = await A.app('/api/impacto/aportes', { method: 'POST', body: { proyecto_id: pj2.data.id, origen: 'alianza', alianza_id: alc.data.id, monto: 300000, recibido: 100000 } });
   const dl = await A.app(`/api/impacto/proyectos/${pj2.data.id}/docs`, { method: 'POST', body: { nombre: 'Propuesta', url: 'https://ejemplo.com/propuesta.pdf' } });
   const df = await A.app(`/api/impacto/proyectos/${pj2.data.id}/docs?nombre=acta.png`, { method: 'POST', body: PNG, headers: raw });
+  const arc = await A.app('/api/impacto/archivos?nombre=foto.png', { method: 'POST', body: PNG, headers: raw });
+  const dd = await A.app(`/api/impacto/proyectos/${pj2.data.id}/docs`, { method: 'POST', body: { nombre: 'Presupuesto', bloques: [{ tipo: 'titulo', texto: 'Gastos' }, { tipo: 'tabla', filas: [['Ítem', 'Valor'], ['Regalos', '300000', 'x']] }, { tipo: 'archivo', key: arc.data?.key, nombre: 'foto.png', tipoArchivo: 'image/png' }] } });
+  const leido = (await A.app(`/api/impacto/docs/${dd.data?.id}`)).data;
+  check('Impacto: documento con tabla (filas parejas) e imagen', dd.status === 201 && leido.bloques?.[1]?.filas?.[0]?.length === 3 && leido.bloques[2].key === arc.data.key, JSON.stringify(leido));
+  check('Impacto: B no puede usar archivos de A en sus documentos', (await B.app(`/api/impacto/archivos/${encodeURIComponent(arc.data.key)}`)).status === 404);
+  check('Impacto: editar el documento', (await A.app(`/api/impacto/docs/${dd.data.id}`, { method: 'PATCH', body: { nombre: 'Presupuesto final', bloques: [{ tipo: 'texto', texto: 'ok' }] } })).status === 200);
   const det = (await A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`)).data;
-  check('Impacto: el proyecto trae comunidad, documentos y alianza financiera con su aporte', det.proyecto.comunidad === 'Fundación Jardín de Amor' && det.docs.length === 2 && det.alianzas[0]?.tipo_aporte === 'financiera' && det.alianzas[0].aporte_recibido === 100000 && dl.status === 201 && df.status === 201, JSON.stringify(det.docs));
-  check('Impacto: B no ve los documentos de A', (await B.app(`/api/impacto/docs/${dl.data.id}`)).status === 404);
+  check('Impacto: el proyecto trae la comunidad con TODOS sus beneficiarios, documentos y aportes', det.comunidad?.nombre === 'Fundación Jardín de Amor' && det.beneficiarios.length === 2 && det.docs.length === 3 && det.aportes.length === 2 && dl.status === 201 && df.status === 201, JSON.stringify({ b: det.beneficiarios.length, d: det.docs.length, a: det.aportes.length }));
+  check('Impacto: los aportes recalculan la financiación (doble)', det.proyecto.financiacion === 'doble' && det.proyecto.monto_caja_mayor === 200000 && det.proyecto.monto_externo === 300000 && det.proyecto.financiador === 'Alcaldía' && det.proyecto.alianzas === 1, JSON.stringify(det.proyecto));
+  await A.app(`/api/impacto/aportes/${apA.data.id}`, { method: 'DELETE' });
+  check('Impacto: sin alianzas vuelve a Caja mayor', (await A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`)).data.proyecto.financiacion === 'caja_mayor');
+  const cd = (await A.app(`/api/impacto/comunidades/${com.data.id}/detalle`)).data;
+  check('Impacto: la comunidad muestra sus proyectos y beneficiarios', cd.comunidad.beneficiarios === 2 && cd.proyectos.length === 1, JSON.stringify(cd.comunidad));
+  check('Impacto: no se borra una comunidad con beneficiarios', (await A.app(`/api/impacto/comunidades/${com.data.id}`, { method: 'DELETE' })).status === 409);
+  check('Impacto: B no ve los documentos ni las comunidades de A', (await B.app(`/api/impacto/docs/${dl.data.id}`)).status === 404 && (await B.app('/api/impacto/comunidades')).data.rows.length === 0);
 
   /* Kit de marca */
   const PNGK = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);

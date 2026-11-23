@@ -28,10 +28,16 @@ export default [
   // Impacto
   ...CRUD({ modulo: 'impacto', base: 'impacto', entidad: 'proyectos', singular: 'proyecto', plural: 'proyectos', escribe: 'admin', required: ['nombre'],
     props: { nombre: txt(), descripcion: txt(), objetivo: txt(), estado: en(['propuesta', 'planeacion', 'en_curso', 'finalizado', 'cancelado']), fecha_inicio: fecha(), fecha_fin: fecha(), socio_lider_id: id(),
-      beneficiados: id('Personas beneficiadas'), horas_servicio: id(), financiacion: en(['caja_mayor', 'externa', 'doble'], 'Origen de los recursos'), presupuesto: num(), monto_caja_mayor: num(), monto_externo: num(), financiador: txt() } }),
+      beneficiados: id('Personas beneficiadas'), horas_servicio: id(), presupuesto: num(), comunidad_id: id('Comunidad que impacta') } }),
   H({ name: 'impacto.tarjetas', modulo: 'impacto', tipo: 'lectura', description: 'Proyectos con beneficiados, avance de tareas, alianzas, origen de recursos y lo gastado de la caja mayor.', ruta: ['GET', '/api/impacto/tarjetas'] }),
   ...CRUD({ modulo: 'impacto', base: 'impacto', entidad: 'alianzas', singular: 'alianza', plural: 'alianzas', required: ['nombre'], filtros: { estado: 'prospecto, seguimiento, activa, cerrada o descartada' },
     props: { nombre: txt(), tipo: txt(), contacto: txt(), telefono: txt(), correo: txt(), municipio: txt(), estado: en(['prospecto', 'seguimiento', 'activa', 'cerrada', 'descartada']), proyecto_id: id(), descripcion: txt(), proximo_paso: txt(), proximo_paso_fecha: fecha() } }),
+  ...CRUD({ modulo: 'impacto', base: 'impacto', entidad: 'comunidades', singular: 'comunidad', plural: 'comunidades', required: ['nombre'],
+    props: { nombre: txt('p. ej. Fundación Jardín de Amor'), tipo: txt(), lugar: txt(), contacto: txt(), telefono: txt(), descripcion: txt() } }),
+  ...CRUD({ modulo: 'impacto', base: 'impacto', entidad: 'beneficiarios', singular: 'beneficiario', plural: 'beneficiarios', required: ['nombre'], filtros: { comunidad_id: 'Id de la comunidad', proyecto_id: 'Id del proyecto' },
+    props: { nombre: txt(), comunidad_id: id('Comunidad a la que pertenece'), proyecto_id: id(), tipo: txt(), edad: id('Edad'), autorizacion_datos: { type: 'boolean' }, autorizacion_imagen: { type: 'boolean' } } }),
+  ...CRUD({ modulo: 'impacto', base: 'impacto', entidad: 'aportes', singular: 'aporte', plural: 'aportes', escribe: 'admin', required: ['proyecto_id', 'origen'], filtros: { proyecto_id: 'Id del proyecto', alianza_id: 'Id de la alianza' },
+    props: { proyecto_id: id(), origen: en(['club', 'alianza'], 'club = Caja mayor; alianza = pide alianza_id'), alianza_id: id(), tipo_aporte: en(['financiera', 'social', 'especie', 'academica', 'difusion', 'otra']), monto: num(), recibido: num(), notas: txt() } }),
   // Finanzas (cajas)
   ...CRUD({ modulo: 'cajas', base: 'cajas', entidad: 'movimientos', singular: 'movimiento', plural: 'movimientos', escribe: 'admin', required: ['caja', 'tipo', 'fecha', 'concepto', 'monto'], filtros: { caja: 'menor (Club) o mayor (Obras)' },
     props: { caja: en(['menor', 'mayor'], 'menor = Caja menor (Club), mayor = Caja mayor (Obras)'), tipo: en(['ingreso', 'egreso']), fecha: fecha(), concepto: txt(), categoria: txt(), monto: num(), proyecto_id: id(), observaciones: txt() } }),

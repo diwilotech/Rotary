@@ -84,6 +84,8 @@ export async function centralApi(c) {
 export const centralModuleOf = centralOf;
 
 // Página de un módulo central: el shell de esta app (public/staff/index.html) con el <main> y el script del módulo.
+// Scripts propios que la app carga antes de la pantalla de un módulo central
+const EXTRA_CENTRAL = { marca: ['/js/pages/club.js', '/js/pages/kit.js'] };
 export async function centralPage(env, req, id) {
   const [shellRes, main] = await Promise.all([env.ASSETS.fetch(new Request(new URL('/staff/', req.url), { headers: req.headers })), need(env).asset(`/m/${id}.html`)]);
   if (main.status !== 200) throw new HttpError(404, 'Página no encontrada');
@@ -93,7 +95,10 @@ export async function centralPage(env, req, id) {
     .replace(/<main class="dw-main"[\s\S]*?<\/main>/, `<!-- Módulo «${id}» de Diwilo Modulos (Worker central) -->\n${main.body.trim()}`)
     .replace(/<title>[^<·]*·/, `<title>${titulo} ·`)
     .replace(/<script src="\/js\/pages\/inicio\.js"><\/script>\s*<script src="\/m\/dashboard\.js"><\/script>/, '')
-    .replace(/<script src="\/js\/pages\/[^"]+\.js"><\/script>/, `<script src="/m/${id}.js"></script>`);
+    .replace(/<script src="\/js\/pages\/[^"]+\.js"><\/script>/g, '')
+    // el script del módulo central siempre (antes, si la página base no traía uno propio, se quedaba en «Cargando…»),
+    // precedido por lo que la app le suma (p. ej. las pestañas del kit de marca del club en Marca)
+    .replace('</body>', `${(EXTRA_CENTRAL[id] || []).map((x) => `<script src="${x}"></script>`).join('')}<script src="/m/${id}.js"></script>\n</body>`);
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 export async function centralAsset(env, path) {

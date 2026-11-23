@@ -112,7 +112,7 @@
     {
       "id": "impacto",
       "nombre": "Impacto",
-      "descripcion": "Proyectos, beneficiados, alianzas y financiación",
+      "descripcion": "Proyectos, alianzas, comunidades con sus beneficiarios y financiación",
       "icono": "bi-globe-americas",
       "menu": {
         "ruta": "/staff/impacto.html",
@@ -133,10 +133,13 @@
       "tablas": [
         "ro_proyectos",
         "ro_beneficiarios",
-        "ro_alianzas"
+        "ro_alianzas",
+        "ro_comunidades",
+        "ro_proyecto_aportes",
+        "ro_proyecto_docs"
       ],
       "mcp": {
-        "guia": "Impacto: proyectos de servicio con beneficiados, tareas, alianzas y origen de los recursos (caja_mayor, externa o doble). impacto.tarjetas para el panorama; crear_proyecto y editar_proyecto (junta); alianzas con su CRUD.",
+        "guia": "Impacto: proyectos de servicio, alianzas y comunidades (cada comunidad con sus beneficiarios). La financiación de un proyecto son sus aportes (crear_aporte: origen club o alianza con alianza_id, monto = cuánto ayuda, recibido); financiacion, monto_caja_mayor, monto_externo y financiador se recalculan solos. impacto.tarjetas para el panorama; comunidad_id une proyecto, comunidad y beneficiarios.",
         "ejemplos": [
           "Pídele: «¿Cuántos beneficiados llevamos este año?»",
           "Pídele: «¿Qué proyectos tienen doble financiación?»"
@@ -210,26 +213,6 @@
         ],
         "flujos": []
       }
-    },
-    {
-      "id": "kit",
-      "nombre": "Kit de marca",
-      "descripcion": "Logotipo del club (horizontal o vertical, a todo color o a una tinta) y piezas para redes e impresos",
-      "icono": "bi-palette2",
-      "menu": {
-        "ruta": "/staff/kit.html",
-        "orden": 70
-      },
-      "permisos": {
-        "ver": "staff",
-        "configurar": "admin"
-      },
-      "widgets": [],
-      "depende_de": [],
-      "tipo": "propio",
-      "tablas": [
-        "ro_club_config"
-      ]
     }
   ]
 }

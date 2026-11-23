@@ -1,19 +1,17 @@
-// Kit de marca del club. Dos partes:
-//  · Logotipo: logotipo oficial del programa (PNG del Brand Center, lo sube la junta) + nombre del club debajo, en versión
+// Kit de marca del club, como pestañas del módulo central Marca (window.DwMarcaTabs, se carga antes de /m/marca.js):
+//  · «Logo del club»: logotipo oficial del programa (PNG del Brand Center, lo sube la junta) + nombre del club debajo, en versión
 //    horizontal (alineado a la izquierda) o centrada, a todo color o a una tinta. Descarga en PNG (transparente), JPG y SVG.
-//  · Piezas: publicación, historia, portada y volante con foto, título, texto, fecha y el logotipo del club en blanco.
-// Todo se dibuja en el navegador con <canvas>; el servidor solo guarda los datos del kit y el PNG oficial.
-DW.ready.then(async (me) => {
-  if (!me.pageAllowed) return;
+//  · «Piezas»: publicación, historia, portada y volante con foto, título, texto, fecha y el logotipo del club en blanco.
+// Todo se dibuja en el navegador con <canvas>; el servidor solo guarda los datos del kit y el PNG oficial (/api/kit).
+(function () {
+async function montar(view, me, M, tab) {
   const { api, esc, toast } = window.App;
   const RO = window.RO;
-  const view = document.querySelector('[data-view]'), acciones = document.querySelector('[data-acciones]');
-  const M = me.canManage && !me.business.readOnly;
   const COL = { azul: ['Azul Rotary', '#17458F'], arandano: ['Arándano', '#D41367'], celeste: ['Celeste', '#0067C8'], oro: ['Oro', '#F7A81B'], carbon: ['Carbón', '#54565A'], negro: ['Negro', '#000000'], blanco: ['Blanco', '#FFFFFF'] };
   const FUENTE = '"Open Sans", Arial, sans-serif';
   document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap">');
 
-  let d = await api('/api/kit'), emblema = null, foto = null, tab = location.hash === '#piezas' ? 'piezas' : 'logo';
+  let d = await api('/api/kit'), emblema = null, foto = null;
   const base = d.club.replace(/^\s*rotaract\s*/i, '').trim();
   const K = { linea1: base || 'Club', linea2: '', version: 'horizontal', color: 'todo', nombreColor: 'arandano', tam: 22, sangria: 30,
     pieza: 'post', titulo: 'Jornada de servicio', texto: 'Únete a nuestro club y sé parte del cambio en tu comunidad.', fecha: 'Sábado 14 de diciembre · 9:00 a. m.', lugar: 'Medellín', fondo: 'azul', estilo: 'banda', ...d.kit };
@@ -119,8 +117,6 @@ ${K.linea2 ? `<text x="${tx}" y="${pad + h + gap + fs * 1.15 + fs2 * 0.92}" font
   const colores = (k, lista) => `<div class="d-flex flex-wrap gap-1" data-colores="${k}">${lista.map((c) => `<button type="button" class="ro-sw ${K[k] === c ? 'on' : ''}" data-c="${c}" title="${COL[c][0]}" style="--s:${COL[c][1]}"></button>`).join('')}</div>`;
 
   function pintar() {
-    acciones.innerHTML = M ? '<button class="btn btn-outline-primary" data-guardar><i class="bi bi-save me-1"></i>Guardar el kit</button>' : '';
-    acciones.querySelector('[data-guardar]')?.addEventListener('click', async () => { try { const { pieza: _p, ...rest } = K; await api('/api/kit', { method: 'PUT', body: { ...rest, pieza: _p } }); toast('Kit guardado para todo el club'); } catch (x) { toast(x.message, false); } });
     const aviso = emblema ? '' : `<div class="alert alert-info small"><b>Falta el logotipo oficial.</b> Descárgalo del <a href="https://brandcenter.rotary.org/es-xl/" target="_blank" rel="noopener">Brand Center de Rotary</a> (Rotaract, en PNG con fondo transparente) ${M ? 'y súbelo con «Subir logotipo oficial».' : 'y pídele a la junta que lo suba.'} Mientras tanto ves un recuadro en su lugar.</div>`;
     view.innerHTML = `<style>.ro-sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--bs-border-color);background:var(--s)}.ro-sw.on{outline:3px solid var(--dw-p);outline-offset:2px}
         .ro-prev{border-radius:14px;padding:16px;display:grid;place-items:center;min-height:260px;background:repeating-conic-gradient(#e9ecef 0 25%,#fff 0 50%) 0 0/20px 20px}.ro-prev.osc{background:#1d2433}
@@ -139,6 +135,7 @@ ${K.linea2 ? `<text x="${tx}" y="${pad + h + gap + fs * 1.15 + fs2 * 0.92}" font
           ${campo('Color de fondo', colores('fondo', ['azul', 'arandano', 'celeste', 'oro', 'carbon']))}
           ${campo('Foto', `<div class="d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" data-foto><i class="bi bi-image me-1"></i>${foto ? 'Cambiar foto' : 'Elegir foto'}</button>${foto ? '<button class="btn btn-sm btn-light" data-sinfoto>Quitar</button>' : ''}</div><div class="small text-body-secondary mt-1">La foto no se sube: se usa solo en tu equipo.</div>`)}
           ${campo('Diseño', sel('estilo', [['banda', 'Foto arriba y color abajo'], ['completa', 'Foto completa con degradado'], ['color', 'Solo color']]))}`}
+          ${M ? '<button class="btn btn-sm btn-outline-primary w-100 mt-3" data-guardar><i class="bi bi-save me-1"></i>Guardar para todo el club</button>' : ''}
         </div></div>
         <div class="col-lg-8"><div class="dw-card"><div class="ro-prev ${tab === 'logo' ? 'logo' : ''} ${tab === 'logo' && K.color === 'blanco' ? 'osc' : ''}" data-prev></div>
           <div class="d-flex gap-2 flex-wrap mt-3">${tab === 'logo' ? '<button class="btn btn-primary" data-png><i class="bi bi-download me-1"></i>PNG transparente</button><button class="btn btn-outline-primary" data-jpg>JPG</button><button class="btn btn-outline-primary" data-svg>SVG</button>'
@@ -151,11 +148,11 @@ ${K.linea2 ? `<text x="${tx}" y="${pad + h + gap + fs * 1.15 + fs2 * 0.92}" font
     box.innerHTML = ''; box.appendChild(tab === 'logo' ? logo() : pieza());
   }
 
-  RO.pills([['logo', 'Logotipo del club', '#logo', 'bi-award'], ['piezas', 'Piezas para redes e impresos', '#piezas', 'bi-image']], tab, (k) => { tab = k; pintar(); });
   view.addEventListener('input', (e) => { const k = e.target.dataset.k; if (!k) return; K[k] = e.target.type === 'range' ? Number(e.target.value) : e.target.value;
     if (e.target.type === 'range') e.target.closest('label').querySelector('.text-body-secondary').textContent = `${K[k]}%`; dibujar(); });
   view.addEventListener('change', (e) => { if (['version', 'color', 'pieza'].includes(e.target.dataset.k)) pintar(); });
   view.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-guardar]')) { try { await api('/api/kit', { method: 'PUT', body: K }); toast('Kit guardado para todo el club'); } catch (x) { toast(x.message, false); } return; }
     const sw = e.target.closest('[data-c]'); if (sw) { K[sw.parentElement.dataset.colores] = sw.dataset.c; sw.parentElement.querySelectorAll('.ro-sw').forEach((b) => b.classList.toggle('on', b === sw)); return dibujar(); }
     if (e.target.closest('[data-png]')) return png(logo({ h: 720 }), nombreArchivo('logotipo.png'));
     if (e.target.closest('[data-jpg]')) return jpg(logo({ h: 720 }), nombreArchivo('logotipo.jpg'));
@@ -169,4 +166,8 @@ ${K.linea2 ? `<text x="${tx}" y="${pad + h + gap + fs * 1.15 + fs2 * 0.92}" font
     }
   });
   pintar();
-});
+}
+(window.DwMarcaTabs = window.DwMarcaTabs || []).push(
+  { id: 'logoclub', label: 'Logo del club', icon: 'bi-award', mount: (h, { me, can }) => montar(h, me, can, 'logo') },
+  { id: 'piezas', label: 'Piezas', icon: 'bi-image', mount: (h, { me, can }) => montar(h, me, can, 'piezas') });
+})();

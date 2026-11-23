@@ -7,7 +7,7 @@
     [['socios', 'Socios', '/staff/socios.html', 'bi-people', 'socios'], ['activacion', 'Activación', '/staff/socios.html#activacion', 'bi-patch-check', 'socios'],
       ['reuniones', 'Reuniones', '/staff/reuniones.html', 'bi-calendar-event', 'reuniones'], ['tareas', 'Tareas', '/staff/tareas.html', 'bi-kanban', 'tareas']],
     [['proyectos', 'Proyectos', '/staff/impacto.html', 'bi-globe-americas', 'impacto'], ['alianzas', 'Alianzas', '/staff/impacto.html#alianzas', 'bi-people', 'impacto'],
-      ['beneficiarios', 'Beneficiarios', '/staff/impacto.html#beneficiarios', 'bi-heart', 'impacto']],
+      ['comunidades', 'Comunidades', '/staff/impacto.html#comunidades', 'bi-house-heart', 'impacto']],
     [['menor', 'Caja menor', '/staff/cajas.html#menor', 'bi-cup-hot', 'cajas'], ['mayor', 'Caja mayor', '/staff/cajas.html#mayor', 'bi-bricks', 'cajas'],
       ['cuotas', 'Cuotas', '/staff/cuotas.html', 'bi-wallet2', 'cuotas']],
   ];

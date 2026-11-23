@@ -7,7 +7,7 @@ import { one } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
 
-const MOD = 'kit';
+const MOD = 'marca';   // vive como pestañas del módulo central Marca
 const cfg = (c) => one(c.env, 'SELECT kit, emblema_key FROM ro_club_config WHERE business_id = ?', c.businessId);
 const upsert = (c, col, v) => c.env.DB.prepare(`INSERT INTO ro_club_config (business_id, ${col}, updated_at) VALUES (?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET ${col} = excluded.${col}, updated_at = excluded.updated_at`).bind(c.businessId, v, Date.now()).run();
 
