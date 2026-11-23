@@ -129,6 +129,15 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Equipo: la junta entra sola al equipo con acceso de Junta', vu?.acceso?.rol === 'admin' && eq.users.some((u) => u.id === vu.user_id && u.role === 'admin'), JSON.stringify(vu?.acceso));
   check('Equipo: avisa quién de la junta no tiene correo', eq.junta?.sin_correo?.includes('Camila Presidenta') === false && Array.isArray(eq.junta?.sin_correo), JSON.stringify(eq.junta));
 
+  /* Impacto: página del proyecto con comunidad, documentación y alianzas financieras */
+  const pj2 = await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Navidad en Jardín de Amor', financiacion: 'doble', financiador: 'Alcaldía', monto_caja_mayor: 200000, monto_externo: 300000, comunidad: 'Fundación Jardín de Amor', comunidad_lugar: 'Medellín' } });
+  await A.app('/api/impacto/alianzas', { method: 'POST', body: { nombre: 'Alcaldía', proyecto_id: pj2.data.id, tipo_aporte: 'financiera', aporte_comprometido: 300000, aporte_recibido: 100000 } });
+  const dl = await A.app(`/api/impacto/proyectos/${pj2.data.id}/docs`, { method: 'POST', body: { nombre: 'Propuesta', url: 'https://ejemplo.com/propuesta.pdf' } });
+  const df = await A.app(`/api/impacto/proyectos/${pj2.data.id}/docs?nombre=acta.png`, { method: 'POST', body: PNG, headers: raw });
+  const det = (await A.app(`/api/impacto/proyectos/${pj2.data.id}/detalle`)).data;
+  check('Impacto: el proyecto trae comunidad, documentos y alianza financiera con su aporte', det.proyecto.comunidad === 'Fundación Jardín de Amor' && det.docs.length === 2 && det.alianzas[0]?.tipo_aporte === 'financiera' && det.alianzas[0].aporte_recibido === 100000 && dl.status === 201 && df.status === 201, JSON.stringify(det.docs));
+  check('Impacto: B no ve los documentos de A', (await B.app(`/api/impacto/docs/${dl.data.id}`)).status === 404);
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);
