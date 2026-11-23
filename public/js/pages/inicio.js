@@ -1,6 +1,13 @@
 // Inicio = el módulo Dashboard de Diwilo Modulos. Aquí se registra lo PROPIO del club: la próxima reunión, mis pendientes
 // y una tarjeta por módulo activo con su número clave (lleva a su pantalla).
 window.DwSinFigura = true;    // sin «Así funciona tu negocio»
+// Club nuevo sin logo: la primera vez que entra la presidencia o la junta se crean solos los 6 logos del club (Marca)
+DW.ready.then(async (me) => {
+  if (!me.canManage || me.business.readOnly || me.settings.logo || me.distrito?.es_distrito || !me.modules.some((m) => m.id === 'marca')) return;
+  const k = `ro_logos_${me.business.id}`; try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (_) { /* sin almacenamiento: igual se intenta una vez */ }
+  if (!window.RoLogos) await new Promise((ok) => { const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = ok; sc.onerror = ok; document.head.appendChild(sc); });
+  try { await window.RoLogos?.crear(me, { silencioso: true }); window.App.toast('Creamos los logos de tu club. Míralos en Marca → Identidad.'); setTimeout(() => (window.top || window).location.reload(), 1800); } catch (_) { /* se puede hacer luego desde Marca */ }
+});
 (window.DwDashboard = window.DwDashboard || []).push({
   id: 'club',
   titulo: 'Tu club',

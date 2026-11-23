@@ -6,7 +6,7 @@ import { userBusinesses, isExpired } from '../lib/auth.js';
 import { APP, visibleModules } from '../lib/modules.js';
 import { distritoDe } from '../lib/rotaract.js';
 
-export const TEMAS = ['azul', 'indigo', 'violeta', 'rosa', 'rojo', 'naranja', 'verde', 'turquesa', 'grafito'];
+export const TEMAS = ['azul', 'indigo', 'violeta', 'rosa', 'rojo', 'naranja', 'verde', 'turquesa', 'grafito', 'rotaract', 'rotary'];
 
 export async function businessSettings(env, businessId) {
   const s = await db(env).first('SELECT tema, modo, logo_key, updated_at FROM business_settings WHERE business_id = ?', businessId);

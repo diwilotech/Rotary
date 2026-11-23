@@ -11,7 +11,6 @@ DW.ready.then(async (me) => {
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
   let cartera = [], pagos = [], filtro = '', anio = null, fEst = '', cfg = { aspirantes: false, honorarios: false };
   const ICO = { debe: 'bi-exclamation-circle-fill', por_vencer: 'bi-clock-fill', al_dia: 'bi-check-circle-fill', adelantado: 'bi-star-fill' };
-  RO.nav('cuotas');
 
   if (W) {
     acciones.innerHTML = '<button class="btn btn-outline-secondary" data-quien><i class="bi bi-people me-1"></i>¿Quién paga?</button><button class="btn btn-outline-secondary" data-per><i class="bi bi-calendar3 me-1"></i>Periodos</button><button class="btn btn-primary" data-pago><i class="bi bi-plus-lg me-1"></i>Registrar pago</button>';

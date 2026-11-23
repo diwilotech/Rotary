@@ -55,6 +55,9 @@ export const ENTITIES = {
       const n = await one(c.env, 'SELECT (SELECT COUNT(*) FROM ro_movimientos WHERE business_id = ?1 AND proyecto_id = ?2) + (SELECT COUNT(*) FROM ro_tareas WHERE business_id = ?1 AND proyecto_id = ?2) + (SELECT COUNT(*) FROM ro_beneficiarios WHERE business_id = ?1 AND proyecto_id = ?2) n', c.businessId, before.id);
       if (n.n) throw new HttpError(409, 'El proyecto tiene movimientos, tareas o beneficiarios: márcalo como cancelado');
     },
+    async afterUpdate(c, id, row) {   // al elegir la comunidad, los beneficiarios del proyecto que no tenían comunidad pasan a ella
+      if (row.comunidad_id) await c.env.DB.prepare('UPDATE ro_beneficiarios SET comunidad_id = ? WHERE business_id = ? AND proyecto_id = ? AND comunidad_id IS NULL').bind(row.comunidad_id, c.businessId, id).run();
+    },
     async afterDelete(c, before) {
       await c.env.DB.prepare('DELETE FROM ro_proyecto_aportes WHERE business_id = ? AND proyecto_id = ?').bind(c.businessId, before.id).run();
     } },

@@ -11,6 +11,8 @@
 [data-dw-tema="verde"]    { --dw-p: #15803d; --dw-p-rgb: 21, 128, 61;  --dw-p-osc: #166534; }
 [data-dw-tema="turquesa"] { --dw-p: #0f766e; --dw-p-rgb: 15, 118, 110; --dw-p-osc: #115e59; }
 [data-dw-tema="grafito"]  { --dw-p: #374151; --dw-p-rgb: 55, 65, 81;   --dw-p-osc: #1f2937; }
+[data-dw-tema="rotaract"] { --dw-p: #d41367; --dw-p-rgb: 212, 19, 103; --dw-p-osc: #a50f50; }
+[data-dw-tema="rotary"]   { --dw-p: #17458f; --dw-p-rgb: 23, 69, 143;  --dw-p-osc: #0f2f63; }
 
 :root, [data-dw-tema] {
   --bs-primary: var(--dw-p);
