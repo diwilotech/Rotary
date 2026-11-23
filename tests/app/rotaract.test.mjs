@@ -102,26 +102,33 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Distrito: ve los clubes de su código y no los de otro distrito', tab.clubes.some((k) => k.id === A.id) && !tab.clubes.some((k) => k.id === B.id || k.id === D.id) && tab.meses.length === 12, JSON.stringify(tab.clubes?.map((k) => k.nombre)));
   check('Distrito: detalle del club en solo lectura; el de otro distrito no (404)', (await D.app(`/api/distrito/clubes/${A.id}`)).data.socios?.length >= 3 && (await D.app(`/api/distrito/clubes/${B.id}`)).status === 404);
   const vence = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
-  const qd = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota distrital prueba', valor_socio: 10000, vence } });
+  const vs = 10000 + Math.floor(Math.random() * 900) + 1;   // valor único: la base local guarda cuotas de corridas anteriores
+  const qd = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota distrital prueba', valor_socio: vs, vence } });
   check('Distrito: un club no puede crear cuotas distritales', (await A.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'x', valor_socio: 1, vence } })).status === 403);
-  let pj = (await A.app('/api/cajas/proyectado')).data, ob = pj.obligaciones?.find((o) => o.id === qd.data.id);
-  check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * 10000 && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.oblig_proy >= ob.total) && pj.por_pagar >= ob.total && pj.falta === Math.max(0, pj.por_pagar - pj.saldo), JSON.stringify(ob));
-  check('Finanzas: un club de otro distrito no la ve ni la paga', !(await B.app('/api/cajas/proyectado')).data.obligaciones.length && (await B.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: 1000 } })).status === 404);
-  const pg = await A.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: ob.total } });
+  let pj = (await A.app('/api/cajas/proyectado')).data, ob = pj.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito')?.cuotas_distritales.find((o) => o.id === qd.data.id);
+  check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * vs && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.oblig_proy >= ob.total) && pj.por_pagar >= ob.total && pj.falta === Math.max(0, pj.por_pagar - pj.saldo), JSON.stringify(ob));
+  check('Finanzas: un club de otro distrito no la ve ni la paga', !(await B.app('/api/cajas/proyectado')).data.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito').valor_distrito && (await B.app(`/api/cajas/distrital/${qd.data.id}/pagar`, { method: 'POST', body: { monto: 1000 } })).status === 404);
+  const pg = await A.app('/api/cajas/rubros/pagar', { method: 'POST', body: { categoria: 'Obligaciones RI y Distrito', monto: ob.total } });
   const cq = (await D.app('/api/distrito/cuotas')).data.rows.find((q) => q.id === qd.data.id)?.clubes.find((x) => x.club_id === A.id);
-  check('Finanzas: el club la paga (egreso de la caja menor) y el distrito lo ve', pg.status === 201 && cq?.estado === 'pagada' && (await A.app('/api/cajas/proyectado')).data.obligaciones.find((o) => o.id === qd.data.id)?.estado === 'pagada', JSON.stringify(cq));
+  check('Finanzas: el club la paga (egreso de la caja menor) y el distrito lo ve', pg.status === 201 && cq?.estado === 'pagada' && (await A.app('/api/cajas/proyectado')).data.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito').cuotas_distritales.find((o) => o.id === qd.data.id)?.estado === 'pagada', JSON.stringify(cq));
   check('Distrito: no se borra una cuota que ya pagaron (409)', (await D.app(`/api/distrito/cuotas/${qd.data.id}`, { method: 'DELETE' })).status === 409);
   const rz = (await A.app('/api/cajas/resumen')).data;
   check('Finanzas: los 12 meses del año rotario por caja', rz.cajas[0].meses.length === 12 && rz.cajas[0].meses[0].mes.endsWith('-07'));
 
-  /* Obligaciones propias del club */
-  const ob1 = await A.app('/api/cajas/obligaciones', { method: 'POST', body: { categoria: 'Pines', nombre: 'Pines de socios', monto: 50000, vence } });
-  let tod = (await A.app('/api/cajas/proyectado')).data;
-  check('Finanzas: obligación propia (pines) suma al total de obligaciones', ob1.status === 201 && tod.obligaciones.some((o) => o.clave === `c:${ob1.data.id}` && o.estado === 'pendiente') && tod.total_obligaciones >= 50000, JSON.stringify(ob1.data));
-  const pg1 = await A.app(`/api/cajas/obligaciones/${ob1.data.id}/pagar`, { method: 'POST', body: { monto: 50000 } });
+  /* Obligaciones = rubros de «¿En qué se gasta?» (valor editable, pagar → movimiento) */
+  const anioR = pj.anio;
+  const pv = await A.app('/api/cajas/rubros', { method: 'PUT', body: { categoria: 'Pines', anio: anioR, valor: 50000 } });
+  let tod = (await A.app('/api/cajas/proyectado')).data, pines = tod.rubros.find((r) => r.categoria === 'Pines');
+  check('Finanzas: editar el valor de una obligación (pines)', pv.status === 200 && pines?.valor === 50000 && pines.estado === 'pendiente' && tod.total_obligaciones >= 50000, JSON.stringify(pines));
+  const dist = tod.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito');
+  check('Finanzas: la cuota distrital suma al rubro RI y Distrito', dist?.valor_distrito >= ob.total, JSON.stringify(dist));
+  const pr1 = await A.app('/api/cajas/rubros/pagar', { method: 'POST', body: { categoria: 'Pines', monto: 50000, concepto: 'Pines de socios' } });
+  const cp1 = await A.app(`/api/cajas/movimientos/${pr1.data.id}/comprobante?nombre=pago`, { method: 'POST', body: PNG, headers: raw });
   tod = (await A.app('/api/cajas/proyectado')).data;
-  check('Finanzas: pagar la obligación la deja pagada y no se puede borrar', pg1.status === 201 && tod.obligaciones.find((o) => o.clave === `c:${ob1.data.id}`)?.estado === 'pagada' && (await A.app(`/api/cajas/obligaciones/${ob1.data.id}`, { method: 'DELETE' })).status === 409);
-  check('Finanzas: B no ve ni paga las obligaciones de A', (await B.app(`/api/cajas/obligaciones/${ob1.data.id}/pagar`, { method: 'POST', body: { monto: 1 } })).status === 404 && !(await B.app('/api/cajas/obligaciones')).data.rows.length);
+  const mov1 = (await A.app('/api/cajas/movimientos?f_categoria=Pines')).data.rows[0];
+  check('Finanzas: pagar la deja pagada y queda en Movimientos con comprobante', pr1.status === 201 && cp1.status === 200 && tod.rubros.find((r) => r.categoria === 'Pines')?.estado === 'pagada' && mov1?.comprobante === true && mov1.concepto === 'Pines de socios', JSON.stringify(mov1));
+  check('Finanzas: categoría inventada se rechaza (400) y B no ve el valor de A', (await A.app('/api/cajas/rubros', { method: 'PUT', body: { categoria: 'Inventada', valor: 1 } })).status === 400
+    && !(await B.app('/api/cajas/proyectado')).data.rubros.some((r) => r.categoria === 'Pines' && r.valor));
 
   /* Calendario del club (Inicio) */
   const calA = (await A.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || [];

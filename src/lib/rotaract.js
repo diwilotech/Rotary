@@ -121,58 +121,65 @@ export async function obligacionesClub(env, bid, { anio = null } = {}) {
 }
 
 // Tipos de obligación del club (la cuota distrital llega sola desde el distrito como «Obligaciones distritales»)
-export const OBLIGACIONES = ['Obligaciones distritales', 'Reconocimiento y protocolo', 'Bonos distritales', 'Camisetas del club', 'Pines', 'Otras obligaciones'];
-// Todas las obligaciones del club: las del distrito + las propias. `clave` = d:<id> | c:<id>.
-export async function obligacionesTodas(env, bid) {
-  const [dist, propias, pagos] = await Promise.all([
-    obligacionesClub(env, bid),
-    all(env, 'SELECT id, categoria, nombre, monto, vence, notas FROM ro_obligaciones WHERE business_id = ? ORDER BY vence', bid),
-    all(env, "SELECT obligacion_id, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND obligacion_id IS NOT NULL AND tipo = 'egreso' GROUP BY obligacion_id", bid),
+/* ---------------- Obligaciones = rubros de «¿En qué se gasta?» (Caja menor) ---------------- */
+// Cada categoría de gasto de la Caja menor es una obligación del año rotario: tiene un VALOR (lo que hay que pagar, se edita)
+// y lo PAGADO (los egresos de esa categoría en el año). La cuota distrital suma sola al valor de «Obligaciones RI y Distrito».
+// El valor propio del club se guarda en ro_obligaciones (una fila por categoría y año: vence = 30 de junio del cierre).
+export const RUBRO_DISTRITO = 'Obligaciones RI y Distrito';
+export const RUBROS = () => CATEGORIAS.menor.egreso.filter((x) => x !== 'Traslado');
+export const finDeAnio = (anio) => `${anio + 1}-06-30`;
+export async function rubros(env, bid, anio) {
+  const rango = [`${anio}-07-01`, `${anio + 1}-07-01`];
+  const [gasto, valores, dist] = await Promise.all([
+    all(env, "SELECT COALESCE(categoria, 'Otros gastos') categoria, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND tipo = 'egreso' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY 1", bid, ...rango),
+    all(env, 'SELECT categoria, monto FROM ro_obligaciones WHERE business_id = ? AND vence = ?', bid, finDeAnio(anio)),
+    obligacionesClub(env, bid, { anio }),
   ]);
-  const hoy = today();
-  return [
-    ...dist.map((o) => ({ ...o, clave: `d:${o.id}`, origen: 'distrito', categoria: 'Obligaciones distritales', detalle: `${o.socios} socios × valor por socio` })),
-    ...propias.map((o) => { const pagado = pagos.find((p) => p.obligacion_id === o.id)?.total || 0;
-      return { ...o, clave: `c:${o.id}`, origen: 'club', total: o.monto, pagado, saldo: Math.max(0, o.monto - pagado), anio: o.vence ? anioRotarioDe(o.vence) : null,
-        estado: pagado >= o.monto ? 'pagada' : o.vence && o.vence < hoy ? 'vencida' : 'pendiente' }; }),
-  ].sort((a, b) => String(a.vence || '9999').localeCompare(String(b.vence || '9999')));
+  const distTotal = dist.reduce((t, o) => t + o.total, 0);
+  const cats = [...new Set([...RUBROS(), ...gasto.map((g) => g.categoria).filter((c) => c !== 'Traslado')])];
+  return cats.map((categoria) => {
+    const club = valores.find((v) => v.categoria === categoria)?.monto || 0, distrito = categoria === RUBRO_DISTRITO ? distTotal : 0;
+    const valor = club + distrito, pagado = gasto.find((g) => g.categoria === categoria)?.total || 0;
+    return { categoria, valor, valor_club: club, valor_distrito: distrito, pagado, saldo: Math.max(0, valor - pagado),
+      estado: !valor ? 'sin_valor' : pagado >= valor ? 'pagada' : 'pendiente', cuotas_distritales: categoria === RUBRO_DISTRITO ? dist : undefined };
+  }).filter((r) => r.valor || r.pagado || r.categoria === RUBRO_DISTRITO)
+    .sort((a, b) => b.valor - a.valor || b.pagado - a.pagado);
 }
 
-/* ---------------- Obligaciones vs. Caja menor ---------------- */
-// Lo que el club debe pagar (cuotas distritales sin pagar) frente a la plata de la Caja menor: cuánto falta o cuánto sobra.
-// Lo proyectado por mes es sencillo: lo que deberían pagar los socios en cuotas (según los periodos de Cuotas) y las
-// obligaciones que vencen ese mes. El saldo proyectado parte del saldo real de hoy.
+// Obligaciones frente a la Caja menor y lo proyectado por mes: cuotas que deben pagar los socios contra lo que falta pagar
+// (la cuota distrital en su mes de vencimiento; el resto de valores, repartido en los meses que quedan del año).
 export async function proyeccion(env, bid, anio) {
   const hoy = today(), mesHoy = hoy.slice(0, 7), meses = mesesDelAnio(anio);
-  const [reales, periodos, socios, oblig, s] = await Promise.all([
+  const [reales, periodos, socios, rs, dist, s] = await Promise.all([
     all(env, `SELECT substr(fecha, 1, 7) mes, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) ingresos, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) egresos,
       SUM(CASE WHEN pago_id IS NOT NULL THEN monto ELSE 0 END) cuotas
       FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, bid, `${meses[0]}-01`, `${anio + 1}-07-01`),
     all(env, 'SELECT mes, monto FROM ro_periodos WHERE business_id = ?', bid),
     all(env, "SELECT fecha_ingreso FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid),
-    obligacionesTodas(env, bid),
+    rubros(env, bid, anio),
+    obligacionesClub(env, bid, { anio }),
     saldos(env, bid),
   ]);
   const quienes = (mes) => socios.filter((x) => !x.fecha_ingreso || x.fecha_ingreso.slice(0, 7) <= mes).length;
+  const porPagar = rs.reduce((t, r) => t + r.saldo, 0);
+  const distPend = dist.filter((o) => o.estado !== 'pagada');
+  const resto = Math.max(0, porPagar - distPend.reduce((t, o) => t + o.saldo, 0));
+  const futuros = meses.filter((m) => m >= mesHoy);
   let saldo = s.menor;
   const rows = meses.map((mes) => {
     const r = reales.find((x) => x.mes === mes) || { ingresos: 0, egresos: 0, cuotas: 0 };
     const futuro = mes >= mesHoy, per = periodos.find((p) => p.mes === mes);
-    const esperadas = per ? per.monto * quienes(mes) : 0;
-    // Del mes en curso solo se proyecta lo que falta por entrar
-    const cuotas_proy = futuro ? Math.max(0, esperadas - (mes === mesHoy ? r.cuotas : 0)) : 0;
-    const oblig_proy = futuro ? oblig.filter((o) => o.estado !== 'pagada' && (String(o.vence || mesHoy).slice(0, 7) === mes || (mes === mesHoy && String(o.vence || mesHoy).slice(0, 7) < mesHoy))).reduce((t, o) => t + o.saldo, 0) : 0;
+    const cuotas_proy = futuro ? Math.max(0, (per ? per.monto * quienes(mes) : 0) - (mes === mesHoy ? r.cuotas : 0)) : 0;
+    const distMes = futuro ? distPend.filter((o) => o.vence.slice(0, 7) === mes || (mes === mesHoy && o.vence.slice(0, 7) < mesHoy)).reduce((t, o) => t + o.saldo, 0) : 0;
+    const oblig_proy = futuro ? distMes + Math.round(resto / (futuros.length || 1)) : 0;
     if (futuro) saldo += cuotas_proy - oblig_proy;
     return { mes, ingresos: r.ingresos, egresos: r.egresos, proyectado: futuro, cuotas_proy, oblig_proy, saldo_proy: futuro ? saldo : null };
   });
-  const porPagar = oblig.filter((o) => o.estado !== 'pagada').reduce((t, o) => t + o.saldo, 0);
   const perHoy = periodos.find((p) => p.mes === mesHoy) || [...periodos].sort((a, b) => b.mes.localeCompare(a.mes))[0];
-  const cuotaMes = perHoy ? perHoy.monto * quienes(mesHoy) : 0;
-  const falta = Math.max(0, porPagar - s.menor);
+  const cuotaMes = perHoy ? perHoy.monto * quienes(mesHoy) : 0, falta = Math.max(0, porPagar - s.menor);
   return { anio, nombre: `${anio}-${anio + 1}`, saldo: s.menor, por_pagar: porPagar, falta, sobra: Math.max(0, s.menor - porPagar),
     cuota_mes: cuotaMes, socios_cuota: quienes(mesHoy), meses_para_cubrir: falta && cuotaMes ? Math.ceil(falta / cuotaMes) : null, meses: rows,
-    obligaciones: oblig.filter((o) => o.anio === anio || o.anio == null || o.estado !== 'pagada'), tipos: OBLIGACIONES,
-    total_obligaciones: oblig.filter((o) => o.anio === anio || o.anio == null || o.estado !== 'pagada').reduce((t, o) => t + o.total, 0) };
+    rubros: rs, total_obligaciones: rs.reduce((t, r) => t + r.valor, 0), pagado: rs.reduce((t, r) => t + Math.min(r.pagado, r.valor), 0) };
 }
 
 export async function saldos(env, businessId) {

@@ -49,57 +49,58 @@ DW.ready.then(async (me) => {
     view.querySelector('[data-tit]').innerHTML = `Movimientos · ${esc(k.nombre)}`;
   }
 
-  /* ---------- Obligaciones (solo Caja menor), dentro de la tarjeta «¿En qué se gasta?» ----------
-     Arriba el total de obligaciones del año; al fondo un carrusel que se mueve solo con cada obligación (la tarjeta no crece). */
-  const OEST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  const OICON = { 'Obligaciones distritales': 'bi-bank', 'Reconocimiento y protocolo': 'bi-award', 'Bonos distritales': 'bi-ticket-perforated', 'Camisetas del club': 'bi-person-standing-dress', Pines: 'bi-pin-angle', 'Otras obligaciones': 'bi-receipt' };
-  let giro = null;
+  /* ---------- Obligaciones (solo Caja menor) = «¿En qué se gasta?» ----------
+     Cada rubro de gasto es una obligación del año rotario: valor (se edita), pagado y botón Pagar (con comprobante; queda en
+     Movimientos). Arriba el total de obligaciones. La lista tiene alto fijo y se desplaza por dentro: la tarjeta no crece. */
+  const OEST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], sin_valor: ['free', 'Sin valor'] };
   function pintarObligaciones() {
-    const top = view.querySelector('[data-otop]'), bot = view.querySelector('[data-oslide]');
-    clearInterval(giro);
-    view.querySelector('[data-cats-t]').hidden = caja === 'menor' && !!pro;
-    if (caja !== 'menor' || !pro) { top.innerHTML = ''; bot.innerHTML = ''; return; }
-    const p = pro, pagado = p.obligaciones.reduce((t, o) => t + Math.min(o.pagado, o.total), 0);
-    top.innerHTML = `<div class="ro-h mt-0">Obligaciones · año rotario</div>
-      <div class="d-flex align-items-baseline gap-2 flex-wrap"><span class="ro-saldo" style="font-size:1.5rem">${C.money(p.total_obligaciones)}</span><span class="small text-body-secondary">pagado ${C.money(pagado)}</span></div>
-      ${C.meter(pagado, p.total_obligaciones || 1)}
-      <div class="small mt-1">Por pagar <b>${C.money(p.por_pagar)}</b> · en caja ${C.money(p.saldo)} · ${p.falta ? `<b class="text-danger">faltan ${C.money(p.falta)}</b>` : `<b class="text-success">alcanza</b>`}</div>
+    const top = view.querySelector('[data-otop]'), lista = view.querySelector('[data-olista]');
+    const menor = caja === 'menor' && !!pro;
+    view.querySelector('[data-cats-t]').hidden = menor; view.querySelector('[data-cats]').hidden = menor;
+    if (!menor) { top.innerHTML = ''; lista.innerHTML = ''; return; }
+    const p = pro;
+    top.innerHTML = `<div class="ro-h mt-0">Obligaciones · año rotario ${esc(p.nombre)}</div>
+      <div class="d-flex align-items-baseline gap-2 flex-wrap"><span class="ro-saldo" style="font-size:1.5rem">${C.money(p.total_obligaciones)}</span><span class="small text-body-secondary">pagado ${C.money(p.pagado)}</span></div>
+      ${C.meter(p.pagado, p.total_obligaciones || 1)}
+      <div class="small mt-1">Por pagar <b>${C.money(p.por_pagar)}</b> · en caja ${C.money(p.saldo)} · ${p.falta ? `<b class="text-danger">faltan ${C.money(p.falta)}</b>` : '<b class="text-success">alcanza</b>'}</div>
       ${p.cuota_mes ? `<div class="small text-body-secondary">Cuotas de socios proyectadas: ${C.money(p.cuota_mes)} al mes${p.meses_para_cubrir ? ` · cubren lo que falta en ${p.meses_para_cubrir} ${p.meses_para_cubrir === 1 ? 'mes' : 'meses'}` : ''}</div>` : ''}
       <div class="ro-h">¿En qué se gasta?</div>`;
-    const slide = (o) => `<div class="ro-os"><div class="d-flex align-items-center gap-2"><i class="bi ${OICON[o.categoria] || 'bi-receipt'}"></i><span class="small text-body-secondary text-truncate flex-grow-1">${esc(o.categoria)}</span>${C.chip(...OEST[o.estado])}</div>
-        <b class="d-block text-truncate mt-1" title="${esc(o.nombre)}">${esc(o.nombre)}</b>
-        <div class="d-flex align-items-center gap-2 mt-1"><span class="small flex-grow-1">${C.money(o.total)}${o.vence ? ` · ${C.day(o.vence)}` : ''}</span>
-        ${W && o.saldo > 0 ? `<button class="btn btn-sm btn-primary py-0" data-pagar="${o.clave}">Pagar</button>` : ''}${W && o.origen === 'club' ? `<button class="btn btn-sm btn-light py-0" data-oed="${o.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light py-0" data-odel="${o.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div></div>`;
-    bot.innerHTML = `<div class="d-flex align-items-center gap-2 mt-3 mb-1"><span class="ro-h m-0 flex-grow-1">Lista de obligaciones</span>
-        <button class="btn btn-sm btn-light" data-os="-1" aria-label="Anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-sm btn-light" data-os="1" aria-label="Siguiente"><i class="bi bi-chevron-right"></i></button>
-        ${W ? '<button class="btn btn-sm btn-outline-primary" data-onueva><i class="bi bi-plus-lg"></i> Nueva</button>' : ''}</div>
-      <div class="ro-oslider" data-track>${p.obligaciones.length ? p.obligaciones.map(slide).join('') : `<div class="ro-os text-body-secondary small">Aún no hay obligaciones. Ejemplos: ${p.tipos.slice(0, 5).join(', ')}.</div>`}</div>`;
-    const track = bot.querySelector('[data-track]');
-    if (p.obligaciones.length > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      let quieto = false;
-      ['pointerenter', 'touchstart', 'focusin'].forEach((ev) => track.addEventListener(ev, () => (quieto = true), { passive: true }));
-      ['pointerleave', 'focusout'].forEach((ev) => track.addEventListener(ev, () => (quieto = false)));
-      giro = setInterval(() => { if (quieto || !track.isConnected) return; mover(track, 1, true); }, 4000);
+    lista.innerHTML = `<div class="ro-rubros">${p.rubros.map((r) => `<div class="ro-rubro">
+        <div class="d-flex align-items-center gap-2"><b class="flex-grow-1 text-truncate small" title="${esc(r.categoria)}">${esc(r.categoria)}</b>${C.chip(...OEST[r.estado])}</div>
+        <div class="d-flex justify-content-between small"><span>${C.money(r.pagado)}${r.valor ? ` de ${C.money(r.valor)}` : ' gastado'}</span>${r.valor_distrito ? `<span class="text-body-secondary" title="Cuota distrital">incl. distrito ${C.money(r.valor_distrito)}</span>` : ''}</div>
+        ${r.valor ? C.meter(r.pagado, r.valor) : ''}
+        ${W ? `<div class="d-flex gap-1 mt-1"><button class="btn btn-sm btn-primary py-0" data-rpagar="${esc(r.categoria)}"><i class="bi bi-cash me-1"></i>Pagar</button>
+          <button class="btn btn-sm btn-light py-0" data-reditar="${esc(r.categoria)}"><i class="bi bi-pencil me-1"></i>Editar valor</button></div>` : ''}</div>`).join('')}</div>
+      ${W ? '<button class="btn btn-sm btn-link px-0" data-ragregar><i class="bi bi-plus-lg me-1"></i>Otra obligación</button>' : ''}`;
+  }
+  const rub = (cat) => pro.rubros.find((r) => r.categoria === cat);
+  async function editarValor(cat) {
+    const r = rub(cat) || { categoria: cat, valor: 0, valor_distrito: 0 };
+    const out = await C.form({ title: `Valor de «${cat}»`, fields: [{ k: 'valor', label: `Valor para el año ${pro.nombre}`, type: 'money', required: true,
+      hint: r.valor_distrito ? `Incluye la cuota distrital (${C.money(r.valor_distrito)}): súbelo para agregar más.` : 'Súbelo o bájalo cuando cambie lo que hay que pagar.' }], values: { valor: r.valor }, okText: 'Guardar' });
+    if (!out) return;
+    try { await api('/api/cajas/rubros', { method: 'PUT', body: { categoria: cat, anio: pro.anio, valor: out.valor } }); toast('Valor actualizado'); await resumen(); } catch (x) { toast(x.message, false); }
+  }
+  async function agregar() {
+    const usados = new Set(pro.rubros.map((r) => r.categoria));
+    const opciones = cat.categorias.menor.egreso.filter((x) => x !== 'Traslado' && !usados.has(x));
+    if (!opciones.length) return toast('Todas las categorías ya están en la lista', false);
+    const out = await C.form({ title: 'Otra obligación', fields: [{ k: 'categoria', label: 'Categoría', type: 'select', options: opciones.map((x) => [x, x]) }, { k: 'valor', label: `Valor para el año ${pro.nombre}`, type: 'money', required: true }], okText: 'Guardar' });
+    if (!out) return;
+    try { await api('/api/cajas/rubros', { method: 'PUT', body: { categoria: out.categoria, anio: pro.anio, valor: out.valor } }); toast('Obligación agregada'); await resumen(); } catch (x) { toast(x.message, false); }
+  }
+  async function pagarRubro(cat) {
+    const r = rub(cat);
+    const out = await C.form({ title: `Pagar: ${cat}`, fields: [{ k: 'concepto', label: 'Concepto', type: 'text', full: true }, { k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha', type: 'date', required: true }],
+      values: { concepto: cat, monto: r?.saldo || '', fecha: C.todayCo() }, okText: 'Registrar pago' });
+    if (!out) return;
+    let id;
+    try { id = (await api('/api/cajas/rubros/pagar', { method: 'POST', body: { ...out, categoria: cat } })).id; } catch (x) { return toast(x.message, false); }
+    await cargar();
+    if (await window.App.confirm({ title: 'Pago registrado', text: 'Salió de la Caja menor y quedó en Movimientos. ¿Subes el comprobante?', ok: 'Subir comprobante' })) {
+      const f = await RO.elegirArchivo(); if (!f) return;
+      try { await RO.subir(`/api/cajas/movimientos/${id}/comprobante`, f); toast('Comprobante adjunto'); tabla?.load(); } catch (x) { toast(x.message, false); }
     }
-  }
-  const mover = (track, dir, vuelta) => {
-    const w = track.firstElementChild?.getBoundingClientRect().width + 10 || 200;
-    if (vuelta && track.scrollLeft + track.clientWidth >= track.scrollWidth - 4) track.scrollTo({ left: 0, behavior: 'smooth' });
-    else track.scrollBy({ left: dir * w, behavior: 'smooth' });
-  };
-  async function editarObligacion(o) {
-    const out = await C.form({ title: o ? 'Editar obligación' : 'Nueva obligación', fields: [{ k: 'categoria', label: 'Tipo', type: 'select', options: pro.tipos.filter((t) => t !== 'Obligaciones distritales').map((t) => [t, t]) },
-      { k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true, hint: 'p. ej. Bonos de la conferencia distrital, Camisetas del club, Pines de socios' }, { k: 'monto', label: 'Monto', type: 'money', required: true },
-      { k: 'vence', label: 'Vence', type: 'date' }, { k: 'notas', label: 'Notas', type: 'long' }], values: o || { categoria: 'Reconocimiento y protocolo' }, okText: 'Guardar' });
-    if (!out) return;
-    try { await api(o ? `/api/cajas/obligaciones/${o.id}` : '/api/cajas/obligaciones', { method: o ? 'PATCH' : 'POST', body: out }); toast('Obligación guardada'); await resumen(); } catch (x) { toast(x.message, false); }
-  }
-  async function pagar(clave) {
-    const o = pro.obligaciones.find((x) => x.clave === clave); if (!o) return;
-    const out = await C.form({ title: `Pagar: ${o.nombre}`, fields: [{ k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha', type: 'date', required: true }],
-      values: { monto: o.saldo, fecha: C.todayCo() }, okText: 'Registrar pago' });
-    if (!out) return;
-    try { await api(o.origen === 'distrito' ? `/api/cajas/distrital/${o.id}/pagar` : `/api/cajas/obligaciones/${o.id}/pagar`, { method: 'POST', body: out }); toast('Pagada: salió de la Caja menor'); await cargar(); } catch (x) { toast(x.message, false); }
   }
 
   function pintarTabla() {
@@ -126,25 +127,19 @@ DW.ready.then(async (me) => {
   view.innerHTML = `<style>.ro-cajas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-bottom:16px}
     .ro-caja{display:grid;gap:4px;text-align:left;padding:16px;border-radius:16px;border:2px solid var(--bs-border-color);background:var(--bs-body-bg);color:inherit}
     .ro-caja.on{border-color:var(--dw-p);background:linear-gradient(160deg,rgba(var(--dw-p-rgb),.12),var(--bs-body-bg) 70%)}.ro-caja.on i{color:var(--dw-p)}.ro-saldo{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
-    .ro-oslider{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;height:118px}.ro-oslider::-webkit-scrollbar{display:none}
-    .ro-os{flex:0 0 min(240px,85%);scroll-snap-align:start;padding:10px 12px;border-radius:12px;border:1px solid var(--bs-border-color);background:rgba(var(--dw-p-rgb),.04);overflow:hidden}.ro-os .bi{color:var(--dw-p)}
+    .ro-rubros{display:grid;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px}.ro-rubro{padding:8px 10px;border-radius:12px;border:1px solid var(--bs-border-color);background:rgba(var(--dw-p-rgb),.03)}
     .ro-ob{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ro-ob>div{flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:rgba(var(--dw-p-rgb),.06)}.ro-ob>i{color:var(--bs-secondary-color)}
     .ro-ob span{display:block;font-size:.75rem;color:var(--bs-secondary-color)}.ro-ob b{font-size:1.25rem;font-variant-numeric:tabular-nums}
     .ro-ob .ok{background:rgba(25,135,84,.12)}.ro-ob .ok b{color:var(--bs-success)}.ro-ob .bad{background:rgba(220,53,69,.12)}.ro-ob .bad b{color:var(--bs-danger)}</style>
     <div class="ro-cajas" data-cajas></div>
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
-      <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>¿En qué se gasta? · año rotario</div><div data-cats></div><div class="mt-auto" data-oslide></div></div></div></div>
+      <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>¿En qué se gasta? · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div>`;
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return resumen(); }
-    const pg = e.target.closest('[data-pagar]'); if (pg) return pagar(pg.dataset.pagar);
-    const os = e.target.closest('[data-os]'); if (os) { clearInterval(giro); return mover(view.querySelector('[data-track]'), Number(os.dataset.os)); }
-    if (e.target.closest('[data-onueva]')) return editarObligacion(null);
-    const od = e.target.closest('[data-odel]'); if (od) return (async () => {
-      if (!(await window.App.confirm({ title: '¿Borrar esta obligación?', text: 'Si ya tiene pagos, primero borra el pago en Movimientos.', ok: 'Borrar' }))) return;
-      try { await api(`/api/cajas/obligaciones/${od.dataset.odel}`, { method: 'DELETE' }); toast('Borrada'); await resumen(); } catch (x) { toast(x.message, false); }
-    })();
-    const oe = e.target.closest('[data-oed]'); if (oe) return editarObligacion(pro.obligaciones.find((o) => o.clave === `c:${oe.dataset.oed}`));
+    const rp = e.target.closest('[data-rpagar]'); if (rp) return pagarRubro(rp.dataset.rpagar);
+    const re = e.target.closest('[data-reditar]'); if (re) return editarValor(re.dataset.reditar);
+    if (e.target.closest('[data-ragregar]')) return agregar();
     const b = e.target.closest('[data-caja]'); if (!b || b.dataset.caja === caja) return;
     history.replaceState(null, '', `#${b.dataset.caja}`);
     nav?.querySelectorAll('a').forEach((x) => x.classList.toggle('on', x.dataset.club === b.dataset.caja));
