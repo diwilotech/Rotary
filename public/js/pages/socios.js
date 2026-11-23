@@ -18,7 +18,8 @@ DW.ready.then(async (me) => {
     { k: 'cargo', label: 'Cargo en la junta', type: 'select', options: [['', 'Sin cargo (socio)'], ...[...new Set([...CARGOS, ...(s?.cargo ? [s.cargo] : [])])].map((x) => [x, x])] },
     { k: 'tipo_membresia', label: 'Tipo de membresía', type: 'select', options: Object.entries(RO_.TIPO) }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(RO_.ESTADO).map(([k, [, l]]) => [k, l]) },
     { k: 'email', label: 'Correo', type: 'email' }, { k: 'telefono', label: 'Celular', type: 'text' }, { k: 'documento', label: 'Documento', type: 'text' }, { k: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' },
-    { k: 'fecha_ingreso', label: 'Fecha de ingreso', type: 'date' }, { k: 'profesion', label: 'Profesión', type: 'text' }, { k: 'instagram', label: 'Instagram', type: 'text' },
+    { k: 'fecha_ingreso', label: '1 · Ingreso al club', type: 'date' }, { k: 'activado_at', label: '2 · Activación en el club', type: 'date', hint: 'con certificado' },
+    { k: 'myrotary_at', label: '3 · Activación en My Rotary', type: 'date' }, { k: 'myrotary_id', label: 'ID de My Rotary', type: 'text', hint: 'su código de socio' }, { k: 'profesion', label: 'Profesión', type: 'text' }, { k: 'instagram', label: 'Instagram', type: 'text' },
     { k: 'paga_cuota', label: 'Cuotas', type: 'bool', check: 'Paga cuota mensual', default: true }, { k: 'notas', label: 'Notas', type: 'long' }];
 
   async function editar(s) {
@@ -30,10 +31,18 @@ DW.ready.then(async (me) => {
   }
 
   const certificado = (s) => window.open(`/api/socios/socios/${s.id}/certificado`, '_blank', 'noopener');
+  // Activar en el club: pide la fecha (por defecto hoy) y genera el certificado. My Rotary se registra aparte en la ficha.
   async function activar(s) {
-    if (!(await confirm({ title: `¿Activar a ${s.nombre}?`, text: 'Queda activo en el club y se genera su certificado de activación con un código único.', ok: 'Activar', danger: false }))) return false;
-    try { const r = await api(`/api/socios/socios/${s.id}/activar`, { method: 'POST', body: {} }); toast(`Activado · ${r.codigo}`); await cargar(); return true; } catch (x) { toast(x.message, false); return false; }
+    const out = await C.form({ title: `Activar a ${s.nombre} en el club`, fields: [{ k: 'fecha', label: 'Fecha de activación en el club', type: 'date', required: true, hint: 'queda en su certificado' }],
+      values: { fecha: C.todayCo() }, okText: 'Activar' });
+    if (!out) return false;
+    try { await api(`/api/socios/socios/${s.id}/activar`, { method: 'POST', body: out }); toast('Activado en el club: ya tiene su certificado'); await cargar(); return true; } catch (x) { toast(x.message, false); return false; }
   }
+  // Las 3 fechas de cada socio
+  const fechas = (s) => `<div class="ro-3f">
+      <div class="${s.fecha_ingreso ? 'on' : ''}"><i class="bi bi-door-open"></i><span>Ingreso al club</span><b>${s.fecha_ingreso ? C.day(s.fecha_ingreso) : '—'}</b></div>
+      <div class="${s.activado_at ? 'on' : ''}"><i class="bi bi-patch-check"></i><span>Activación en el club</span><b>${s.activado_at ? C.day(s.activado_at) : 'Sin activar'}</b></div>
+      <div class="${s.myrotary_at || s.myrotary_id ? 'on' : ''}"><i class="bi bi-globe2"></i><span>My Rotary</span><b>${s.myrotary_at ? C.day(s.myrotary_at) : s.myrotary_id ? 'Sin fecha' : 'No está'}</b>${s.myrotary_id ? `<small>ID ${esc(s.myrotary_id)}</small>` : ''}</div></div>`;
 
   async function ficha(s0) {
     const { el, m } = modal('<div class="modal-body p-4 text-center text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
@@ -45,7 +54,8 @@ DW.ready.then(async (me) => {
         <div class="d-flex gap-3 align-items-center mb-3">${RO_.avatar(s, 84)}<div class="min-w-0"><h2 class="h4 mb-1">${esc(s.nombre)}</h2>
           ${s.junta ? `<div class="fw-semibold" style="color:var(--dw-p)">${esc(s.cargo)}</div>` : ''}
           <div class="d-flex flex-wrap gap-1 mt-1">${C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo))} <span class="badge rounded-pill text-bg-light">${esc(RO_.TIPO[s.tipo_membresia] || s.tipo_membresia)}</span>
-          ${s.activado ? `<span class="badge rounded-pill text-bg-success"><i class="bi bi-patch-check me-1"></i>Activado ${C.day(s.activado_at)}</span>` : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'}</div></div></div>
+          ${s.activado ? '<span class="badge rounded-pill text-bg-success"><i class="bi bi-patch-check me-1"></i>Activo en el club</span>' : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'} ${s.myrotary_id || s.myrotary_at ? '<span class="badge rounded-pill text-bg-info"><i class="bi bi-globe2 me-1"></i>En My Rotary</span>' : '<span class="badge rounded-pill text-bg-light border">Sin My Rotary</span>'}</div></div></div>
+        ${fechas(s)}
         <div class="row g-2 mb-3">
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold">${d.asistencia.pct ?? '—'}${d.asistencia.pct != null ? '%' : ''}</div><div class="small text-body-secondary">Asistencia (${d.asistencia.presente}/${d.asistencia.total})</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold">${d.tareas.filter((t) => t.estado !== 'hecha').length}</div><div class="small text-body-secondary">Tareas abiertas</div></div></div>
@@ -54,7 +64,7 @@ DW.ready.then(async (me) => {
         <div class="dw-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap"><span class="small text-body-secondary">Acceso a la app</span>${accesoBadge(R0)}
           ${M && !RO_APP && R0.acceso && R0.acceso.rol !== 'owner' && s.user_id !== me.user.id ? `<select class="form-select form-select-sm ms-auto" style="width:auto" data-rol aria-label="Tipo de acceso"><option value="admin" ${R0.acceso.rol === 'admin' ? 'selected' : ''}>Junta: ve y edita todo</option><option value="staff" ${R0.acceso.rol === 'staff' ? 'selected' : ''}>Socio: lo del club y lo suyo</option></select>
             ${R0.acceso.estado === 'invitado' ? '<button class="btn btn-sm btn-light" data-reinv><i class="bi bi-link-45deg"></i> Enlace</button>' : ''}` : ''}</div>
-        <div class="d-grid gap-1 mb-3">${linea('bi-envelope', esc(s.email || ''))}${linea('bi-phone', esc(s.telefono || ''))}${linea('bi-briefcase', esc(s.profesion || ''))}${linea('bi-calendar-check', s.fecha_ingreso ? `Ingresó el ${C.day(s.fecha_ingreso)}` : '')}${linea('bi-instagram', esc(s.instagram || ''))}</div>
+        <div class="d-grid gap-1 mb-3">${linea('bi-envelope', esc(s.email || ''))}${linea('bi-phone', esc(s.telefono || ''))}${linea('bi-briefcase', esc(s.profesion || ''))}${linea('bi-instagram', esc(s.instagram || ''))}</div>
         ${d.tareas.length ? `<div class="ro-h mt-0">Tareas</div><ul class="list-unstyled small mb-0">${d.tareas.slice(0, 8).map((t) => `<li class="d-flex gap-2 py-1 border-bottom"><i class="bi ${t.estado === 'hecha' ? 'bi-check-circle-fill text-success' : 'bi-circle'}"></i><span class="flex-grow-1">${esc(t.titulo)}</span><span class="text-body-secondary">${t.fecha_limite ? C.day(t.fecha_limite) : ''}</span></li>`).join('')}</ul>` : ''}
       </div>
       <div class="modal-footer border-0 flex-wrap gap-2 justify-content-start">
@@ -109,15 +119,23 @@ DW.ready.then(async (me) => {
 
   function pintarActivacion() {
     const act = rows.filter((s) => ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia))).sort((a, b) => Number(a.activado) - Number(b.activado) || a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
-    const hechos = act.filter((s) => s.activado).length;
-    view.querySelector('[data-lista]').innerHTML = `<div class="dw-card mb-3"><div class="d-flex justify-content-between small mb-1"><b>Socios activados</b><span>${hechos} de ${act.length}</span></div>${C.meter(hechos, act.length || 1)}</div>`
+    const hechos = act.filter((s) => s.activado).length, mr = act.filter((s) => s.myrotary_id || s.myrotary_at).length;
+    view.querySelector('[data-lista]').innerHTML = `<div class="row g-2 mb-3"><div class="col-sm-6"><div class="dw-card h-100"><div class="d-flex justify-content-between small mb-1"><b>Activados en el club</b><span>${hechos} de ${act.length}</span></div>${C.meter(hechos, act.length || 1)}</div></div>
+        <div class="col-sm-6"><div class="dw-card h-100"><div class="d-flex justify-content-between small mb-1"><b>En My Rotary</b><span>${mr} de ${act.length}</span></div>${C.meter(mr, act.length || 1)}</div></div></div>`
       + (act.length ? window.App.table([
         { label: 'Socio', main: true, html: (s) => `<span class="d-flex align-items-center gap-2">${RO_.avatar(s, 32)}<span>${esc(s.nombre)}${s.junta ? `<div class="small text-body-secondary fw-normal">${esc(s.cargo)}</div>` : ''}</span></span>` },
-        { label: 'Estado', html: (s) => (s.activado ? '<span class="badge rounded-pill text-bg-success"><i class="bi bi-patch-check me-1"></i>Activado</span>' : '<span class="badge rounded-pill text-bg-warning">Pendiente</span>') },
-        { label: 'Fecha', html: (s) => (s.activado_at ? C.day(s.activado_at) : '—') },
-        { label: 'Código', html: (s) => esc(s.activacion_codigo || '—') },
-        { label: '', cls: 'text-end text-nowrap', html: (s) => (s.activado ? `<button class="btn btn-sm btn-outline-primary" data-cert="${s.id}"><i class="bi bi-download me-1"></i>Certificado</button>` : M && !RO_APP ? `<button class="btn btn-sm btn-primary" data-activar="${s.id}"><i class="bi bi-patch-check me-1"></i>Activar</button>` : '') },
+        { label: 'Ingreso al club', html: (s) => (s.fecha_ingreso ? C.day(s.fecha_ingreso) : '—') },
+        { label: 'Activación en el club', html: (s) => (s.activado ? `<span class="text-success"><i class="bi bi-patch-check-fill me-1"></i>${C.day(s.activado_at)}</span>` : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>') },
+        { label: 'My Rotary', html: (s) => (s.myrotary_id || s.myrotary_at ? `<span class="text-info-emphasis"><i class="bi bi-globe2 me-1"></i>${s.myrotary_at ? C.day(s.myrotary_at) : 'Sin fecha'}</span>${s.myrotary_id ? `<div class="small text-body-secondary">ID ${esc(s.myrotary_id)}</div>` : ''}` : '<span class="small text-body-secondary">No está</span>') },
+        { label: '', cls: 'text-end text-nowrap', html: (s) => `${s.activado ? `<button class="btn btn-sm btn-outline-primary" data-cert="${s.id}"><i class="bi bi-download me-1"></i>Certificado</button>` : M && !RO_APP ? `<button class="btn btn-sm btn-primary" data-activar="${s.id}"><i class="bi bi-patch-check me-1"></i>Activar</button>` : ''}${M && !RO_APP ? ` <button class="btn btn-sm btn-light" data-mr="${s.id}" title="Registrar My Rotary"><i class="bi bi-globe2"></i></button>` : ''}` },
       ], act) : window.App.empty('bi-patch-check', 'No hay socios del club activos todavía (los externos y voluntarios no se activan).'));
+  }
+
+  async function myRotary(s) {
+    const out = await C.form({ title: `My Rotary · ${s.nombre}`, fields: [{ k: 'myrotary_id', label: 'ID de My Rotary', type: 'text' }, { k: 'myrotary_at', label: 'Fecha de activación en My Rotary', type: 'date' }],
+      values: { myrotary_id: s.myrotary_id || '', myrotary_at: s.myrotary_at || '' }, okText: 'Guardar' });
+    if (!out) return;
+    try { await api(`/api/socios/socios/${s.id}`, { method: 'PATCH', body: { myrotary_id: out.myrotary_id || null, myrotary_at: out.myrotary_at || null } }); toast('My Rotary actualizado'); await cargar(); } catch (x) { toast(x.message, false); }
   }
 
   function pintar() {
@@ -140,6 +158,7 @@ DW.ready.then(async (me) => {
   view.addEventListener('click', async (e) => {
     const c = e.target.closest('[data-cert]'); if (c) return certificado({ id: c.dataset.cert });
     const a = e.target.closest('[data-activar]'); if (a) return activar(rows.find((s) => String(s.id) === a.dataset.activar));
+    const mr = e.target.closest('[data-mr]'); if (mr) return myRotary(rows.find((s) => String(s.id) === mr.dataset.mr));
     const t = e.target.closest('[data-id]'); if (t) ficha(rows.find((s) => String(s.id) === t.dataset.id));
   });
   await cargar();

@@ -36,7 +36,7 @@ for (const s of t('socios')) {
   const vig = cargos.filter((c) => c.socio_id === s.id).sort((a, b) => orden(a.cargo) - orden(b.cargo))[0];
   const cargo = vig?.cargo || (s.cargo && s.cargo.toLowerCase() !== 'socio' ? s.cargo : null);
   ins('ro_socios', { nombre: s.nombre_completo, email: s.email ? s.email.toLowerCase() : null, telefono: s.telefono, fecha_nacimiento: s.fecha_nacimiento, profesion: s.profesion, instagram: s.instagram,
-    foto_url: https(s.foto_url), fecha_ingreso: s.fecha_ingreso || s.estado_desde || dia(s.created_at), tipo_membresia: ['socio', 'socio_externo', 'voluntario_invitado'].includes(s.tipo_membresia) ? s.tipo_membresia : 'socio',
+    foto_url: https(s.foto_url), fecha_ingreso: s.fecha_ingreso || s.estado_desde || dia(s.created_at), myrotary_id: s.rotary_id ? String(s.rotary_id).trim() : null, tipo_membresia: ['socio', 'socio_externo', 'voluntario_invitado'].includes(s.tipo_membresia) ? s.tipo_membresia : 'socio',
     estado: s.estado === 'inactivo' ? 'inactivo' : 'activo', cargo, cargo_desde: vig?.desde || null, paga_cuota: s.tipo_membresia === 'socio' ? 1 : 0,
     notas: [s.biografia, s.cargo_club_origen ? `Cargo en su club de origen: ${s.cargo_club_origen}` : null].filter(Boolean).join('\n') || null, origen_id: s.id });
 }

@@ -7,8 +7,8 @@
 //   POST /api/socios/socios/:id/acceso          invita al socio a la app (rol Socio) → { invite_url }
 //   POST /api/socios/socios/:id/foto            sube la foto (cuerpo = imagen)   ·   GET /api/socios/foto/:id
 //   GET  /api/socios/resumen
-import { json, HttpError } from '../lib/http.js';
-import { crud, all, one, today } from '../lib/crud.js';
+import { json, readJson, HttpError } from '../lib/http.js';
+import { crud, all, one, today, cast } from '../lib/crud.js';
 import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
@@ -23,7 +23,7 @@ const manager = (c) => ['owner', 'admin'].includes(c.role);
 
 const fotoDe = (s) => (s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null);
 export const publico = (c, s) => {
-  const out = { ...s, foto: fotoDe(s), orden_cargo: cargoOrden(s.cargo), junta: cargoOrden(s.cargo) < 99, activado: !!s.activado_at };
+  const out = { ...s, foto: fotoDe(s), orden_cargo: cargoOrden(s.cargo), junta: cargoOrden(s.cargo) < 99, activado: !!s.activado_at, en_myrotary: !!(s.myrotary_at || s.myrotary_id) };
   delete out.foto_key; delete out.origen_id;
   if (!manager(c) && s.user_id !== c.session?.user_id) for (const k of PRIVADOS) delete out[k];
   return out;
@@ -60,7 +60,7 @@ export const ENTITIES = {
   socios: { table: 'ro_socios', label: 'el socio', title: 'nombre', search: ['nombre', 'email', 'cargo', 'profesion'], crear: 'manager',
     order: "CASE estado WHEN 'activo' THEN 0 WHEN 'aspirante' THEN 1 WHEN 'inactivo' THEN 2 ELSE 3 END, nombre",
     fields: { nombre: 'text!', email: 'email', telefono: 'text', documento: 'text', fecha_nacimiento: 'date', profesion: 'text', instagram: 'text',
-      fecha_ingreso: 'date', tipo_membresia: TIPOS, estado: ESTADOS, cargo: 'text', cargo_desde: 'date', paga_cuota: 'bool+', notas: 'long' },
+      fecha_ingreso: 'date', activado_at: 'date', myrotary_id: 'text', myrotary_at: 'date', tipo_membresia: TIPOS, estado: ESTADOS, cargo: 'text', cargo_desde: 'date', paga_cuota: 'bool+', notas: 'long' },
     async beforeCreate(c, row) {
       if (row.email && await one(c.env, 'SELECT 1 FROM ro_socios WHERE business_id = ? AND lower(email) = ?', c.businessId, row.email)) throw new HttpError(409, 'Ya hay un socio con ese correo');
       if (row.cargo && !row.cargo_desde) row.cargo_desde = today();
@@ -88,13 +88,16 @@ async function socioOr404(c, id) {
   return s;
 }
 
-export async function activar(c, s) {
-  if (s.activado_at) return { ya: true, activado_at: s.activado_at, codigo: s.activacion_codigo };
-  const codigo = `RTC-${uuid().replace(/-/g, '').slice(0, 8).toUpperCase()}`, hoy = today();
+// Activar en el club = fecha de activación (por defecto hoy) + certificado. My Rotary va aparte (ID y fecha en la ficha).
+export async function activar(c, s, fecha = null) {
+  if (s.activado_at) return { ya: true, activado_at: s.activado_at };
+  const dia = fecha ? cast('fecha', 'date', fecha) : today();
+  if (dia > today()) throw new HttpError(400, 'La fecha de activación no puede ser futura');
+  const codigo = s.activacion_codigo || `RTC-${uuid().replace(/-/g, '').slice(0, 8).toUpperCase()}`;   // verificación interna del certificado
   await c.env.DB.prepare("UPDATE ro_socios SET activado_at = ?, activacion_codigo = ?, activado_por = ?, estado = 'activo', updated_at = ? WHERE id = ? AND business_id = ?")
-    .bind(hoy, codigo, c.session.user_id, Date.now(), s.id, c.businessId).run();
-  await audit(c, `Activó a ${s.nombre} (certificado ${codigo})`, { modulo: MOD });
-  return { ya: false, activado_at: hoy, codigo };
+    .bind(dia, codigo, c.session.user_id, Date.now(), s.id, c.businessId).run();
+  await audit(c, `Activó a ${s.nombre} en el club (${dia})`, { modulo: MOD });
+  return { ya: false, activado_at: dia, codigo };
 }
 
 export function routes(r) {
@@ -120,7 +123,7 @@ export function routes(r) {
     return json({ socio: publico(c, s), asistencia: { total: asis.total || 0, presente: asis.presente || 0, pct: asis.total ? Math.round((asis.presente / asis.total) * 100) : null }, tareas, cuota });
   });
 
-  r.post('/api/socios/socios/:id/activar', `manager:${MOD}`, async (c) => json(await activar(c, await socioOr404(c, c.params.id))));
+  r.post('/api/socios/socios/:id/activar', `manager:${MOD}`, async (c) => json(await activar(c, await socioOr404(c, c.params.id), (await readJson(c.req).catch(() => ({}))).fecha)));
 
   r.get('/api/socios/socios/:id/certificado', `tenant:${MOD}`, async (c) => {
     const s = await socioOr404(c, c.params.id);

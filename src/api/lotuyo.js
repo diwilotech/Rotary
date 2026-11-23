@@ -20,7 +20,7 @@ async function carnet(c, s) {
   const st = await one(c.env, 'SELECT logo_key FROM business_settings WHERE business_id = ?', c.businessId);
   return { id: s.id, nombre: s.nombre, email: s.email, telefono: s.telefono, profesion: s.profesion, instagram: s.instagram, fecha_nacimiento: s.fecha_nacimiento,
     cargo: cargoOrden(s.cargo) < 99 ? s.cargo : null, tipo: TIPO[s.tipo_membresia] || s.tipo_membresia, estado: s.estado, fecha_ingreso: s.fecha_ingreso,
-    activado_at: s.activado_at, codigo: s.activacion_codigo, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}?v=${s.updated_at || 0}` : null,
+    activado_at: s.activado_at, fecha_ingreso: s.fecha_ingreso, myrotary_id: s.myrotary_id, myrotary_at: s.myrotary_at, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}?v=${s.updated_at || 0}` : null,
     club: biz?.name || '', logo: st?.logo_key ? '/api/settings/logo' : null };
 }
 

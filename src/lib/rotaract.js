@@ -237,6 +237,6 @@ h1{font-size:34pt;margin:6mm 0 2mm;font-weight:normal}.sub{font-size:13pt;color:
     <div class="firma">${esc(pres?.nombre || '')}<small>Presidencia del club</small></div>
     <div class="firma">${esc(sec?.nombre || '')}<small>Secretaría del club</small></div>
   </div>
-  <div class="cod">Código ${esc(socio.activacion_codigo || '')}</div>
+  <div class="cod">${socio.myrotary_id ? `ID My Rotary ${esc(socio.myrotary_id)}${socio.myrotary_at ? ` · desde ${fechaLarga(socio.myrotary_at)}` : ''}` : 'Activo en el club'}${socio.fecha_ingreso ? ` · Ingresó el ${fechaLarga(socio.fecha_ingreso)}` : ''}</div>
 </div></body></html>`;
 }
