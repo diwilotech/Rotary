@@ -40,7 +40,7 @@ export function routes(r) {
       activos.has('reuniones') ? all(c.env, `SELECT r.id, r.tipo, r.titulo, r.fecha, r.hora_ini, r.lugar, r.modalidad, r.enlace, a.respuesta FROM ro_reuniones r
         LEFT JOIN ro_asistencia a ON a.reunion_id = r.id AND a.business_id = r.business_id AND a.socio_id = ? WHERE r.business_id = ? AND r.fecha >= ? AND r.estado <> 'cancelada' ORDER BY r.fecha, r.hora_ini LIMIT 6`, s.id, c.businessId, hoy) : null,
       one(c.env, 'SELECT COUNT(*) t, SUM(presente = 1) p FROM ro_asistencia WHERE business_id = ? AND socio_id = ? AND presente IS NOT NULL', c.businessId, s.id),
-      s.paga_cuota ? cartera(c, s.id).then((x) => x[0] || null) : null,
+      cartera(c, s.id).then((x) => x[0] || null),
       pagosDe(c, { socioId: s.id }),
     ]);
     return json({ socio: await carnet(c, s), tareas, reuniones, asistencia: { total: asis.t || 0, presente: asis.p || 0, pct: asis.t ? Math.round((asis.p / asis.t) * 100) : null }, cuota, pagos: pagos.slice(0, 24), modulos: [...activos] });

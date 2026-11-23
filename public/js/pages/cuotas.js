@@ -9,13 +9,20 @@ DW.ready.then(async (me) => {
   const EST = { al_dia: ['ok', 'Al día'], adelantado: ['ok', 'Adelantado'], por_vencer: ['soon', 'Por vencer'], debe: ['bad', 'Debe'] };
   const PEST = { pendiente: ['soon', 'Por verificar'], verificado: ['ok', 'Verificado'], rechazado: ['bad', 'Rechazado'], anulado: ['free', 'Anulado'] };
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
-  let cartera = [], pagos = [], filtro = '', anio = null, fEst = '';
+  let cartera = [], pagos = [], filtro = '', anio = null, fEst = '', cfg = { aspirantes: false, honorarios: false };
   const ICO = { debe: 'bi-exclamation-circle-fill', por_vencer: 'bi-clock-fill', al_dia: 'bi-check-circle-fill', adelantado: 'bi-star-fill' };
   RO.nav('cuotas');
 
   if (W) {
-    acciones.innerHTML = '<button class="btn btn-outline-secondary" data-per><i class="bi bi-calendar3 me-1"></i>Periodos</button><button class="btn btn-primary" data-pago><i class="bi bi-plus-lg me-1"></i>Registrar pago</button>';
+    acciones.innerHTML = '<button class="btn btn-outline-secondary" data-quien><i class="bi bi-people me-1"></i>¿Quién paga?</button><button class="btn btn-outline-secondary" data-per><i class="bi bi-calendar3 me-1"></i>Periodos</button><button class="btn btn-primary" data-pago><i class="bi bi-plus-lg me-1"></i>Registrar pago</button>';
     acciones.querySelector('[data-pago]').onclick = () => registrar();
+    acciones.querySelector('[data-quien]').onclick = async () => {
+      const out = await C.form({ title: '¿Quién paga cuota?', fields: [
+        { k: 'aspirantes', label: 'Aspirantes', type: 'bool', check: 'Los aspirantes también pagan cuota', hint: 'Siempre pagan los socios activos y la junta; los externos y voluntarios nunca.' },
+        { k: 'honorarios', label: 'Honorarios', type: 'bool', check: 'Los socios honorarios también pagan cuota' }], values: cfg, okText: 'Guardar' });
+      if (!out) return;
+      try { cfg = await api('/api/cuotas/config', { method: 'PUT', body: out }); toast('Listo: la cartera se recalculó'); cargar(); } catch (x) { toast(x.message, false); }
+    };
     acciones.querySelector('[data-per]').onclick = periodos;
   }
 
@@ -79,14 +86,14 @@ DW.ready.then(async (me) => {
     const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
     const linea = (x) => x.estado === 'debe' ? `<b>Debe ${C.money(x.saldo)}</b>${x.vencido ? ` · ${C.money(x.vencido)} vencido` : ''}`
       : x.estado === 'por_vencer' ? `<b>Por vencer ${C.money(x.saldo)}</b>` : x.estado === 'adelantado' ? `<b>A favor ${C.money(x.a_favor)}</b>` : `<b>Al día</b> · pagado ${C.money(x.pagado)}`;
-    view.querySelector('[data-cartera]').innerHTML = cartera.length ? `<div class="d-flex flex-wrap gap-2 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
+    view.querySelector('[data-cartera]').innerHTML = `<p class="small text-body-secondary mb-2"><i class="bi bi-info-circle me-1"></i>Pagan cuota: socios activos y junta${cfg.aspirantes ? ', aspirantes' : ''}${cfg.honorarios ? ', honorarios' : ''}. Cada uno desde el mes en que ingresó (o el primer periodo creado).</p>` + (cartera.length ? `<div class="d-flex flex-wrap gap-2 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
         .map(([e, l, c]) => `<button type="button" class="btn btn-sm ${fEst === e ? 'btn-primary' : 'btn-light'} rounded-pill" data-fe="${e}">${l} <span class="badge text-bg-${fEst === e ? 'light' : 'secondary'}">${c}</span></button>`).join('')}</div>
       ${vis.length ? `<div class="ro-cart">${vis.map((x) => `<div class="ro-cc ro-cc-${x.estado}" data-s="${x.socio_id}" role="button" tabindex="0">
           <div class="d-flex align-items-start gap-2">${RO.avatar(x, 38)}<div class="min-w-0 flex-grow-1"><b class="ro-cc-n">${esc(x.nombre)}</b>${x.cargo ? `<div class="small text-body-secondary text-truncate">${esc(x.cargo)}</div>` : ''}</div></div>
           <div class="ro-cc-pie"><span class="ro-cc-e"><i class="bi ${ICO[x.estado]} me-1"></i>${(EST[x.estado] || EST.debe)[1]}</span><span class="text-end">${linea(x)}</span></div>
-          <div class="small text-body-secondary">${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}</div></div>`).join('')}</div>`
+          <div class="small text-body-secondary">${x.desde ? `Cobra desde <b class="text-capitalize">${C.monthName(x.desde)}</b>` : 'Sin meses por cobrar'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}${x.fecha_ingreso ? ` · ingresó ${C.day(x.fecha_ingreso)}` : ''}${['aspirante', 'honorario'].includes(x.tipo) ? ` · ${x.tipo === 'aspirante' ? 'aspirante' : 'honorario'}` : ''}<br>${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'}</div></div>`).join('')}</div>`
         : '<p class="small text-body-secondary">Nadie en este estado.</p>'}`
-      : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».');
+      : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».'));
     view.querySelector('[data-pend]').innerHTML = pend.length ? `<div class="alert alert-warning d-flex align-items-center gap-2"><i class="bi bi-hourglass-split"></i><span class="flex-grow-1">${pend.length} pago${pend.length > 1 ? 's' : ''} reportado${pend.length > 1 ? 's' : ''} por los socios esperan verificación.</span></div>` : '';
     view.querySelector('[data-pagos]').innerHTML = pagos.length ? window.App.table([
       { label: 'Fecha', html: (p) => C.day(p.fecha) }, { label: 'Socio', main: true, html: (p) => `${esc(p.socio || '')}<div class="small text-body-secondary fw-normal text-capitalize">${esc(p.metodo || '')}${p.observaciones ? ` · ${esc(p.observaciones)}` : ''}${p.motivo_rechazo ? ` · <span class="text-danger">${esc(p.motivo_rechazo)}</span>` : ''}</div>` },
@@ -120,7 +127,7 @@ DW.ready.then(async (me) => {
   }
 
   async function cargar() {
-    [cartera, pagos] = await Promise.all([api('/api/cuotas/cartera').then((d) => d.rows), api('/api/cuotas/pagos').then((d) => d.rows)]);
+    [cartera, pagos, cfg] = await Promise.all([api('/api/cuotas/cartera').then((d) => d.rows), api('/api/cuotas/pagos').then((d) => d.rows), api('/api/cuotas/config').catch(() => cfg)]);
     pintar(); pintarAnio(anio);
   }
 

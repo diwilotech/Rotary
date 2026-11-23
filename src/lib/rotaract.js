@@ -40,10 +40,23 @@ export async function socioDeSesionOError(c) {
 }
 
 // Cartera: por socio que paga cuota, lo esperado (periodos vencidos o del mes desde su ingreso) contra lo pagado y verificado.
+// Quién paga cuota (condición SQL sobre ro_socios, sin alias): socios activos y la junta siempre; aspirantes y honorarios
+// solo si el club lo decide (ro_club_config.cuota_aspirantes / cuota_honorarios). Externos y voluntarios nunca.
+// paga_cuota = 0 en la ficha sigue sirviendo para eximir a alguien.
+const CFG = (col) => `COALESCE((SELECT k.${col} FROM ro_club_config k WHERE k.business_id = ro_socios.business_id), 0) = 1`;
+export const PAGA_CUOTA = `ro_socios.paga_cuota = 1 AND (
+  (ro_socios.estado = 'activo' AND (ro_socios.tipo_membresia = 'socio' OR (COALESCE(ro_socios.cargo, '') <> '' AND lower(ro_socios.cargo) NOT IN ('socio', 'socia'))))
+  OR (ro_socios.estado = 'activo' AND ro_socios.tipo_membresia = 'honorario' AND ${CFG('cuota_honorarios')})
+  OR ((ro_socios.estado = 'aspirante' OR (ro_socios.estado = 'activo' AND ro_socios.tipo_membresia = 'aspirante')) AND ${CFG('cuota_aspirantes')}))`;
+export async function configCuota(env, bid) {
+  const r = await one(env, 'SELECT cuota_aspirantes, cuota_honorarios FROM ro_club_config WHERE business_id = ?', bid);
+  return { aspirantes: !!r?.cuota_aspirantes, honorarios: !!r?.cuota_honorarios };
+}
+
 export async function cartera(c, socioId = null) {
   const hoy = today(), mesHoy = hoy.slice(0, 7);
   const [socios, periodos, pagos] = await Promise.all([
-    all(c.env, `SELECT id, nombre, cargo, tipo_membresia, estado, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND paga_cuota = 1 AND estado = 'activo' ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
+    all(c.env, `SELECT id, nombre, cargo, tipo_membresia, estado, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA} ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
     all(c.env, 'SELECT mes, monto, vence FROM ro_periodos WHERE business_id = ? AND mes <= ? ORDER BY mes', c.businessId, mesHoy),
     all(c.env, `SELECT socio_id, SUM(monto) total, MAX(fecha) ultimo FROM ro_pagos WHERE business_id = ? AND estado = 'verificado' GROUP BY socio_id`, c.businessId),
   ]);
@@ -55,7 +68,7 @@ export async function cartera(c, socioId = null) {
     const pg = pagos.find((x) => x.socio_id === s.id);
     const pagado = pg?.total || 0, saldo = Math.max(0, esperado - pagado);
     const estado = pagado >= esperado ? (pagado > esperado ? 'adelantado' : 'al_dia') : pagado >= vencido ? 'por_vencer' : 'debe';
-    return { socio_id: s.id, nombre: s.nombre, cargo: s.cargo, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null, esperado, pagado, saldo, a_favor: Math.max(0, pagado - esperado), vencido: Math.max(0, vencido - pagado), estado, ultimo_pago: pg?.ultimo || null, periodos: debidos.length };
+    return { socio_id: s.id, nombre: s.nombre, cargo: s.cargo, tipo: s.tipo_membresia, fecha_ingreso: s.fecha_ingreso, desde: debidos[0]?.mes || null, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null, esperado, pagado, saldo, a_favor: Math.max(0, pagado - esperado), vencido: Math.max(0, vencido - pagado), estado, ultimo_pago: pg?.ultimo || null, periodos: debidos.length };
   });
 }
 
@@ -67,7 +80,7 @@ export const mesesDelAnio = (anio) => Array.from({ length: 12 }, (_, i) => { con
 export async function anioRotario(c, anio, socioId = null) {
   const hoy = today(), meses = mesesDelAnio(anio);
   const [socios, periodos, pagos, pend] = await Promise.all([
-    all(c.env, `SELECT id, nombre, cargo, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND paga_cuota = 1 AND estado = 'activo' ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
+    all(c.env, `SELECT id, nombre, cargo, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA} ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
     all(c.env, 'SELECT mes, monto, vence FROM ro_periodos WHERE business_id = ? ORDER BY mes', c.businessId),
     all(c.env, "SELECT socio_id, SUM(monto) total FROM ro_pagos WHERE business_id = ? AND estado = 'verificado' GROUP BY socio_id", c.businessId),
     all(c.env, "SELECT socio_id, COUNT(*) n FROM ro_pagos WHERE business_id = ? AND estado = 'pendiente' GROUP BY socio_id", c.businessId),
@@ -105,7 +118,7 @@ export async function clubesDelDistrito(env, codigo) {
     WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? ORDER BY b.name`, def, codigo);
 }
 // Socios que cuentan para la cuota distrital: activos y que pagan cuota.
-export const sociosQueCuentan = async (env, bid) => (await one(env, "SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid))?.n || 0;
+export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid))?.n || 0;
 // Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.
 export async function obligacionesClub(env, bid, { anio = null } = {}) {
   const { codigo } = await distritoDe(env, bid);
@@ -155,7 +168,7 @@ export async function proyeccion(env, bid, anio) {
       SUM(CASE WHEN pago_id IS NOT NULL THEN monto ELSE 0 END) cuotas
       FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY mes`, bid, `${meses[0]}-01`, `${anio + 1}-07-01`),
     all(env, 'SELECT mes, monto FROM ro_periodos WHERE business_id = ?', bid),
-    all(env, "SELECT fecha_ingreso FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND paga_cuota = 1", bid),
+    all(env, `SELECT fecha_ingreso FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid),
     rubros(env, bid, anio),
     obligacionesClub(env, bid, { anio }),
     saldos(env, bid),

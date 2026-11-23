@@ -29,7 +29,11 @@ DW.ready.then(async (me) => {
 
   async function cargar() {
     data = await api('/api/team');
-    view.innerHTML = `<div class="dw-card p-0 p-md-2">${window.App.table([
+    const j = data.junta;
+    view.innerHTML = `${j?.agregados ? `<div class="alert alert-success small">Se agregaron ${j.agregados} de la junta al equipo con acceso de Junta. Envíales su enlace para que creen la contraseña.</div>` : ''}
+      ${j?.sin_correo?.length ? `<div class="alert alert-warning small"><i class="bi bi-envelope-exclamation me-1"></i>De la junta les falta correo para entrar: <b>${j.sin_correo.map(esc).join(', ')}</b>. Agrégalo en su ficha de Socios y entran solos al equipo.</div>` : ''}
+      <p class="small text-body-secondary">La junta (socios con cargo) está siempre en el equipo con acceso de Junta.</p>
+      <div class="dw-card p-0 p-md-2">${window.App.table([
       { label: 'Persona', main: true, html: (u) => `${esc(u.name || u.email)}<div class="small text-body-secondary fw-normal">${esc(u.email)}${u.status === 'invited' ? ' · invitación pendiente' : ''}</div>` },
       { label: 'Rol', html: (u) => (M && u.role !== 'owner' && u.id !== me.user.id ? `<select class="form-select form-select-sm w-auto" data-rol="${esc(u.id)}"><option value="staff" ${u.role === 'staff' ? 'selected' : ''}>Socio</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Junta</option></select>` : esc(ROL[u.role] || u.role)) },
       { label: 'Módulos', html: (u) => (u.role === 'staff' ? `<span class="small">${u.modulos.map((id) => esc(data.catalogo.find((m) => m.id === id)?.nombre || id)).join(', ') || '—'}</span>` : '<span class="small text-body-secondary">Todos</span>') },

@@ -29,6 +29,33 @@ export const publico = (c, s) => {
   return out;
 };
 
+// La junta está en el Equipo: cada socio activo con cargo de junta y correo tiene usuario y acceso de Junta (admin).
+// Si ya estaba como Socio (staff) sube a Junta; la Presidencia (owner) no se toca y nadie baja de rol.
+// Devuelve cuántos agregó o subió y quiénes de la junta no tienen correo.
+export async function juntaAlEquipo(c, soloId = null) {
+  if (c.readOnly) return { agregados: 0, sin_correo: [] };
+  const junta = (await all(c.env, `SELECT id, nombre, email, user_id, cargo FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND COALESCE(cargo, '') <> '' ${soloId ? 'AND id = ?' : ''}`, c.businessId, ...(soloId ? [soloId] : [])))
+    .filter((s) => cargoOrden(s.cargo) < 99);
+  let agregados = 0;
+  const sinCorreo = [];
+  for (const s of junta) {
+    if (!s.email && !s.user_id) { sinCorreo.push(s.nombre); continue; }
+    let uid = s.user_id;
+    if (!uid) {
+      const mail = s.email.toLowerCase();
+      uid = (await one(c.env, 'SELECT id FROM users WHERE email = ?', mail))?.id;
+      if (!uid) { uid = uuid(); await c.env.DB.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').bind(uid, mail, s.nombre).run(); }
+      if (await one(c.env, 'SELECT 1 FROM ro_socios WHERE business_id = ? AND user_id = ? AND id <> ?', c.businessId, uid, s.id)) continue;   // ese usuario ya es otra ficha
+      await c.env.DB.prepare('UPDATE ro_socios SET user_id = ?, updated_at = ? WHERE id = ? AND business_id = ?').bind(uid, Date.now(), s.id, c.businessId).run();
+    }
+    const m = await one(c.env, 'SELECT role FROM memberships WHERE business_id = ? AND user_id = ?', c.businessId, uid);
+    if (!m) { await c.env.DB.prepare("INSERT INTO memberships (user_id, business_id, role) VALUES (?, ?, 'admin')").bind(uid, c.businessId).run(); agregados++; }
+    else if (m.role === 'staff') { await c.env.DB.prepare("UPDATE memberships SET role = 'admin' WHERE business_id = ? AND user_id = ?").bind(c.businessId, uid).run(); agregados++; }
+  }
+  if (agregados) await audit(c, `Pasó ${agregados} de la junta al equipo`, { modulo: MOD });
+  return { agregados, sin_correo: sinCorreo };
+}
+
 export const ENTITIES = {
   socios: { table: 'ro_socios', label: 'el socio', title: 'nombre', search: ['nombre', 'email', 'cargo', 'profesion'], crear: 'manager',
     order: "CASE estado WHEN 'activo' THEN 0 WHEN 'aspirante' THEN 1 WHEN 'inactivo' THEN 2 ELSE 3 END, nombre",
@@ -39,6 +66,8 @@ export const ENTITIES = {
       if (row.cargo && !row.cargo_desde) row.cargo_desde = today();
     },
     beforeUpdate(c, row, before) { if ('cargo' in row && row.cargo !== before.cargo) row.cargo_desde = row.cargo ? today() : null; },
+    afterCreate: (c, id) => juntaAlEquipo(c, id),
+    afterUpdate: (c, id) => juntaAlEquipo(c, id),
     async beforeDelete(c, before) {
       const n = await one(c.env, 'SELECT (SELECT COUNT(*) FROM ro_pagos WHERE business_id = ?1 AND socio_id = ?2) + (SELECT COUNT(*) FROM ro_asistencia WHERE business_id = ?1 AND socio_id = ?2) n', c.businessId, before.id);
       if (n.n) throw new HttpError(409, 'El socio tiene pagos o asistencias: márcalo como retirado en vez de borrarlo');

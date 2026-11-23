@@ -5,6 +5,7 @@ import { db, uuid } from '../lib/db.js';
 import { createInvite, invitePath } from '../lib/auth.js';
 import { assignableModules, parseModulos, moduleAllowed } from '../lib/modules.js';
 import { audit } from '../lib/audit.js';
+import { juntaAlEquipo } from './socios.js';
 
 const TEAM_ROLES = ['admin', 'staff'];
 
@@ -24,12 +25,14 @@ const inviteUrl = (c, token) => new URL(invitePath(token), c.url.origin).toStrin
 
 export function routes(r) {
   r.get('/api/team', 'tenant', async (c) => {
+    // La junta siempre está en el equipo (la presidencia o la junta, al abrir Equipo, completa a quien falte)
+    const junta = ['owner', 'admin'].includes(c.role) ? await juntaAlEquipo(c) : null;
     const users = await db(c.env).all(
       `SELECT u.id, u.email, u.name, m.role, m.modulos, u.password_hash IS NOT NULL AS has_password
          FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.business_id = ?
         ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.email`, c.businessId);
     const catalogo = (await assignableModules(c.env)).map((m) => ({ id: m.id, nombre: m.nombre, defecto: moduleAllowed('staff', null, m.id) }));
-    return json({ catalogo, users: users.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, status: u.has_password ? 'active' : 'invited',
+    return json({ junta, catalogo, users: users.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, status: u.has_password ? 'active' : 'invited',
       modulos: u.role === 'staff' ? catalogo.map((m) => m.id).filter((id) => moduleAllowed('staff', parseModulos(u.modulos), id)) : null })) });
   });
 

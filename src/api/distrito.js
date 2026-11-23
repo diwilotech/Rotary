@@ -8,7 +8,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
-import { distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
+import { PAGA_CUOTA, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
 
 async function distritoOError(c) {
   const d = await distritoDe(c.env, c.businessId);
@@ -87,7 +87,7 @@ export function routes(r) {
     const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id);
     const [pag, soc] = ids.length ? await Promise.all([
       all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE business_id IN (${enLista(ids)}) AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...ids),
-      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE business_id IN (${enLista(ids)}) AND estado = 'activo' AND paga_cuota = 1 GROUP BY business_id`, ...ids),
+      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE business_id IN (${enLista(ids)}) AND ${PAGA_CUOTA} GROUP BY business_id`, ...ids),
     ]) : [[], []];
     return json({ codigo: d.codigo, rows: cuotas.map((q) => {
       const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;

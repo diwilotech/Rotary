@@ -92,16 +92,31 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Cajas: el ingreso de cuota no se borra desde Finanzas (409)', (await A.app(`/api/cajas/movimientos/${(await A.app('/api/cajas/movimientos?f_categoria=Cuotas')).data.rows[0].id}`, { method: 'DELETE' })).status === 409);
   await A.app(`/api/cuotas/pagos/${rp.data.id}/anular`, { method: 'POST', body: {} });
   check('Cuotas: anular saca el ingreso de la caja', (await A.app('/api/cajas/resumen')).data.cajas[0].saldo === 200000);
-  check('Cuotas: el personal no ve la cartera (403) y B no ve pagos de A', (await staff.app('/api/cuotas/cartera')).status === 403 && (await B.app('/api/cuotas/pagos')).data.rows.length === 0);
+  check('Cuotas: el personal no ve la cartera (403) y B no ve pagos de A', (await anaU.app('/api/cuotas/cartera')).status === 403 && (await B.app('/api/cuotas/pagos')).data.rows.length === 0);
 
   /* Cuotas editables (solo quien tiene Cuotas) y acceso de cada socio */
   const pv2 = await A.app('/api/cuotas/pagos', { method: 'POST', body: { socio_id: ana.data.id, monto: 25000 } });
   const ed2 = await A.app(`/api/cuotas/pagos/${pv2.data.id}`, { method: 'PATCH', body: { monto: 30000, metodo: 'nequi' } });
   const mv2 = (await A.app('/api/cajas/movimientos?limit=1000')).data.rows.find((m) => m.pago_id === pv2.data.id);
   check('Cuotas: editar un pago ajusta su ingreso en la Caja menor', ed2.status === 200 && mv2?.monto === 30000 && mv2.cuota?.metodo === 'nequi', JSON.stringify(mv2));
-  check('Cuotas: el personal no edita pagos (403)', (await staff.app(`/api/cuotas/pagos/${pv2.data.id}`, { method: 'PATCH', body: { monto: 1 } })).status === 403);
+  check('Cuotas: el personal no edita pagos (403)', (await anaU.app(`/api/cuotas/pagos/${pv2.data.id}`, { method: 'PATCH', body: { monto: 1 } })).status === 403);
   const conAcc = (await A.app('/api/socios/socios')).data.rows;
-  check('Socios: cada socio muestra su acceso a la app', conAcc.find((x) => x.id === sec.data.id)?.acceso?.rol === 'staff' && conAcc.find((x) => x.id === pres.data.id)?.acceso === null, JSON.stringify(conAcc.map((x) => [x.nombre, x.acceso])));
+  check('Socios: cada socio muestra su acceso (la junta como Junta)', conAcc.find((x) => x.id === sec.data.id)?.acceso?.rol === 'admin' && conAcc.find((x) => x.id === ana.data.id)?.acceso?.rol === 'staff' && conAcc.find((x) => x.id === pres.data.id)?.acceso?.estado === 'invitado', JSON.stringify(conAcc.map((x) => [x.nombre, x.acceso])));
+
+  /* Quién paga cuota y junta en el equipo */
+  const asp = await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Andrés Aspirante', tipo_membresia: 'aspirante' } });
+  const enCart = async () => (await A.app('/api/cuotas/cartera')).data.rows.some((x) => x.socio_id === asp.data.id);
+  const sinAsp = await enCart();
+  await A.app('/api/cuotas/config', { method: 'PUT', body: { aspirantes: true, honorarios: false } });
+  const conAsp = await enCart();
+  check('Cuotas: el club decide si los aspirantes pagan cuota', !sinAsp && conAsp && (await A.app('/api/cuotas/config')).data.aspirantes === true);
+  const ext = await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Eva Externa', tipo_membresia: 'socio_externo' } });
+  check('Cuotas: los socios externos no pagan cuota', !(await A.app('/api/cuotas/cartera')).data.rows.some((x) => x.socio_id === ext.data.id));
+  const vice = await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Víctor Vice', cargo: 'Vicepresidente/a del club', email: `vice${Date.now()}@ejemplo.com` } });
+  const eq = (await A.app('/api/team')).data;
+  const vu = (await A.app('/api/socios/socios')).data.rows.find((x) => x.id === vice.data.id);
+  check('Equipo: la junta entra sola al equipo con acceso de Junta', vu?.acceso?.rol === 'admin' && eq.users.some((u) => u.id === vu.user_id && u.role === 'admin'), JSON.stringify(vu?.acceso));
+  check('Equipo: avisa quién de la junta no tiene correo', eq.junta?.sin_correo?.includes('Camila Presidenta') === false && Array.isArray(eq.junta?.sin_correo), JSON.stringify(eq.junta));
 
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });

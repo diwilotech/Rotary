@@ -12,7 +12,7 @@ import { json, readJson, HttpError } from '../lib/http.js';
 import { crud, all, one, today, cast, MONTH } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
-import { cartera, anioRotario, anioRotarioDe } from '../lib/rotaract.js';
+import { cartera, anioRotario, anioRotarioDe, configCuota } from '../lib/rotaract.js';
 
 const MOD = 'cuotas';
 export const METODOS = ['transferencia', 'nequi', 'daviplata', 'efectivo', 'bre-b', 'otro'];
@@ -101,6 +101,15 @@ export function routes(r) {
     return json({ creados });
   });
 
+  // Quién paga cuota además de los socios activos y la junta
+  r.get('/api/cuotas/config', `manager:${MOD}`, async (c) => json(await configCuota(c.env, c.businessId)));
+  r.put('/api/cuotas/config', `manager:${MOD}`, async (c) => {
+    const b = await readJson(c.req), asp = b.aspirantes ? 1 : 0, hon = b.honorarios ? 1 : 0;
+    await c.env.DB.prepare(`INSERT INTO ro_club_config (business_id, cuota_aspirantes, cuota_honorarios, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(business_id) DO UPDATE SET cuota_aspirantes = excluded.cuota_aspirantes, cuota_honorarios = excluded.cuota_honorarios, updated_at = excluded.updated_at`).bind(c.businessId, asp, hon, Date.now()).run();
+    await audit(c, `Cambió quién paga cuota (aspirantes: ${asp ? 'sí' : 'no'}, honorarios: ${hon ? 'sí' : 'no'})`, { modulo: MOD });
+    return json(await configCuota(c.env, c.businessId));
+  });
   r.get('/api/cuotas/cartera', `manager:${MOD}`, async (c) => json({ rows: await cartera(c) }));
   r.get('/api/cuotas/anio', `manager:${MOD}`, async (c) => {
     const a = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
