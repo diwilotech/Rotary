@@ -230,77 +230,93 @@ async function logoOficial(c, club) {
   const alto = 166.8 + (lineas.length - 1) * fs * 1.15 + fs * 0.3;
   return `<svg class="logo-of" viewBox="8.6 8.7 452.4 ${(alto - 8.7).toFixed(1)}" role="img" aria-label="Rotaract ${esc(nombre)}">${arte}${lineas.map((l, i) => `<text x="299.39" y="${(166.8 + i * fs * 1.15).toFixed(1)}" text-anchor="end" font-family="'Open Sans', Arial, sans-serif" font-weight="300" font-size="${fs.toFixed(1)}" fill="#D41367">${esc(l)}</text>`).join('')}</svg>`;
 }
-// Plantilla común de los certificados del club (A4 horizontal, azul Rotary, oro y arándano; logo oficial; firmas de la junta).
-// d = { titulo, sub, otorga, cuerpo (HTML ya escapado), sello: [arriba, abajo], pie }
-async function certificado(c, socio, d) {
+// Plantilla común de los certificados (A4 horizontal), al estilo de los certificados de Rotary pero propia: a la izquierda una
+// franja azul Rotary con un globo de líneas arándano y oro; a la derecha, en blanco, el logotipo oficial con el nombre del club,
+// el título, a quién se otorga (con letra con serifa), un detalle entre paréntesis, el texto y dos firmas, cada una con su fecha.
+// d = { titulo, nombre, detalle, cuerpo (HTML ya escapado; {club} = nombre del club), firmas: [{ nombre, rol, fecha, img }], codigo }
+async function hojaCertificado(c, d) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
-  const junta = await all(c.env, "SELECT id, nombre, cargo, firma_key FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
-  const pres = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/.test(String(j.cargo).toLowerCase()));
   const club = biz?.name || 'Club Rotaract', logo = await logoOficial(c, club);
-  const firma = (j, rol) => `<div class="firma"><div class="fimg">${j?.firma_key ? `<img src="/api/socios/firma/${j.id}" alt="Firma">` : ''}</div><div class="l"></div>${esc(j?.nombre || '')}<small>${rol}</small></div>`;
-  const socioTxt = esc(socio.nombre);
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.titulo)} ${esc(d.sub)} · ${socioTxt}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Great+Vibes&family=Inter:wght@400;600&family=Open+Sans:wght@300&display=swap" rel="stylesheet">
+  const globo = `<svg class="globo" viewBox="0 0 300 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g fill="none" stroke-linecap="round">
+    ${[0, 1, 2, 3, 4].map((n) => `<ellipse cx="300" cy="400" rx="${60 + n * 70}" ry="330" stroke="${n % 2 ? '#F7A81B' : '#D41367'}" stroke-width="${n % 2 ? 3 : 7}"/>`).join('')}
+    ${[-240, -160, -80, 0, 80, 160, 240].map((y, n) => `<line x1="-20" y1="${400 + y}" x2="320" y2="${400 + y}" stroke="${n % 3 === 1 ? '#F7A81B' : '#D41367'}" stroke-width="${n % 3 === 1 ? 3 : 7}"/>`).join('')}
+    <circle cx="300" cy="400" r="330" stroke="#D41367" stroke-width="9"/></g></svg>`;
+  const firma = (f) => `<div class="firma"><div class="fimg">${f.img ? `<img src="${esc(f.img)}" alt="Firma">` : ''}</div><div class="l"></div><span class="rol">${esc(f.rol)}</span><b>${esc(f.nombre || '')}</b>
+    <div class="fecha">${f.fecha ? esc(fechaLarga(f.fecha)) : '&nbsp;'}</div><div class="l"></div><span class="rol">Fecha</span></div>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.titulo)} · ${esc(d.nombre)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 @page{size:A4 landscape;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-:root{--azul:#17458f;--oro:#f7a81b;--rojo:#d41367;--tinta:#1d2433}
-body{margin:0;background:#e9edf4;color:var(--tinta);font-family:'Cormorant Garamond',Georgia,serif}
-.bar{display:flex;gap:8px;justify-content:center;padding:12px;font-family:Inter,system-ui,sans-serif}.bar button{border:0;border-radius:999px;padding:10px 20px;font-size:15px;background:var(--azul);color:#fff;cursor:pointer}
-.hoja{width:297mm;height:210mm;margin:0 auto 20px;background:#fff;position:relative;overflow:hidden;box-shadow:0 10px 40px rgba(23,69,143,.18)}
-.marco{position:absolute;inset:7mm;border:3mm solid var(--azul);border-radius:2mm}
-.marco:after{content:"";position:absolute;inset:2.5mm;border:.6mm solid var(--oro)}
-.esq{position:absolute;width:22mm;height:22mm;border:1.2mm solid var(--oro);z-index:2}
-.e1{top:12mm;left:12mm;border-right:0;border-bottom:0}.e2{top:12mm;right:12mm;border-left:0;border-bottom:0}.e3{bottom:12mm;left:12mm;border-right:0;border-top:0}.e4{bottom:12mm;right:12mm;border-left:0;border-top:0}
-.marca{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150mm;height:150mm;border-radius:50%;border:14mm solid rgba(23,69,143,.045);z-index:0}
-.marca.img{border:0;border-radius:0;background:url('/img/certificado-fondo.png') center/contain no-repeat;opacity:.07}
-.cont{position:relative;z-index:1;height:100%;padding:20mm 30mm 21mm;display:flex;flex-direction:column;align-items:center;text-align:center}
-.top{display:flex;align-items:center;justify-content:center;height:26mm}.logo-of{height:26mm;width:auto}
-.club{font:600 11pt Inter,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:var(--azul)}
-h1{margin:7mm 0 0;font-weight:700;font-size:38pt;letter-spacing:.06em;text-transform:uppercase;color:var(--azul);line-height:1}
-.h1sub{font:600 10pt Inter,sans-serif;letter-spacing:.4em;text-transform:uppercase;color:var(--rojo);margin-top:2.5mm}
-.otorga{margin-top:8mm;font-style:italic;font-size:15pt;color:#5b6475}
-.nombre{font-family:'Great Vibes',cursive;font-size:46pt;color:var(--tinta);line-height:1.1;margin-top:1mm;padding:0 14mm 1mm;border-bottom:.5mm solid var(--oro)}
-.texto{margin-top:6mm;font-size:15pt;max-width:200mm;line-height:1.45;color:#2f3749}.texto b{color:var(--rojo)}
-.pie{margin-top:auto;width:100%;display:flex;align-items:flex-end;justify-content:space-between}
-.firma{width:68mm;text-align:center;font-size:13pt}.fimg{height:16mm;display:flex;align-items:flex-end;justify-content:center}.fimg img{max-height:16mm;max-width:60mm;object-fit:contain;margin-bottom:-2mm}.firma .l{border-top:.4mm solid var(--tinta);margin-bottom:1.5mm}.firma small{display:block;font:600 7.5pt Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#6b7385}
-.sello{width:30mm;height:30mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd36b,var(--oro) 60%,#c98400);display:grid;place-items:center;text-align:center;color:#fff;box-shadow:0 0 0 1.2mm #fff,0 0 0 2mm var(--oro);font-family:Inter,sans-serif}
-.sello b{display:block;font-size:9pt;letter-spacing:.18em}.sello span{display:block;font-size:15pt;font-weight:600}
-.cod{position:absolute;bottom:15mm;left:0;right:0;text-align:center;font:7.5pt Inter,sans-serif;color:#8a91a1;z-index:3}
+:root{--azul:#17458f;--celeste:#0067c8;--oro:#f7a81b;--rojo:#d41367;--gris:#3b4a57}
+body{margin:0;background:#e9edf4;color:#1d2433;font-family:'Open Sans',Arial,sans-serif}
+.bar{display:flex;justify-content:center;padding:12px}.bar button{border:0;border-radius:999px;padding:10px 20px;font:600 15px 'Open Sans',sans-serif;background:var(--azul);color:#fff;cursor:pointer}
+.hoja{width:297mm;height:210mm;margin:0 auto 20px;background:#fff;position:relative;overflow:hidden;display:flex;box-shadow:0 10px 40px rgba(23,69,143,.18)}
+.banda{width:74mm;flex:none;position:relative;overflow:hidden;background:linear-gradient(165deg,var(--azul) 0%,#1d5aa8 55%,var(--celeste) 100%)}
+.banda:after{content:"";position:absolute;top:0;right:0;bottom:0;width:1.6mm;background:var(--oro)}
+.globo{position:absolute;inset:0;width:100%;height:100%;opacity:.9}
+.cuerpo{flex:1;padding:14mm 20mm 11mm;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative}
+.logo-of{height:25mm;width:auto}.club{font:700 12pt 'Open Sans',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--rojo)}
+h1{margin:9mm 0 0;font:700 25pt 'Open Sans',sans-serif;color:var(--gris);letter-spacing:.01em}
+.raya{width:22mm;height:1mm;background:var(--oro);margin:4mm auto 0;border-radius:1mm}
+.otorga{margin-top:6mm;font:400 10.5pt 'Open Sans',sans-serif;color:#6b7385;letter-spacing:.06em;text-transform:uppercase}
+.nombre{margin-top:2mm;font:600 29pt 'Cormorant Garamond',Georgia,serif;color:#1d2433;line-height:1.12;max-width:190mm}
+.detalle{margin-top:1.5mm;font:500 14pt 'Cormorant Garamond',Georgia,serif;color:#3b4a57}
+.texto{margin-top:6mm;font:400 11.5pt/1.6 'Open Sans',sans-serif;color:#2f3749;max-width:175mm}.texto b{color:var(--azul);font-weight:700}
+.pie{margin-top:auto;width:100%;display:flex;justify-content:space-around;gap:16mm}
+.firma{width:72mm;text-align:center}.fimg{height:15mm;display:flex;align-items:flex-end;justify-content:center}.fimg img{max-height:15mm;max-width:62mm;object-fit:contain;margin-bottom:-2mm}
+.firma .l{border-top:.35mm solid #2f3749}.rol{display:block;font:600 6.5pt 'Open Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6b7385;margin-top:1mm}
+.firma b{display:block;font:500 12pt 'Cormorant Garamond',Georgia,serif;color:#1d2433;margin-top:.5mm}
+.fecha{margin-top:4mm;font:500 11.5pt 'Cormorant Garamond',Georgia,serif;color:#1d2433;min-height:5mm}
+.cod{position:absolute;right:8mm;bottom:5mm;font:400 6.5pt 'Open Sans',sans-serif;color:#9aa1ae}
 @media print{body{background:#fff}.bar{display:none}.hoja{margin:0;box-shadow:none}}
 </style></head><body>
 <div class="bar"><button onclick="print()">Descargar PDF / Imprimir</button></div>
-<div class="hoja"><div class="marco"></div><i class="esq e1"></i><i class="esq e2"></i><i class="esq e3"></i><i class="esq e4"></i><div class="marca${FONDO ? ' img' : ''}"></div>
- <div class="cont">
-  <div class="top">${logo}</div>
-  <h1>${esc(d.titulo)}</h1><div class="h1sub">${esc(d.sub)}</div>
+<div class="hoja"><div class="banda">${globo}</div>
+ <div class="cuerpo">
+  ${logo}
+  <h1>${esc(d.titulo)}</h1><div class="raya"></div>
   <div class="otorga">${esc(d.otorga || 'Se otorga a')}</div>
-  <div class="nombre">${socioTxt}</div>
+  <div class="nombre">${esc(d.nombre)}</div>
+  ${d.detalle ? `<div class="detalle">(${esc(d.detalle)})</div>` : ''}
   <div class="texto">${d.cuerpo.replaceAll('{club}', esc(club))}</div>
-  <div class="pie">
-    ${firma(pres, 'Presidencia del club')}
-    <div class="sello"><div><b>${esc(d.sello[0])}</b><span>${esc(d.sello[1])}</span></div></div>
-    ${firma(sec, 'Secretaría del club')}
-  </div>
+  <div class="pie">${d.firmas.map(firma).join('')}</div>
+  ${d.codigo ? `<div class="cod">${esc(d.codigo)}</div>` : ''}
  </div>
- ${d.pie ? `<div class="cod">${esc(d.pie)}</div>` : ''}
 </div>
 <script>/* en pantallas pequeñas la hoja se ve completa (al imprimir vuelve a su tamaño) */(function(){var h=document.querySelector('.hoja');function f(){var w=h.offsetWidth,k=Math.min(1,(innerWidth-16)/w);h.style.transform=k<1?'scale('+k+')':'';h.style.transformOrigin='top left';h.style.marginBottom=k<1?(-(1-k)*h.offsetHeight)+'px':'';h.style.marginLeft=k<1?'8px':''}addEventListener('resize',f);f();matchMedia('print').addEventListener('change',function(e){if(e.matches){h.style.transform='';h.style.margin='0'}else f()})})()</script>
 </body></html>`;
+}
+// Firmas del club: Presidencia y Secretaría (con su firma si la subieron), con la fecha del certificado
+async function firmasJunta(c, fecha) {
+  const junta = await all(c.env, "SELECT id, nombre, cargo, firma_key FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
+  const pres = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/.test(String(j.cargo).toLowerCase()));
+  const f = (j, rol) => ({ nombre: j?.nombre || '', rol, fecha, img: j?.firma_key ? `/api/socios/firma/${j.id}` : null });
+  return [f(pres, 'Presidencia del club'), f(sec, 'Secretaría del club')];
 }
 
 // Certificado de activación: es socio del club a partir de la fecha de activación
 export async function certificadoHtml(c, socio) {
   if (!socio.activado_at) throw new HttpError(409, 'Este socio aún no está activado');
-  return certificado(c, socio, { titulo: 'Certificado', sub: 'de activación', sello: ['SOCIO', String(socio.activado_at).slice(0, 4)],
-    cuerpo: `por haber ingresado a {club} y cumplido con todo lo necesario para ser socio del club.<br>Es <b>socio del club</b> a partir del <b>${fechaLarga(socio.activado_at)}</b>.` });
+  return hojaCertificado(c, { titulo: 'Certificado de activación', nombre: socio.nombre, detalle: `Socio del club desde el ${fechaLarga(socio.activado_at)}`,
+    cuerpo: 'Por haber ingresado a {club} y cumplido con todo lo necesario para ser <b>socio del club</b>, comprometido con el servicio, el compañerismo y el liderazgo que promueve Rotary International.',
+    firmas: await firmasJunta(c, socio.activado_at), codigo: socio.activacion_codigo || '' });
 }
 // Certificados de junta (servicio en un año rotario) y reconocimientos (título y texto propios)
 export async function certificadoEspecialHtml(c, socio, k) {
   if (k.tipo === 'junta') {
-    const anio = `${k.anio}-${k.anio + 1}`;
-    return certificado(c, socio, { titulo: 'Certificado', sub: 'de servicio en la junta', sello: ['JUNTA', `${k.anio}-${String(k.anio + 1).slice(2)}`], pie: `Expedido el ${fechaLarga(k.fecha)}`,
-      cuerpo: `por haber servido como <b>${esc(k.cargo || 'miembro de la junta directiva')}</b> de {club} durante el año rotario <b>${anio}</b>, con compromiso, liderazgo y espíritu de servicio.` });
+    return hojaCertificado(c, { titulo: 'Certificado de servicio', nombre: socio.nombre, detalle: `${k.cargo || 'Junta directiva'} · Año rotario ${k.anio}-${k.anio + 1}`,
+      cuerpo: `Por haber servido como <b>${esc(k.cargo || 'miembro de la junta directiva')}</b> de {club} durante el año rotario <b>${k.anio}-${k.anio + 1}</b>, con compromiso, liderazgo y espíritu de servicio.`,
+      firmas: await firmasJunta(c, k.fecha), codigo: k.codigo || '' });
   }
-  return certificado(c, socio, { titulo: 'Reconocimiento', sub: k.titulo || 'al servicio', otorga: 'Se otorga a', sello: ['MÉRITO', String(k.fecha).slice(0, 4)], pie: `Otorgado el ${fechaLarga(k.fecha)}`,
-    cuerpo: `${esc(k.texto || 'por su compromiso con el servicio y su aporte al club.').replace(/\n/g, '<br>')}` });
+  return hojaCertificado(c, { titulo: `Reconocimiento · ${k.titulo || 'Al servicio'}`, nombre: socio.nombre, detalle: `Otorgado el ${fechaLarga(k.fecha)}`,
+    cuerpo: esc(k.texto || 'Por su compromiso con el servicio y su aporte al club.').replace(/\n/g, '<br>'), firmas: await firmasJunta(c, k.fecha), codigo: k.codigo || '' });
+}
+// Certificado del club (organización): número del club, fundación y club rotario patrocinador. Datos en ro_club_config.kit.
+export async function certificadoClubHtml(c, k) {
+  const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId), club = biz?.name || 'Club Rotaract';
+  const [pres] = await firmasJunta(c, k.fundado || null);
+  return hojaCertificado(c, { titulo: 'Certificado de organización', otorga: 'Se certifica que', nombre: club,
+    detalle: [k.numero ? `Club No. ${k.numero}` : '', k.fundado ? `Fundado el ${fechaLarga(k.fundado)}` : ''].filter(Boolean).join(' · '),
+    cuerpo: `El club ha sido debidamente organizado y se compromete, mediante sus funcionarios y socios, a cumplir con los Estatutos y el Reglamento del programa Rotaract de Rotary International.${k.patrocinador ? `<br><br>Patrocinado por<br><span style="font:500 15pt 'Cormorant Garamond',Georgia,serif;color:#1d2433">${esc(k.patrocinador)}</span>` : ''}`,
+    firmas: [{ nombre: k.presidente_patrocinador || '', rol: 'Presidencia del club rotario patrocinador', fecha: k.fundado || null }, { ...pres, fecha: k.fundado || null }] });
 }

@@ -149,6 +149,9 @@ DW.ready.then(async (me) => {
     const tipoTxt = (k) => (k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
     const PUEDE = M && !RO_APP;
     el.innerHTML = `<div class="row g-3 mb-3">
+        <div class="col-12"><div class="dw-card ro-cert ro-cert-club d-flex flex-row align-items-center gap-3 flex-wrap" style="--c:#17458F"><i class="bi bi-building-check"></i>
+          <div class="flex-grow-1"><b>Del club · Certificado de organización</b><div class="small text-body-secondary">Número del club, fecha de fundación y club rotario patrocinador.</div></div>
+          ${PUEDE ? '<button class="btn btn-sm btn-outline-primary" data-cclub>Datos del club</button>' : ''}<a class="btn btn-sm btn-primary" href="/api/socios/club/certificado" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver certificado</a></div></div>
         <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#17458F"><i class="bi bi-patch-check-fill"></i><b>Activación</b><span class="small text-body-secondary">Es socio del club a partir de su fecha de activación.</span>
           <span class="small"><b>${act}</b> socios activados</span><a class="btn btn-sm btn-outline-primary mt-auto" href="#activacion" data-ir="activacion">Ver activaciones</a></div></div>
         <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#F7A81B"><i class="bi bi-people-fill"></i><b>Junta del año rotario</b><span class="small text-body-secondary">Por haber servido en un cargo de la junta durante el año rotario.</span>
@@ -160,6 +163,14 @@ DW.ready.then(async (me) => {
         : window.App.empty('bi-award', 'Aún no hay certificados de junta ni reconocimientos.')}`;
     el.onclick = async (e) => {
       if (e.target.closest('[data-ir]')) { e.preventDefault(); tab = 'activacion'; history.replaceState(null, '', '#activacion'); document.querySelectorAll('nav.ro-club a').forEach((a) => a.classList.toggle('on', a.dataset.club === 'activacion')); return pintar(); }
+      if (e.target.closest('[data-cclub]')) {
+        const actual = await api('/api/socios/club').catch(() => ({}));
+        const out = await C.form({ title: 'Datos del club', fields: [{ k: 'numero', label: 'Número del club (Rotary)', type: 'text' }, { k: 'fundado', label: 'Fecha de fundación', type: 'date' },
+          { k: 'patrocinador', label: 'Club rotario patrocinador', type: 'text', full: true, placeholder: 'Club Rotario de Medellín' }, { k: 'presidente_patrocinador', label: 'Presidencia del club patrocinador', type: 'text', full: true }], values: actual, okText: 'Guardar' });
+        if (!out) return;
+        try { await api('/api/socios/club', { method: 'PUT', body: out }); toast('Datos del club guardados'); window.open('/api/socios/club/certificado', '_blank', 'noopener'); } catch (x) { toast(x.message, false); }
+        return;
+      }
       if (e.target.closest('[data-cjunta]')) {
         const out = await C.form({ title: 'Certificados de la junta', fields: [{ k: 'anio', label: 'Año rotario', type: 'select', options: [anioR, anioR - 1, anioR - 2].map((a) => [a, `${a}-${a + 1}`]) }, { k: 'fecha', label: 'Fecha de expedición', type: 'date', required: true }],
           values: { anio: anioR, fecha: hoy }, okText: 'Expedir' });

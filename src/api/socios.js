@@ -13,7 +13,7 @@ import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, borrarArchivo, servirArchivo } from '../lib/archivos.js';
-import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, socioDeSesion, anioRotarioDe } from '../lib/rotaract.js';
+import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, certificadoClubHtml, socioDeSesion, anioRotarioDe } from '../lib/rotaract.js';
 
 const MOD = 'socios';
 export const TIPOS = ['socio', 'socio_externo', 'voluntario_invitado', 'aspirante', 'honorario'];
@@ -141,6 +141,18 @@ export function routes(r) {
     await audit(c, `Expidió un certificado de ${tipo === 'junta' ? 'junta' : `reconocimiento «${titulo}»`} a ${s.nombre}`, { modulo: MOD });
     return x.meta.last_row_id;
   };
+  // Datos del club para su certificado de organización (número, fundación, club rotario patrocinador): en ro_club_config.kit
+  const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit FROM ro_club_config WHERE business_id = ?', c.businessId); try { return JSON.parse(r?.kit || '{}').club || {}; } catch (_) { return {}; } };
+  r.get('/api/socios/club', `manager:${MOD}`, async (c) => json(await datosClub(c)));
+  r.put('/api/socios/club', `manager:${MOD}`, async (c) => {
+    const b = await readJson(c.req), d = { numero: cast('numero', 'text', b.numero), fundado: b.fundado ? cast('fundado', 'date', b.fundado) : null,
+      patrocinador: cast('patrocinador', 'text', b.patrocinador), presidente_patrocinador: cast('presidente_patrocinador', 'text', b.presidente_patrocinador) };
+    const r = await one(c.env, 'SELECT kit FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}'); } catch (_) { k = {}; }
+    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, kit, updated_at) VALUES (?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET kit = excluded.kit, updated_at = excluded.updated_at')
+      .bind(c.businessId, JSON.stringify({ ...k, club: d }), Date.now()).run();
+    return json(d);
+  });
+  r.get('/api/socios/club/certificado', `manager:${MOD}`, async (c) => html(await certificadoClubHtml(c, await datosClub(c))));
   r.get('/api/socios/certificados', `manager:${MOD}`, async (c) => json({ rows: await all(c.env, `SELECT k.id, k.socio_id, k.tipo, k.titulo, k.cargo, k.anio, k.fecha, k.texto, s.nombre socio FROM ro_certificados k
     JOIN ro_socios s ON s.id = k.socio_id AND s.business_id = k.business_id WHERE k.business_id = ? ORDER BY k.fecha DESC, k.id DESC`, c.businessId) }));
   r.post('/api/socios/certificados', `manager:${MOD}`, async (c) => { const b = await readJson(c.req); return json({ id: await nuevoCert(c, await socioOr404(c, b.socio_id), b) }, 201); });

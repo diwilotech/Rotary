@@ -18,7 +18,7 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Socios: sin activar no hay certificado', (await A.app(`/api/socios/socios/${ana.data.id}/certificado`)).status === 409);
   const act = await A.app(`/api/socios/socios/${ana.data.id}/activar`, { method: 'POST', body: { fecha: `${mes}-01` } });
   const cert = await A.app(`/api/socios/socios/${ana.data.id}/certificado`);
-  check('Socios: activar (con su fecha) genera el certificado con firmas', act.data.activado_at === `${mes}-01` && cert.status === 200 && cert.data.text.includes('Ana Socia') && cert.data.text.includes('Camila Presidenta') && cert.data.text.includes('a partir del') && cert.data.text.includes('socio del club'));
+  check('Socios: activar (con su fecha) genera el certificado con firmas', act.data.activado_at === `${mes}-01` && cert.status === 200 && cert.data.text.includes('Ana Socia') && cert.data.text.includes('Camila Presidenta') && cert.data.text.includes('Socio del club desde') && cert.data.text.includes('socio del club'));
   await A.app(`/api/socios/socios/${ana.data.id}`, { method: 'PATCH', body: { myrotary_id: '12345678', myrotary_at: `${mes}-02` } });
   const cert2 = await A.app(`/api/socios/socios/${ana.data.id}/certificado`);
   const anaR = (await A.app('/api/socios/socios')).data.rows.find((x) => x.id === ana.data.id);
@@ -212,7 +212,10 @@ export default async function ({ check, newBusiness, newMember }) {
   const cr = await A.app('/api/socios/certificados', { method: 'POST', body: { tipo: 'reconocimiento', socio_id: ana.data.id, titulo: 'Socio del año', texto: 'por su liderazgo' } });
   const certs = (await A.app('/api/socios/certificados')).data.rows;
   const verJ = await A.app(`/api/socios/certificados/${certs.find((k) => k.tipo === 'junta')?.id}`), verR = await A.app(`/api/socios/certificados/${cr.data.id}`);
-  check('Certificados: junta del año (una vez) y reconocimiento con su título', cj.data.creados >= 2 && cj2.data.creados === 0 && cr.status === 201 && verJ.data.text?.includes('servicio en la junta') && verR.data.text?.includes('Socio del año') && verR.data.text.includes('por su liderazgo'), JSON.stringify(cj.data));
+  check('Certificados: junta del año (una vez) y reconocimiento con su título', cj.data.creados >= 2 && cj2.data.creados === 0 && cr.status === 201 && verJ.data.text?.includes('Certificado de servicio') && verR.data.text?.includes('Socio del año') && verR.data.text.includes('por su liderazgo'), JSON.stringify(cj.data));
+  await A.app('/api/socios/club', { method: 'PUT', body: { numero: '215847', fundado: '2017-07-20', patrocinador: 'Club Rotario Prueba' } });
+  const cclub = await A.app('/api/socios/club/certificado');
+  check('Certificados: el del club (organización) lleva número, fundación y patrocinador', cclub.status === 200 && cclub.data.text.includes('Club No. 215847') && cclub.data.text.includes('Club Rotario Prueba') && cclub.data.text.includes('Certificado de organización'));
   check('Certificados: B no ve los de A y un socio no ve los de otro', (await B.app(`/api/socios/certificados/${cr.data.id}`)).status === 404 && (await anaU.app('/api/socios/certificados')).status === 403);
 
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
