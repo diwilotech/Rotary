@@ -59,6 +59,38 @@ export async function cartera(c, socioId = null) {
   });
 }
 
+// Año rotario (julio → junio): por socio, qué meses quedan cubiertos. Los pagos verificados se aplican en orden a los
+// periodos desde su ingreso (el más viejo primero), así un pago de varios meses llena varias casillas.
+// Casilla: pagado | parcial | debe (vencido) | pendiente (aún no vence) | na (sin periodo o antes de su ingreso).
+export const anioRotarioDe = (iso) => { const [y, m] = String(iso).slice(0, 7).split('-').map(Number); return m >= 7 ? y : y - 1; };
+export async function anioRotario(c, anio, socioId = null) {
+  const hoy = today(), meses = Array.from({ length: 12 }, (_, i) => { const m = ((6 + i) % 12) + 1; return `${anio + (m < 7 ? 1 : 0)}-${String(m).padStart(2, '0')}`; });
+  const [socios, periodos, pagos, pend] = await Promise.all([
+    all(c.env, `SELECT id, nombre, cargo, fecha_ingreso, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND paga_cuota = 1 AND estado = 'activo' ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
+    all(c.env, 'SELECT mes, monto, vence FROM ro_periodos WHERE business_id = ? ORDER BY mes', c.businessId),
+    all(c.env, "SELECT socio_id, SUM(monto) total FROM ro_pagos WHERE business_id = ? AND estado = 'verificado' GROUP BY socio_id", c.businessId),
+    all(c.env, "SELECT socio_id, COUNT(*) n FROM ro_pagos WHERE business_id = ? AND estado = 'pendiente' GROUP BY socio_id", c.businessId),
+  ]);
+  const totales = meses.map((mes) => ({ mes, monto: periodos.find((p) => p.mes === mes)?.monto ?? null, esperado: 0, recaudado: 0 }));
+  const rows = socios.map((s) => {
+    const desde = (s.fecha_ingreso || '').slice(0, 7);
+    let resto = pagos.find((x) => x.socio_id === s.id)?.total || 0;
+    const cubierto = {};
+    for (const p of periodos) { if (desde && p.mes < desde) continue; const a = Math.min(resto, p.monto); cubierto[p.mes] = [a, p]; resto -= a; }
+    const celdas = meses.map((mes, i) => {
+      const x = cubierto[mes]; if (!x) return { mes, estado: 'na' };
+      const [aplicado, p] = x;
+      totales[i].esperado += p.monto; totales[i].recaudado += aplicado;
+      const estado = aplicado >= p.monto ? 'pagado' : (p.vence || `${p.mes}-28`) < hoy ? 'debe' : aplicado ? 'parcial' : 'pendiente';
+      return { mes, estado, aplicado, monto: p.monto };
+    });
+    return { socio_id: s.id, nombre: s.nombre, cargo: s.cargo, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null, celdas, a_favor: resto,
+      pagados: celdas.filter((x) => x.estado === 'pagado').length, por_verificar: pend.find((x) => x.socio_id === s.id)?.n || 0 };
+  });
+  const anios = [...new Set([anioRotarioDe(hoy), ...periodos.map((p) => anioRotarioDe(p.mes))])].sort();
+  return { anio, nombre: `${anio}-${anio + 1}`, actual: anioRotarioDe(hoy), anios, meses: totales, rows };
+}
+
 export async function saldos(env, businessId) {
   const r = await all(env, "SELECT caja, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE -monto END) saldo FROM ro_movimientos WHERE business_id = ? GROUP BY caja", businessId);
   return { menor: r.find((x) => x.caja === 'menor')?.saldo || 0, mayor: r.find((x) => x.caja === 'mayor')?.saldo || 0 };

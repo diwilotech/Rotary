@@ -85,6 +85,8 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Cuotas: verificado entra a la caja menor y se ve con comprobante', (await A.app('/api/cajas/resumen')).data.cajas[0].saldo === 225000 && pagos[0].estado === 'verificado' && pagos[0].comprobante === true);
   k = (await A.app('/api/cuotas/cartera')).data.rows.find((x) => x.socio_id === sec.data.id);
   check('Cuotas: el socio queda al día', k.estado === 'al_dia' && k.saldo === 0, JSON.stringify(k));
+  { const y = (await A.app(`/api/cuotas/anio?anio=${+mes.slice(5) >= 7 ? +mes.slice(0, 4) : +mes.slice(0, 4) - 1}`)).data, f = y.rows.find((x) => x.socio_id === sec.data.id);
+    check('Cuotas: año rotario de julio a junio con el mes pagado', y.meses.length === 12 && y.meses[0].mes.endsWith('-07') && f?.celdas.find((c) => c.mes === mes)?.estado === 'pagado', JSON.stringify(f)); }
   check('Cajas: el ingreso de cuota no se borra desde Finanzas (409)', (await A.app(`/api/cajas/movimientos/${(await A.app('/api/cajas/movimientos?f_categoria=Cuotas')).data.rows[0].id}`, { method: 'DELETE' })).status === 409);
   await A.app(`/api/cuotas/pagos/${rp.data.id}/anular`, { method: 'POST', body: {} });
   check('Cuotas: anular saca el ingreso de la caja', (await A.app('/api/cajas/resumen')).data.cajas[0].saldo === 200000);

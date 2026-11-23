@@ -2,6 +2,7 @@
 // Un pago verificado entra solo a la Caja menor (Club) como ingreso «Cuotas»; anularlo lo saca de la caja.
 //   CRUD /api/cuotas/periodos                 (junta)   ·   POST /api/cuotas/periodos/generar { desde: 'AAAA-MM', hasta, monto, dia_vence? }
 //   GET  /api/cuotas/cartera
+//   GET  /api/cuotas/anio?anio=2026   año rotario (julio → junio): meses pagados por socio
 //   GET  /api/cuotas/pagos?estado=            ingresos con su comprobante
 //   POST /api/cuotas/pagos                    { socio_id, monto, fecha, metodo, observaciones }  la junta lo registra ya verificado
 //   POST /api/cuotas/pagos/:id/comprobante    (cuerpo = foto o PDF)   ·   GET …/comprobante
@@ -11,7 +12,7 @@ import { json, readJson, HttpError } from '../lib/http.js';
 import { crud, all, one, today, cast, MONTH } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
-import { cartera } from '../lib/rotaract.js';
+import { cartera, anioRotario, anioRotarioDe } from '../lib/rotaract.js';
 
 const MOD = 'cuotas';
 export const METODOS = ['transferencia', 'nequi', 'daviplata', 'efectivo', 'bre-b', 'otro'];
@@ -101,6 +102,11 @@ export function routes(r) {
   });
 
   r.get('/api/cuotas/cartera', `manager:${MOD}`, async (c) => json({ rows: await cartera(c) }));
+  r.get('/api/cuotas/anio', `manager:${MOD}`, async (c) => {
+    const a = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
+    if (a < 2000 || a > 2100) throw new HttpError(400, 'Año rotario no válido');
+    return json(await anioRotario(c, a));
+  });
   r.get('/api/cuotas/pagos', `manager:${MOD}`, async (c) => json({ rows: await pagosDe(c, { estado: c.url.searchParams.get('estado') || null }) }));
   r.post('/api/cuotas/pagos', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req);

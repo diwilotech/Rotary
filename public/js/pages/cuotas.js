@@ -9,7 +9,7 @@ DW.ready.then(async (me) => {
   const EST = { al_dia: ['ok', 'Al día'], adelantado: ['ok', 'Adelantado'], por_vencer: ['soon', 'Por vencer'], debe: ['bad', 'Debe'] };
   const PEST = { pendiente: ['soon', 'Por verificar'], verificado: ['ok', 'Verificado'], rechazado: ['bad', 'Rechazado'], anulado: ['free', 'Anulado'] };
   const METODOS = [['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['efectivo', 'Efectivo'], ['bre-b', 'Bre-B'], ['otro', 'Otro']];
-  let cartera = [], pagos = [], filtro = '';
+  let cartera = [], pagos = [], filtro = '', anio = null;
   RO.nav('cuotas');
 
   if (W) {
@@ -77,16 +77,44 @@ DW.ready.then(async (me) => {
         : p.estado === 'verificado' ? `<button class="btn btn-sm btn-light" data-a="anular" data-p="${p.id}" title="Anular"><i class="bi bi-x-circle"></i></button>` : '') }], pagos) : window.App.empty('bi-receipt', 'Aún no hay ingresos de cuotas.');
   }
 
-  async function cargar() {
-    [cartera, pagos] = await Promise.all([api('/api/cuotas/cartera').then((d) => d.rows), api('/api/cuotas/pagos').then((d) => d.rows)]);
-    pintar();
+  // Año rotario (julio → junio): barras de lo recaudado por mes y una casilla por socio y mes.
+  const CEL = { pagado: 'Pagado', parcial: 'Abono parcial', debe: 'Debe', pendiente: 'Aún no vence', na: 'Sin cuota' };
+  const MES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  async function pintarAnio(a) {
+    const el = view.querySelector('[data-anio]');
+    let d; try { d = await api(`/api/cuotas/anio${a ? `?anio=${a}` : ''}`); } catch (x) { el.innerHTML = ''; return; }
+    anio = d.anio;
+    const esp = d.meses.reduce((t, m) => t + m.esperado, 0), rec = d.meses.reduce((t, m) => t + m.recaudado, 0);
+    const corto = (m) => MES[+m.slice(5)];
+    el.innerHTML = `<div class="dw-card mb-4">
+      <div class="d-flex align-items-center gap-2 mb-2 flex-wrap"><h2 class="h6 m-0 flex-grow-1"><i class="bi bi-calendar-range me-1"></i>Año rotario ${esc(d.nombre)} <span class="small text-body-secondary fw-normal">· julio a junio</span></h2>
+        <div class="btn-group btn-group-sm"><button class="btn btn-light" data-ay="${d.anio - 1}" ${d.anios[0] >= d.anio ? 'disabled' : ''} aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
+        <button class="btn btn-light" data-ay="${d.anio + 1}" ${d.anios.at(-1) <= d.anio ? 'disabled' : ''} aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
+      <div class="small text-body-secondary mb-1">Recaudado <b class="text-body">${C.money(rec)}</b> de ${C.money(esp)}${esp ? ` · ${Math.round(rec / esp * 100)}%` : ''}</div>
+      <div data-abars></div>
+      ${d.rows.length ? `<div class="ro-anio mt-3"><table><thead><tr><th></th>${d.meses.map((m) => `<th title="${m.monto == null ? 'Sin periodo creado' : C.money(m.monto)}">${corto(m.mes)}</th>`).join('')}<th class="text-end">Meses</th></tr></thead>
+        <tbody>${d.rows.map((r) => `<tr><td class="ro-anio-n">${RO.avatar(r, 26)}<span class="text-truncate">${esc(r.nombre)}</span>${r.por_verificar ? '<i class="bi bi-hourglass-split text-warning" title="Tiene pagos por verificar"></i>' : ''}</td>
+          ${r.celdas.map((x) => `<td><i class="ro-c ro-c-${x.estado}" title="${corto(x.mes)} · ${CEL[x.estado]}${x.monto ? ` · ${C.money(x.aplicado)} de ${C.money(x.monto)}` : ''}"></i></td>`).join('')}
+          <td class="text-end small"><b>${r.pagados}</b>${r.a_favor ? `<div class="text-success" title="Saldo a favor">+${C.money(r.a_favor)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>
+        <div class="dw-legend mt-2">${['pagado', 'parcial', 'debe', 'pendiente'].map((k) => `<span><i class="ro-c ro-c-${k}"></i>${CEL[k]}</span>`).join('')}</div>` : ''}</div>`;
+    C.bars(el.querySelector('[data-abars]'), d.meses.map((m) => ({ label: corto(m.mes), a: m.recaudado, b: Math.max(0, m.esperado - m.recaudado) })), { la: 'Pagado', lb: 'Falta' });
   }
 
-  view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-kpis></div>
+  async function cargar() {
+    [cartera, pagos] = await Promise.all([api('/api/cuotas/cartera').then((d) => d.rows), api('/api/cuotas/pagos').then((d) => d.rows)]);
+    pintar(); pintarAnio(anio);
+  }
+
+  view.innerHTML = `<style>.ro-anio{overflow-x:auto}.ro-anio table{width:100%;border-collapse:separate;border-spacing:3px;font-size:.8rem}.ro-anio th{font-weight:600;color:var(--bs-secondary-color);text-align:center}
+      .ro-anio td{text-align:center;padding:0}.ro-anio-n{display:flex;align-items:center;gap:6px;text-align:left!important;min-width:150px;max-width:220px;padding-right:6px!important}
+      .ro-c{display:inline-block;width:100%;min-width:18px;height:18px;border-radius:5px;vertical-align:middle}.dw-legend .ro-c{width:12px;min-width:12px;height:12px;margin-right:4px}
+      .ro-c-pagado{background:var(--bs-success)}.ro-c-parcial{background:var(--bs-warning)}.ro-c-debe{background:var(--bs-danger)}.ro-c-pendiente{background:rgba(var(--dw-p-rgb),.18)}.ro-c-na{border:1px dashed var(--bs-border-color)}</style>
+    <div class="dw-grid dw-grid--kpi mb-3" data-kpis></div><div data-anio></div>
     <div class="d-flex align-items-center gap-2 mb-2"><h2 class="h6 mb-0 flex-grow-1">Cartera</h2><input class="form-control form-control-sm" style="max-width:220px" placeholder="Buscar socio…" data-q aria-label="Buscar socio"></div>
     <div class="mb-4" data-cartera></div><div data-pend></div><h2 class="h6 mb-2">Ingresos de cuotas</h2><div class="dw-card p-0 p-md-2" data-pagos></div>`;
   view.querySelector('[data-q]').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintar(); });
   view.addEventListener('click', (e) => {
+    const y = e.target.closest('[data-ay]'); if (y) return pintarAnio(Number(y.dataset.ay));
     const b = e.target.closest('[data-a]'); if (b) return accion(b.dataset.a, pagos.find((p) => String(p.id) === b.dataset.p));
     const s = e.target.closest('[data-s]'); if (s && W) registrar(s.dataset.s);
   });
