@@ -216,17 +216,31 @@ const fechaLarga = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split('
 // arándano Rotaract, logo del club si lo tiene, las 3 fechas del socio (ingreso, activación, My Rotary) y las firmas.
 // Fondo del certificado (engranaje de My Rotary): public/img/certificado-fondo.png. Mientras no exista, un aro suave.
 const FONDO = false;
-export async function certificadoHtml(c, socio) {
-  if (!socio.activado_at) throw new HttpError(409, 'Este socio aún no está activado');
+// Logotipo oficial de Rotaract (public/img/marca/rotaract.svg) con el nombre del club debajo, alineado a la derecha con
+// «Rotaract» en Open Sans Light, igual que el archivo del Brand Center (mismas medidas que public/js/pages/marca-club.js).
+export const nombreDelClub = (n) => String(n || '').replace(/^\s*rotaract\s+/i, '').replace(/^club\s+(de|del|of)?\s*/i, '').trim() || String(n || 'Club');
+async function logoOficial(c, club) {
+  let arte = '';
+  try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rotaract.svg', c.url.origin))); arte = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0]; } catch (_) { arte = ''; }
+  if (!arte) return `<span class="club">${esc(club)}</span>`;
+  const nombre = nombreDelClub(club), max = 290.77;
+  let fs = 48.93, lineas = [nombre];
+  const ancho = (t, f) => [...t].reduce((a, ch) => a + (/[mwMW]/.test(ch) ? 0.82 : /[il.,'ı]/.test(ch) ? 0.24 : /[A-Z]/.test(ch) ? 0.62 : ch === ' ' ? 0.26 : 0.52), 0) * f;
+  if (ancho(nombre, fs) > max) { fs = Math.max(30.3, fs * (max / ancho(nombre, fs))); if (ancho(nombre, fs) > max) { const p = nombre.split(/\s+/), mitad = Math.ceil(p.length / 2); lineas = [p.slice(0, mitad).join(' '), p.slice(mitad).join(' ')]; } }
+  const alto = 166.8 + (lineas.length - 1) * fs * 1.15 + fs * 0.3;
+  return `<svg class="logo-of" viewBox="8.6 8.7 452.4 ${(alto - 8.7).toFixed(1)}" role="img" aria-label="Rotaract ${esc(nombre)}">${arte}${lineas.map((l, i) => `<text x="299.39" y="${(166.8 + i * fs * 1.15).toFixed(1)}" text-anchor="end" font-family="'Open Sans', Arial, sans-serif" font-weight="300" font-size="${fs.toFixed(1)}" fill="#D41367">${esc(l)}</text>`).join('')}</svg>`;
+}
+// Plantilla común de los certificados del club (A4 horizontal, azul Rotary, oro y arándano; logo oficial; firmas de la junta).
+// d = { titulo, sub, otorga, cuerpo (HTML ya escapado), sello: [arriba, abajo], pie }
+async function certificado(c, socio, d) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
-  const st = await one(c.env, 'SELECT logo_key FROM business_settings WHERE business_id = ?', c.businessId);
   const junta = await all(c.env, "SELECT id, nombre, cargo, firma_key FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
   const pres = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/.test(String(j.cargo).toLowerCase()));
-  const club = biz?.name || 'Club Rotaract';
-  const anio = String(socio.activado_at).slice(0, 4);
+  const club = biz?.name || 'Club Rotaract', logo = await logoOficial(c, club);
   const firma = (j, rol) => `<div class="firma"><div class="fimg">${j?.firma_key ? `<img src="/api/socios/firma/${j.id}" alt="Firma">` : ''}</div><div class="l"></div>${esc(j?.nombre || '')}<small>${rol}</small></div>`;
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Certificado de activación · ${esc(socio.nombre)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Great+Vibes&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  const socioTxt = esc(socio.nombre);
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.titulo)} ${esc(d.sub)} · ${socioTxt}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Great+Vibes&family=Inter:wght@400;600&family=Open+Sans:wght@300&display=swap" rel="stylesheet">
 <style>
 @page{size:A4 landscape;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 :root{--azul:#17458f;--oro:#f7a81b;--rojo:#d41367;--tinta:#1d2433}
@@ -239,8 +253,8 @@ body{margin:0;background:#e9edf4;color:var(--tinta);font-family:'Cormorant Garam
 .e1{top:12mm;left:12mm;border-right:0;border-bottom:0}.e2{top:12mm;right:12mm;border-left:0;border-bottom:0}.e3{bottom:12mm;left:12mm;border-right:0;border-top:0}.e4{bottom:12mm;right:12mm;border-left:0;border-top:0}
 .marca{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150mm;height:150mm;border-radius:50%;border:14mm solid rgba(23,69,143,.045);z-index:0}
 .marca.img{border:0;border-radius:0;background:url('/img/certificado-fondo.png') center/contain no-repeat;opacity:.07}
-.cont{position:relative;z-index:1;height:100%;padding:20mm 30mm 16mm;display:flex;flex-direction:column;align-items:center;text-align:center}
-.top{display:flex;align-items:center;justify-content:center;height:24mm}.logo{height:24mm}.logo img{height:100%;max-width:120mm;object-fit:contain}
+.cont{position:relative;z-index:1;height:100%;padding:20mm 30mm 21mm;display:flex;flex-direction:column;align-items:center;text-align:center}
+.top{display:flex;align-items:center;justify-content:center;height:26mm}.logo-of{height:26mm;width:auto}
 .club{font:600 11pt Inter,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:var(--azul)}
 h1{margin:7mm 0 0;font-weight:700;font-size:38pt;letter-spacing:.06em;text-transform:uppercase;color:var(--azul);line-height:1}
 .h1sub{font:600 10pt Inter,sans-serif;letter-spacing:.4em;text-transform:uppercase;color:var(--rojo);margin-top:2.5mm}
@@ -251,24 +265,42 @@ h1{margin:7mm 0 0;font-weight:700;font-size:38pt;letter-spacing:.06em;text-trans
 .firma{width:68mm;text-align:center;font-size:13pt}.fimg{height:16mm;display:flex;align-items:flex-end;justify-content:center}.fimg img{max-height:16mm;max-width:60mm;object-fit:contain;margin-bottom:-2mm}.firma .l{border-top:.4mm solid var(--tinta);margin-bottom:1.5mm}.firma small{display:block;font:600 7.5pt Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#6b7385}
 .sello{width:30mm;height:30mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd36b,var(--oro) 60%,#c98400);display:grid;place-items:center;text-align:center;color:#fff;box-shadow:0 0 0 1.2mm #fff,0 0 0 2mm var(--oro);font-family:Inter,sans-serif}
 .sello b{display:block;font-size:9pt;letter-spacing:.18em}.sello span{display:block;font-size:15pt;font-weight:600}
-.cod{position:absolute;bottom:10mm;left:0;right:0;text-align:center;font:7.5pt Inter,sans-serif;color:#8a91a1;z-index:3}
+.cod{position:absolute;bottom:15mm;left:0;right:0;text-align:center;font:7.5pt Inter,sans-serif;color:#8a91a1;z-index:3}
 @media print{body{background:#fff}.bar{display:none}.hoja{margin:0;box-shadow:none}}
 </style></head><body>
 <div class="bar"><button onclick="print()">Descargar PDF / Imprimir</button></div>
 <div class="hoja"><div class="marco"></div><i class="esq e1"></i><i class="esq e2"></i><i class="esq e3"></i><i class="esq e4"></i><div class="marca${FONDO ? ' img' : ''}"></div>
  <div class="cont">
-  <div class="top">${st?.logo_key ? '<span class="logo"><img src="/api/settings/logo" alt=""></span>' : `<span class="club">${esc(club)}</span>`}</div>
-  <h1>Certificado</h1><div class="h1sub">de activación</div>
-  <div class="otorga">Se otorga a</div>
-  <div class="nombre">${esc(socio.nombre)}</div>
-  <div class="texto">por haber ingresado a ${esc(club)} y cumplido con todo lo necesario para ser socio del club.<br>Es <b>socio del club</b> a partir del <b>${fechaLarga(socio.activado_at)}</b>.</div>
+  <div class="top">${logo}</div>
+  <h1>${esc(d.titulo)}</h1><div class="h1sub">${esc(d.sub)}</div>
+  <div class="otorga">${esc(d.otorga || 'Se otorga a')}</div>
+  <div class="nombre">${socioTxt}</div>
+  <div class="texto">${d.cuerpo.replaceAll('{club}', esc(club))}</div>
   <div class="pie">
     ${firma(pres, 'Presidencia del club')}
-    <div class="sello"><div><b>SOCIO</b><span>${anio}</span></div></div>
+    <div class="sello"><div><b>${esc(d.sello[0])}</b><span>${esc(d.sello[1])}</span></div></div>
     ${firma(sec, 'Secretaría del club')}
   </div>
  </div>
+ ${d.pie ? `<div class="cod">${esc(d.pie)}</div>` : ''}
 </div>
 <script>/* en pantallas pequeñas la hoja se ve completa (al imprimir vuelve a su tamaño) */(function(){var h=document.querySelector('.hoja');function f(){var w=h.offsetWidth,k=Math.min(1,(innerWidth-16)/w);h.style.transform=k<1?'scale('+k+')':'';h.style.transformOrigin='top left';h.style.marginBottom=k<1?(-(1-k)*h.offsetHeight)+'px':'';h.style.marginLeft=k<1?'8px':''}addEventListener('resize',f);f();matchMedia('print').addEventListener('change',function(e){if(e.matches){h.style.transform='';h.style.margin='0'}else f()})})()</script>
 </body></html>`;
+}
+
+// Certificado de activación: es socio del club a partir de la fecha de activación
+export async function certificadoHtml(c, socio) {
+  if (!socio.activado_at) throw new HttpError(409, 'Este socio aún no está activado');
+  return certificado(c, socio, { titulo: 'Certificado', sub: 'de activación', sello: ['SOCIO', String(socio.activado_at).slice(0, 4)],
+    cuerpo: `por haber ingresado a {club} y cumplido con todo lo necesario para ser socio del club.<br>Es <b>socio del club</b> a partir del <b>${fechaLarga(socio.activado_at)}</b>.` });
+}
+// Certificados de junta (servicio en un año rotario) y reconocimientos (título y texto propios)
+export async function certificadoEspecialHtml(c, socio, k) {
+  if (k.tipo === 'junta') {
+    const anio = `${k.anio}-${k.anio + 1}`;
+    return certificado(c, socio, { titulo: 'Certificado', sub: 'de servicio en la junta', sello: ['JUNTA', `${k.anio}-${String(k.anio + 1).slice(2)}`], pie: `Expedido el ${fechaLarga(k.fecha)}`,
+      cuerpo: `por haber servido como <b>${esc(k.cargo || 'miembro de la junta directiva')}</b> de {club} durante el año rotario <b>${anio}</b>, con compromiso, liderazgo y espíritu de servicio.` });
+  }
+  return certificado(c, socio, { titulo: 'Reconocimiento', sub: k.titulo || 'al servicio', otorga: 'Se otorga a', sello: ['MÉRITO', String(k.fecha).slice(0, 4)], pie: `Otorgado el ${fechaLarga(k.fecha)}`,
+    cuerpo: `${esc(k.texto || 'por su compromiso con el servicio y su aporte al club.').replace(/\n/g, '<br>')}` });
 }

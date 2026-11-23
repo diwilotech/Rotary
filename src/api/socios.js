@@ -13,7 +13,7 @@ import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, borrarArchivo, servirArchivo } from '../lib/archivos.js';
-import { cargoOrden, cartera, certificadoHtml, socioDeSesion } from '../lib/rotaract.js';
+import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, socioDeSesion, anioRotarioDe } from '../lib/rotaract.js';
 
 const MOD = 'socios';
 export const TIPOS = ['socio', 'socio_externo', 'voluntario_invitado', 'aspirante', 'honorario'];
@@ -124,6 +124,42 @@ export function routes(r) {
   });
 
   r.post('/api/socios/socios/:id/activar', `manager:${MOD}`, async (c) => json(await activar(c, await socioOr404(c, c.params.id), (await readJson(c.req).catch(() => ({}))).fecha)));
+
+  /* Certificaciones: junta del año (por cargo y año rotario) y reconocimientos a un socio; la de activación sale de su ficha */
+  const html = (t) => new Response(t, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  const nuevoCert = async (c, s, b) => {
+    const tipo = ['junta', 'reconocimiento'].includes(b.tipo) ? b.tipo : null;
+    if (!tipo) throw new HttpError(400, 'Tipo de certificado no válido');
+    const fecha = cast('fecha', 'date', b.fecha || today()), anio = Number(b.anio) || anioRotarioDe(fecha);
+    const cargo = tipo === 'junta' ? (cast('cargo', 'text', b.cargo) || s.cargo) : null;
+    if (tipo === 'junta' && !cargo) throw new HttpError(400, 'Indica el cargo que tuvo en la junta');
+    const titulo = tipo === 'reconocimiento' ? cast('titulo', 'text', b.titulo) : null;
+    if (tipo === 'reconocimiento' && !titulo) throw new HttpError(400, 'Escribe el título del reconocimiento');
+    const codigo = `RTC-${uuid().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const x = await c.env.DB.prepare('INSERT INTO ro_certificados (business_id, socio_id, tipo, titulo, texto, cargo, anio, fecha, codigo, creado_por, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, s.id, tipo, titulo, cast('texto', 'long', b.texto), cargo, anio, fecha, codigo, c.session.user_id, Date.now()).run();
+    await audit(c, `Expidió un certificado de ${tipo === 'junta' ? 'junta' : `reconocimiento «${titulo}»`} a ${s.nombre}`, { modulo: MOD });
+    return x.meta.last_row_id;
+  };
+  r.get('/api/socios/certificados', `manager:${MOD}`, async (c) => json({ rows: await all(c.env, `SELECT k.id, k.socio_id, k.tipo, k.titulo, k.cargo, k.anio, k.fecha, k.texto, s.nombre socio FROM ro_certificados k
+    JOIN ro_socios s ON s.id = k.socio_id AND s.business_id = k.business_id WHERE k.business_id = ? ORDER BY k.fecha DESC, k.id DESC`, c.businessId) }));
+  r.post('/api/socios/certificados', `manager:${MOD}`, async (c) => { const b = await readJson(c.req); return json({ id: await nuevoCert(c, await socioOr404(c, b.socio_id), b) }, 201); });
+  // Toda la junta actual de una vez (certificado de servicio del año rotario)
+  r.post('/api/socios/certificados/junta', `manager:${MOD}`, async (c) => {
+    const b = await readJson(c.req), anio = Number(b.anio) || anioRotarioDe(today());
+    const junta = (await all(c.env, "SELECT * FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND COALESCE(cargo, '') <> ''", c.businessId)).filter((s) => cargoOrden(s.cargo) < 99);
+    let n = 0;
+    for (const s of junta) { if (await one(c.env, "SELECT 1 FROM ro_certificados WHERE business_id = ? AND socio_id = ? AND tipo = 'junta' AND anio = ?", c.businessId, s.id, anio)) continue; await nuevoCert(c, s, { tipo: 'junta', anio, fecha: b.fecha }); n++; }
+    return json({ creados: n, junta: junta.length });
+  });
+  r.delete('/api/socios/certificados/:id', `manager:${MOD}`, async (c) => { await c.env.DB.prepare('DELETE FROM ro_certificados WHERE id = ? AND business_id = ?').bind(Number(c.params.id) || 0, c.businessId).run(); return json({ ok: true }); });
+  r.get('/api/socios/certificados/:id', `tenant:${MOD}`, async (c) => {
+    const k = await one(c.env, 'SELECT * FROM ro_certificados WHERE id = ? AND business_id = ?', Number(c.params.id) || 0, c.businessId);
+    if (!k) throw new HttpError(404, 'Certificado no encontrado');
+    const s = await socioOr404(c, k.socio_id);
+    if (!manager(c) && s.user_id !== c.session.user_id) throw new HttpError(403, 'Solo puedes ver tus propios certificados');
+    return html(await certificadoEspecialHtml(c, s, k));
+  });
 
   r.get('/api/socios/socios/:id/certificado', `tenant:${MOD}`, async (c) => {
     const s = await socioOr404(c, c.params.id);

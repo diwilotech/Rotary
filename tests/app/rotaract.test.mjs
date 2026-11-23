@@ -206,6 +206,15 @@ export default async function ({ check, newBusiness, newMember }) {
   const card2 = (await A.app('/api/impacto/tarjetas')).data.rows.find((x) => x.id === pj2.data.id);
   check('Impacto: la tarjeta trae responsable y comunidades', Array.isArray(card2.comunidades) && card2.comunidades.includes('Fundación Jardín de Amor') && 'lider' in card2);
 
+  /* Certificados: junta del año y reconocimientos */
+  const cj = await A.app('/api/socios/certificados/junta', { method: 'POST', body: {} });
+  const cj2 = await A.app('/api/socios/certificados/junta', { method: 'POST', body: {} });
+  const cr = await A.app('/api/socios/certificados', { method: 'POST', body: { tipo: 'reconocimiento', socio_id: ana.data.id, titulo: 'Socio del año', texto: 'por su liderazgo' } });
+  const certs = (await A.app('/api/socios/certificados')).data.rows;
+  const verJ = await A.app(`/api/socios/certificados/${certs.find((k) => k.tipo === 'junta')?.id}`), verR = await A.app(`/api/socios/certificados/${cr.data.id}`);
+  check('Certificados: junta del año (una vez) y reconocimiento con su título', cj.data.creados >= 2 && cj2.data.creados === 0 && cr.status === 201 && verJ.data.text?.includes('servicio en la junta') && verR.data.text?.includes('Socio del año') && verR.data.text.includes('por su liderazgo'), JSON.stringify(cj.data));
+  check('Certificados: B no ve los de A y un socio no ve los de otro', (await B.app(`/api/socios/certificados/${cr.data.id}`)).status === 404 && (await anaU.app('/api/socios/certificados')).status === 403);
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);

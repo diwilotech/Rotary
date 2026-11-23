@@ -8,7 +8,7 @@ DW.ready.then(async (me) => {
   const RO_ = window.RO, M = me.canManage, RO_APP = me.business.readOnly;
   const CARGOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club', 'Director/a de Servicio a la Comunidad',
     'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos', 'Presidente/a del Comité de la Fundación del club'];
-  let tab = location.hash === '#activacion' ? 'activacion' : 'socios', filtro = '', rows = [];
+  let tab = ['activacion', 'certificados'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'socios', filtro = '', rows = [];
   RO_.nav(tab, (k) => { tab = k; pintar(); });
 
   if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
@@ -139,10 +139,51 @@ DW.ready.then(async (me) => {
     try { await api(`/api/socios/socios/${s.id}`, { method: 'PATCH', body: { myrotary_id: out.myrotary_id || null, myrotary_at: out.myrotary_at || null } }); toast('My Rotary actualizado'); await cargar(); } catch (x) { toast(x.message, false); }
   }
 
+  /* ---------- Certificados: activación (de cada socio), junta del año y reconocimientos ---------- */
+  const RECONOC = ['Socio del año', 'Compromiso con el servicio', 'Liderazgo', 'Mejor proyecto del año', 'Compañerismo', 'Mérito rotario'];
+  async function pintarCertificados() {
+    const el = view.querySelector('[data-lista]'); el.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let ks = []; try { ks = (await api('/api/socios/certificados')).rows; } catch (x) { el.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    const hoy = C.todayCo(), anioR = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1;
+    const act = rows.filter((s) => s.activado).length, junta = rows.filter((s) => s.junta && s.estado === 'activo');
+    const tipoTxt = (k) => (k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
+    const PUEDE = M && !RO_APP;
+    el.innerHTML = `<div class="row g-3 mb-3">
+        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#17458F"><i class="bi bi-patch-check-fill"></i><b>Activación</b><span class="small text-body-secondary">Es socio del club a partir de su fecha de activación.</span>
+          <span class="small"><b>${act}</b> socios activados</span><a class="btn btn-sm btn-outline-primary mt-auto" href="#activacion" data-ir="activacion">Ver activaciones</a></div></div>
+        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#F7A81B"><i class="bi bi-people-fill"></i><b>Junta del año rotario</b><span class="small text-body-secondary">Por haber servido en un cargo de la junta durante el año rotario.</span>
+          <span class="small"><b>${junta.length}</b> en la junta actual</span>${PUEDE ? `<button class="btn btn-sm btn-primary mt-auto" data-cjunta>Expedir a toda la junta ${anioR}-${anioR + 1}</button>` : ''}</div></div>
+        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#D41367"><i class="bi bi-award-fill"></i><b>Reconocimientos</b><span class="small text-body-secondary">Para un socio en especial: socio del año, liderazgo, mejor proyecto…</span>
+          <span class="small"><b>${ks.filter((k) => k.tipo === 'reconocimiento').length}</b> entregados</span>${PUEDE ? '<button class="btn btn-sm btn-primary mt-auto" data-creco>Nuevo reconocimiento</button>' : ''}</div></div></div>
+      ${ks.length ? window.App.table([{ label: 'Socio', main: true, html: (k) => esc(k.socio) }, { label: 'Certificado', html: (k) => esc(tipoTxt(k)) }, { label: 'Fecha', html: (k) => C.day(k.fecha) },
+        { label: '', cls: 'text-end text-nowrap', html: (k) => `<a class="btn btn-sm btn-outline-primary" href="/api/socios/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a>${PUEDE ? ` <button class="btn btn-sm btn-light" data-cborrar="${k.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}` }], ks)
+        : window.App.empty('bi-award', 'Aún no hay certificados de junta ni reconocimientos.')}`;
+    el.onclick = async (e) => {
+      if (e.target.closest('[data-ir]')) { e.preventDefault(); tab = 'activacion'; history.replaceState(null, '', '#activacion'); document.querySelectorAll('nav.ro-club a').forEach((a) => a.classList.toggle('on', a.dataset.club === 'activacion')); return pintar(); }
+      if (e.target.closest('[data-cjunta]')) {
+        const out = await C.form({ title: 'Certificados de la junta', fields: [{ k: 'anio', label: 'Año rotario', type: 'select', options: [anioR, anioR - 1, anioR - 2].map((a) => [a, `${a}-${a + 1}`]) }, { k: 'fecha', label: 'Fecha de expedición', type: 'date', required: true }],
+          values: { anio: anioR, fecha: hoy }, okText: 'Expedir' });
+        if (!out) return;
+        try { const r = await api('/api/socios/certificados/junta', { method: 'POST', body: out }); toast(r.creados ? `Listo: ${r.creados} certificados de la junta` : 'La junta ya tenía su certificado de ese año'); pintarCertificados(); } catch (x) { toast(x.message, false); }
+        return;
+      }
+      if (e.target.closest('[data-creco]')) {
+        const out = await C.form({ title: 'Nuevo reconocimiento', fields: [{ k: 'socio_id', label: 'Socio', type: 'select', required: true, options: rows.filter((s) => ['activo', 'aspirante'].includes(s.estado)).map((s) => [s.id, s.nombre]) },
+          { k: 'titulo', label: 'Reconocimiento', type: 'select', options: RECONOC.map((t) => [t, t]) }, { k: 'texto', label: 'Por qué se reconoce', type: 'long', placeholder: 'por su liderazgo en la jornada de servicio…' }, { k: 'fecha', label: 'Fecha', type: 'date', required: true }],
+          values: { fecha: hoy, titulo: RECONOC[0] }, okText: 'Expedir' });
+        if (!out) return;
+        try { const r = await api('/api/socios/certificados', { method: 'POST', body: { ...out, tipo: 'reconocimiento' } }); toast('Reconocimiento expedido'); window.open(`/api/socios/certificados/${r.id}`, '_blank', 'noopener'); pintarCertificados(); } catch (x) { toast(x.message, false); }
+        return;
+      }
+      const b = e.target.closest('[data-cborrar]');
+      if (b && (await confirm({ title: '¿Borrar este certificado?', ok: 'Borrar' }))) { try { await api(`/api/socios/certificados/${b.dataset.cborrar}`, { method: 'DELETE' }); pintarCertificados(); } catch (x) { toast(x.message, false); } }
+    };
+  }
+
   function pintar() {
-    document.querySelector('[data-h1]').textContent = tab === 'activacion' ? 'Activación' : 'Socios';
+    document.querySelector('[data-h1]').textContent = { activacion: 'Activación', certificados: 'Certificados' }[tab] || 'Socios';
     view.querySelector('[data-buscar]').hidden = tab !== 'socios';
-    (tab === 'activacion' ? pintarActivacion : pintarSocios)();
+    ({ activacion: pintarActivacion, certificados: pintarCertificados }[tab] || pintarSocios)();
   }
 
   async function cargar() {

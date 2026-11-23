@@ -9,7 +9,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { activeModuleIds } from '../lib/modules.js';
-import { socioDeSesion, socioDeSesionOError, cartera, cargoOrden, certificadoHtml, anioRotario, anioRotarioDe } from '../lib/rotaract.js';
+import { socioDeSesion, socioDeSesionOError, cartera, cargoOrden, certificadoHtml, certificadoEspecialHtml, anioRotario, anioRotarioDe } from '../lib/rotaract.js';
 import { subirFoto, subirFirma, quitarFirma } from './socios.js';
 import { nuevoPago, subirComprobante, servirComprobante, pagosDe } from './cuotas.js';
 
@@ -46,7 +46,8 @@ export function routes(r) {
     // Sus cuotas del año rotario mes a mes (los cuadritos de colores) y el valor de la cuota de este mes
     const [anio, per] = cuota ? await Promise.all([anioRotario(c, anioRotarioDe(hoy), s.id), one(c.env, 'SELECT monto FROM ro_periodos WHERE business_id = ? AND mes <= ? ORDER BY mes DESC LIMIT 1', c.businessId, hoy.slice(0, 7))]) : [null, null];
     if (cuota) Object.assign(cuota, { anio: anio.nombre, meses: anio.rows[0]?.celdas || [], valor_mes: per?.monto || null });
-    return json({ socio: await carnet(c, s), tareas, reuniones, asistencia: { total: asis.t || 0, presente: asis.p || 0, pct: asis.t ? Math.round((asis.p / asis.t) * 100) : null }, cuota, pagos: pagos.slice(0, 24), modulos: [...activos] });
+    const certificados = await all(c.env, 'SELECT id, tipo, titulo, cargo, anio, fecha FROM ro_certificados WHERE business_id = ? AND socio_id = ? ORDER BY fecha DESC', c.businessId, s.id);
+    return json({ certificados, socio: await carnet(c, s), tareas, reuniones, asistencia: { total: asis.t || 0, presente: asis.p || 0, pct: asis.t ? Math.round((asis.p / asis.t) * 100) : null }, cuota, pagos: pagos.slice(0, 24), modulos: [...activos] });
   });
 
   r.get('/api/lotuyo/carnet', 'tenant', async (c) => {
@@ -79,6 +80,11 @@ export function routes(r) {
   });
   r.get('/api/lotuyo/pagos/:id/comprobante', 'tenant', async (c) => servirComprobante(c, await miPago(c, c.params.id, await socioDeSesionOError(c))));
 
+  r.get('/api/lotuyo/certificados/:id', 'tenant', async (c) => {
+    const s = await socioDeSesionOError(c), k = await one(c.env, 'SELECT * FROM ro_certificados WHERE id = ? AND business_id = ? AND socio_id = ?', Number(c.params.id) || 0, c.businessId, s.id);
+    if (!k) throw new HttpError(404, 'Certificado no encontrado');
+    return new Response(await certificadoEspecialHtml(c, s, k), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  });
   r.get('/api/lotuyo/certificado', 'tenant', async (c) => {
     const s = await socioDeSesionOError(c);
     return new Response(await certificadoHtml(c, s), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });

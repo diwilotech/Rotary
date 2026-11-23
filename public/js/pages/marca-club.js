@@ -3,7 +3,7 @@
 // El nombre del club va como en el logo oficial del Brand Center: debajo de «Rotaract», en Open Sans Light, alineado a la
 // DERECHA con el final de la palabra («Medellín»). Si el nombre es largo, la letra se achica hasta caber (y si no, 2 líneas).
 // Arma: el cuadrado de la app (la rueda), horizontal, solo ícono, solo letras (palabra + nombre) y fondo oscuro (todo en blanco).
-// La versión vertical no se genera. Se ofrece desde Inicio (presidencia o junta, club sin logo).
+// La versión vertical no se genera. Se ofrece desde Inicio (presidencia o junta) junto con los colores, la letra y la identidad.
 (function () {
   const BASE = '/img/marca/', ROJO = '#D41367', F = "'Open Sans', Arial, sans-serif";
   // Medidas del arte oficial (unidades del archivo, y hacia arriba): caja del logo completo, de la palabra y del nombre
@@ -60,11 +60,20 @@
     return { app: cuadrado(A.rueda), horizontal: conNombre(A.logo, n), icono: sola(A.rueda, 420), letras: conNombre(A.letras, n, { conRueda: false }),
       oscuro: conNombre(A.logo, n, { color: '#FFFFFF' }) };
   }
+  // Toda la marca del club de una vez: logos oficiales + color de la app (arándano Rotaract) + en Marca: color de la app,
+  // letra Open Sans (como Rotary), fondo claro, tono cercano y, si aún no tienen, una descripción y un lema genéricos.
   async function crear(me) {
     const { api } = window.App, L = await generar(me.business.name), png = (c) => c.toDataURL('image/png');
     await api('/api/settings/logo', { method: 'PUT', body: { dataUrl: png(L.app) } });
     await api('/api/marca/logo', { method: 'PUT', body: { dataUrl: png(L.app) } }).catch(() => {});
     for (const t of ['horizontal', 'icono', 'letras', 'oscuro']) await api(`/api/marca/logos/${t}`, { method: 'PUT', body: { dataUrl: png(L[t]) } });
+    await api('/api/settings/apariencia', { method: 'PUT', body: { tema: 'rotaract' } }).catch(() => {});
+    const actual = await api('/api/marca').then((r) => r.marca || {}).catch(() => ({}));
+    const n = club(me.business.name), body = { color: 'app', fondo: 'claro', tono: 'cercano', tipografia: 'opensans' };
+    if (!actual.descripcion) body.descripcion = `Rotaract ${n} es un club de jóvenes que se unen para servir a su comunidad, crecer como líderes y hacer amigos en todo el mundo, con el respaldo de Rotary International.`;
+    if (!actual.lema) body.lema = 'Gente de acción';
+    // Si Marca aún no conoce la letra Open Sans, se guarda lo demás
+    await api('/api/marca', { method: 'PUT', body }).catch(() => { const { tipografia: _t, ...resto } = body; return api('/api/marca', { method: 'PUT', body: resto }).catch(() => {}); });
     return 5;
   }
   window.RoLogos = { crear, generar, archivos, club };
