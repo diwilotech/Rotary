@@ -17,6 +17,13 @@ Reglas: skill `diwilo-nueva-app` (partió de CD Academia) · Fecha: 2026-11-22 �
 - **Celular:** accesos fijos Inicio · Club · Lo tuyo · Juegos.
 - **Diwilo Admin:** la app se registra con `modulosPorDefecto: false`. Su plan inicial es «Sin módulos», así que cada negocio arranca sin módulos y se activan a mano.
 
+## Distrito (2026-11-23)
+- Perfil **Distrito**: tablero de todos los clubes del código (4271 por defecto), detalle de cada club en solo lectura, los 12 meses del año rotario sumados y la **cuota distrital** por socio activo.
+- Para activarlo: crear «Distrito 4271» en diwilo.com/admin → Rotaract y marcarlo:
+  `npx wrangler d1 execute control-de-rotaract-db --remote --command "INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('<id>', '4271', 1)"`
+- Un club de otro distrito: `INSERT OR REPLACE INTO ro_club_config (business_id, distrito) VALUES ('<id club>', '<código>')`.
+- Finanzas: flujo de los 12 meses del año rotario por caja y pestaña **Proyectado** (ingresos y egresos proyectados, saldo proyectado, obligaciones). Inicio: calendario del club.
+
 ## Pruebas
 - `npm run db:migrate:local && npm test` → «Todo bien»: 115 verificaciones en total, 32 de ellas de los módulos del club.
 - Pantallas revisadas en Chromium sin interfaz, en tamaño celular: las 8 cargan sin errores de JS.
