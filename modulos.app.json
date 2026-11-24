@@ -213,6 +213,27 @@
         ],
         "flujos": []
       }
+    },
+    {
+      "id": "juegos",
+      "nombre": "Juegos",
+      "descripcion": "Juegos del club por salas con código: El Impostor, Trivia, ¿Quién es más probable?, Triqui, Dos verdades y una mentira, Dominó, Parqués y RotaCartas",
+      "icono": "bi-controller",
+      "menu": {
+        "ruta": "/staff/juegos.html",
+        "orden": 80
+      },
+      "permisos": {
+        "ver": "staff",
+        "configurar": "admin"
+      },
+      "widgets": [],
+      "depende_de": [],
+      "tipo": "propio",
+      "tablas": [
+        "ro_juego_salas",
+        "ro_juego_jugadores"
+      ]
     }
   ]
 }

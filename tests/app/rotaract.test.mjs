@@ -257,6 +257,28 @@ export default async function ({ check, newBusiness, newMember }) {
   const detO = (await A.app(`/api/impacto/proyectos/${pob.id}/detalle`)).data, listO = (await A.app(`/api/reuniones/anio?anio=${anioRot}&tipo=obra`)).data.rows;
   check('Reuniones: obra anclada a un proyecto (sale en las actividades del proyecto y en la lista de obras)', ob1.status === 201 && detO.actividades?.some((x) => x.id === ob1.data.id) && listO.find((x) => x.id === ob1.data.id)?.proyecto === 'Obra de prueba', JSON.stringify(detO.actividades));
 
+  /* Juegos: salas con código, turnos del servidor y aislamiento entre clubes */
+  const meA = (await A.app('/api/me')).data;
+  await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Dueño Jugador', email: meA.user.email } });
+  const cat = (await A.app('/api/juegos/catalogo')).data.rows;
+  const sj = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'tictactoe' } })).data;
+  const un = await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sj.sala.codigo } });
+  const unB = await B.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sj.sala.codigo } });
+  check('Juegos: 8 juegos; sala con código; se une otro socio; otro club no entra', cat.length === 8 && sj.sala.codigo.length === 4 && un.status === 200 && un.data.rol === 'jugador' && unB.status === 404, `${un.status} ${unB.status}`);
+  check('Juegos: solo quien creó la sala la empieza', (await staff.app(`/api/juegos/salas/${sj.sala.id}/iniciar`, { method: 'POST', body: {} })).status === 403);
+  const ini = (await A.app(`/api/juegos/salas/${sj.sala.id}/iniciar`, { method: 'POST', body: {} })).data;
+  const turno = ini.juego.turno, yoA = ini.yo, otroCli = turno === yoA ? staff : A, mioCli = turno === yoA ? A : staff;
+  const fueraTurno = await otroCli.app(`/api/juegos/salas/${sj.sala.id}/accion`, { method: 'POST', body: { tipo: 'marcar', datos: { c: 0 } } });
+  const bien = await mioCli.app(`/api/juegos/salas/${sj.sala.id}/accion`, { method: 'POST', body: { tipo: 'marcar', datos: { c: 4 } } });
+  const sinCambio = (await A.app(`/api/juegos/salas/${sj.sala.id}?v=${bien.data.v}`)).data;
+  check('Juegos: el servidor manda en los turnos y solo envía cambios', ini.sala.estado === 'jugando' && fueraTurno.status === 400 && bien.data.juego.tablero[4] && !sinCambio.jugadores, `${fueraTurno.status}`);
+  const sd = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'domino' } })).data;
+  await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sd.sala.codigo } });
+  const dA = (await A.app(`/api/juegos/salas/${sd.sala.id}/iniciar`, { method: 'POST', body: {} })).data, dS = (await staff.app(`/api/juegos/salas/${sd.sala.id}`)).data;
+  check('Juegos: cada quien ve solo sus fichas', dA.juego.mi_mano.length === 7 && dS.juego.mi_mano.length === 7 && JSON.stringify(dA.juego.mi_mano) !== JSON.stringify(dS.juego.mi_mano) && !('manos' in dA.juego));
+  await A.app(`/api/juegos/salas/${sd.sala.id}/cerrar`, { method: 'POST', body: {} });
+  check('Juegos: B no ve las salas de A', (await B.app(`/api/juegos/salas/${sj.sala.id}`)).status === 404 && (await B.app('/api/juegos/salas')).data.abiertas.length === 0);
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);

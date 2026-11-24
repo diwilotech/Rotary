@@ -1,0 +1,67 @@
+// Bancos de contenido de los juegos (el sistema anterior no exportó los suyos: estos son nuevos).
+// Trivia: [pregunta, [opciones], índice de la correcta]
+export const TRIVIA = [
+  ['¿En qué año se fundó Rotary International?', ['1905', '1917', '1923', '1950'], 0],
+  ['¿Quién fundó Rotary?', ['Paul Harris', 'Arch Klumph', 'Melvin Jones', 'Henry Ford'], 0],
+  ['¿En qué ciudad nació Rotary?', ['Chicago', 'Nueva York', 'Londres', 'Toronto'], 0],
+  ['¿En qué año nació Rotaract?', ['1968', '1905', '1985', '2000'], 0],
+  ['¿Dónde se fundó el primer club Rotaract?', ['Charlotte (Carolina del Norte)', 'Chicago', 'Ciudad de México', 'Bogotá'], 0],
+  ['¿De dónde viene el nombre «Rotary»?', ['Los socios rotaban la sede de sus reuniones', 'De una rueda de molino', 'Del apellido del fundador', 'De la rotación de la Tierra'], 0],
+  ['¿Cuántas preguntas tiene La Prueba Cuádruple?', ['4', '3', '5', '6'], 0],
+  ['Primera pregunta de La Prueba Cuádruple:', ['¿Es la verdad?', '¿Es justo para todos?', '¿Creará buena voluntad?', '¿Será beneficioso?'], 0],
+  ['¿Cuál es el lema principal de Rotary?', ['Dar de sí antes de pensar en sí', 'Unidos por el mundo', 'Servir es ganar', 'Juntos somos más'], 0],
+  ['¿Qué enfermedad busca erradicar el programa PolioPlus?', ['La polio', 'El sarampión', 'La malaria', 'La viruela'], 0],
+  ['¿Cuántas áreas de interés tiene Rotary?', ['7', '4', '5', '10'], 0],
+  ['¿Qué símbolo identifica a Rotary?', ['Una rueda dentada', 'Un globo terráqueo', 'Una llama', 'Una estrella'], 0],
+  ['¿Cuántos dientes tiene la rueda de Rotary?', ['24', '12', '20', '30'], 0],
+  ['¿Qué es la Fundación Rotaria?', ['El brazo de Rotary que financia proyectos de servicio', 'Un club de exalumnos', 'Una revista', 'Un comité distrital'], 0],
+  ['¿Cada cuánto se reúne la Convención de Rotary International?', ['Cada año', 'Cada dos años', 'Cada cinco años', 'Cada mes'], 0],
+  ['¿Desde cuándo Rotaract es un tipo de membresía de Rotary International?', ['2019', '1968', '2005', '1990'], 0],
+  ['¿Cómo se llama el programa de Rotary para adolescentes de 12 a 18 años?', ['Interact', 'Rotakids', 'Rotex', 'Youth Club'], 0],
+  ['¿Qué significa RYLA?', ['Premios Rotarios de Liderazgo Juvenil', 'Red de Jóvenes Líderes de América', 'Reunión Anual de Líderes', 'Rotary Youth Leaders Association'], 0],
+  ['¿En qué mes empieza el año rotario?', ['Julio', 'Enero', 'Junio', 'Septiembre'], 0],
+  ['¿Qué distrito rotario corresponde a Antioquia (Colombia)?', ['4271', '4281', '4290', '4250'], 0],
+  ['¿Qué es un club patrocinador?', ['El club rotario que apadrina a un club Rotaract', 'La empresa que da dinero', 'El club con más socios', 'El club del gobernador'], 0],
+  ['¿Cómo se llama la persona que dirige un distrito rotario?', ['Gobernador de distrito', 'Presidente distrital', 'Director regional', 'Secretario general'], 0],
+  ['¿Cuál de estas es un área de interés de Rotary?', ['Paz y prevención de conflictos', 'Deportes extremos', 'Turismo', 'Moda'], 0],
+  ['¿Qué día se celebra el Día Mundial contra la Polio?', ['24 de octubre', '23 de febrero', '1 de julio', '10 de diciembre'], 0],
+  ['¿Qué se conmemora el 23 de febrero?', ['El aniversario de Rotary', 'El Día del Rotaractiano', 'El fin del año rotario', 'La fundación de Interact'], 0],
+  ['¿Qué es la «cajita de macería»?', ['Un recaudo simbólico en la reunión', 'Una urna de votación', 'La caja de actas', 'Un premio'], 0],
+  ['¿Qué hace el macero del club?', ['Cuida el protocolo y recibe a los invitados', 'Lleva las finanzas', 'Escribe las actas', 'Dirige los proyectos'], 0],
+  ['¿Quién lee el acta anterior en la reunión?', ['La secretaría', 'La tesorería', 'El macero', 'El invitado'], 0],
+  ['¿Qué abre formalmente una reunión rotaria?', ['El toque de campana', 'Un aplauso', 'El himno', 'La lectura del acta'], 0],
+  ['¿Cuál es la edad mínima para ser socio de Rotaract?', ['18 años', '15 años', '21 años', '25 años'], 0],
+  ['Tercera pregunta de La Prueba Cuádruple:', ['¿Creará buena voluntad y mejores amistades?', '¿Es la verdad?', '¿Es justo para todos?', '¿Será beneficioso para todos?'], 0],
+  ['¿Qué son los «compañeros de Paul Harris»?', ['Quienes aportan a la Fundación Rotaria', 'Los fundadores de Rotary', 'Los gobernadores', 'Los socios honorarios'], 0],
+  ['¿Qué significa «Gente de acción»?', ['La campaña de imagen de Rotary', 'Un club deportivo', 'Un comité de proyectos', 'El nombre de la revista'], 0],
+  ['¿Cuál es el color principal de la marca Rotaract?', ['Arándano', 'Verde', 'Naranja', 'Morado'], 0],
+  ['¿Qué es My Rotary?', ['La plataforma en línea de los socios de Rotary', 'Una aplicación de juegos', 'Un club en Estados Unidos', 'Un premio'], 0],
+  ['¿Qué es un intercambio de jóvenes de Rotary?', ['Estudiar un año en otro país con una familia anfitriona', 'Cambiar de club', 'Un torneo deportivo', 'Una beca universitaria'], 0],
+  ['¿Qué son las subvenciones globales?', ['Fondos de la Fundación Rotaria para grandes proyectos', 'Cuotas de los socios', 'Premios a clubes', 'Impuestos'], 0],
+  ['¿Cómo se llama la reunión anual de un distrito?', ['Conferencia de distrito', 'Asamblea mundial', 'Congreso rotario', 'Foro regional'], 0],
+  ['¿Qué se busca con el compañerismo en Rotaract?', ['Amistad entre los socios mientras sirven', 'Competir entre clubes', 'Recaudar fondos', 'Hacer política'], 0],
+  ['¿Qué tres pilares resume Rotaract?', ['Servicio, compañerismo y liderazgo', 'Deporte, arte y ciencia', 'Dinero, poder y fama', 'Estudio, trabajo y familia'], 0],
+].map(([p, o, c]) => ({ p, o, c }));
+
+// El Impostor: [categoría, palabras]
+export const PALABRAS = {
+  'Rotary y el club': ['Campana', 'Acta', 'Macero', 'Junta', 'Rueda', 'Distrito', 'Convención', 'Gobernador', 'Polio', 'Proyecto', 'Voluntariado', 'Fundación'],
+  'Lugares': ['Playa', 'Aeropuerto', 'Hospital', 'Biblioteca', 'Estadio', 'Cine', 'Mercado', 'Colegio', 'Montaña', 'Museo', 'Parque', 'Iglesia'],
+  'Comida': ['Arepa', 'Bandeja paisa', 'Empanada', 'Sancocho', 'Buñuelo', 'Pizza', 'Helado', 'Ajiaco', 'Natilla', 'Tamal', 'Chocolate', 'Mango'],
+  'Profesiones': ['Médico', 'Abogado', 'Ingeniero', 'Profesor', 'Chef', 'Piloto', 'Bombero', 'Periodista', 'Arquitecto', 'Músico', 'Enfermero', 'Fotógrafo'],
+  'Objetos': ['Paraguas', 'Celular', 'Linterna', 'Mochila', 'Reloj', 'Bicicleta', 'Cámara', 'Guitarra', 'Llave', 'Espejo', 'Almohada', 'Tijeras'],
+};
+
+// ¿Quién es más probable?
+export const FRASES = [
+  '¿Quién es más probable que llegue tarde a la reunión?', '¿Quién es más probable que diga «yo lo hago» y de verdad lo haga?', '¿Quién es más probable que se vuelva presidente del club?',
+  '¿Quién es más probable que organice un proyecto en otro país?', '¿Quién es más probable que se coma todos los refrigerios?', '¿Quién es más probable que tome la foto del grupo?',
+  '¿Quién es más probable que olvide pagar la cuota?', '¿Quién es más probable que se haga viral en redes?', '¿Quién es más probable que llore en una jornada de servicio?',
+  '¿Quién es más probable que proponga una idea loca y funcione?', '¿Quién es más probable que termine siendo gobernador de distrito?', '¿Quién es más probable que haga amigos en cualquier evento?',
+  '¿Quién es más probable que se pierda camino a la obra?', '¿Quién es más probable que tenga la respuesta para todo?', '¿Quién es más probable que baile primero en la fiesta?',
+  '¿Quién es más probable que llegue con donaciones sin que se lo pidan?', '¿Quién es más probable que escriba el acta más larga?', '¿Quién es más probable que se duerma en una capacitación?',
+  '¿Quién es más probable que viaje a la Convención Internacional?', '¿Quién es más probable que convenza a un amigo de entrar al club?', '¿Quién es más probable que cante en el karaoke?',
+  '¿Quién es más probable que tenga el celular sin batería?', '¿Quién es más probable que organice todo con una hoja de cálculo?', '¿Quién es más probable que se ofrezca a cargar todo en la obra?',
+  '¿Quién es más probable que mande audios de 5 minutos?', '¿Quién es más probable que recuerde el cumpleaños de todos?', '¿Quién es más probable que proponga hacer un asado?',
+  '¿Quién es más probable que haga el mejor discurso?', '¿Quién es más probable que sea el alma de la fiesta?', '¿Quién es más probable que lidere la próxima campaña de donación?',
+];

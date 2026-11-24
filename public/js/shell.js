@@ -164,10 +164,10 @@
 
   function iniciarPanel() {
     const frame = document.getElementById('dw-frame');
-    const OK = /^\/staff\/[\w\-./?=&%]*(#[\w\-]*)?$/;
+    const OK = /^\/staff\/[\w\-./?=&%]*(#[\w\-=]*)?$/;   // el #pestaña admite «=» (#sala=12, #p=5)
     // El #pestaña de un enlace directo (p. ej. cajas.html#proyectado) sobrevive a la redirección: se le pasa a la página
     let go = new URLSearchParams(location.search).get('go');
-    if (go && !go.includes('#') && /^#[\w-]+$/.test(location.hash)) go += location.hash;
+    if (go && !go.includes('#') && /^#[\w=-]+$/.test(location.hash)) go += location.hash;
     let ultimo = null; try { ultimo = sessionStorage.getItem('dw_ultimo'); } catch (_) {}
     frame.src = [go, ultimo, '/staff/'].find((u) => u && OK.test(u));
     history.replaceState(null, '', location.pathname);   // la dirección queda fija: /<dirección del negocio>
