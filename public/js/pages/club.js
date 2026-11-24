@@ -57,8 +57,9 @@
     VIVOS: ['propuesta', 'planeacion', 'en_curso'],
     optsProyectos: (rows, actual = null, empty = 'Ninguno') => [['', empty], ...rows.filter((p) => RO.VIVOS.includes(p.estado) || (actual && p.id === Number(actual))).map((p) => [p.id, p.nombre])],
     // Grupo de cada persona del club: socios (y la junta), aspirantes, honorarios, externos y voluntarios invitados
-    GRUPOS_SOCIO: [['socio', 'Socios del club'], ['aspirante', 'Aspirantes'], ['honorario', 'Socios honorarios'], ['socio_externo', 'Socios externos'], ['voluntario_invitado', 'Voluntarios invitados']],
-    // Opciones de socio por grupos (para <select>): socios del club, aspirantes, honorarios y externos; sin voluntarios ni inactivos
+    // Los socios externos son de otros clubes: en las reuniones van como invitados externos, no en las listas de socios
+    GRUPOS_SOCIO: [['socio', 'Socios del club'], ['aspirante', 'Aspirantes'], ['honorario', 'Socios honorarios'], ['voluntario_invitado', 'Voluntarios invitados']],
+    // Opciones de socio por grupos (para <select>): socios del club, aspirantes y honorarios; sin externos, voluntarios ni inactivos
     optsSocios: (rows, empty = 'Sin responsable', actual = null) => [['', empty], ...RO.GRUPOS_SOCIO.filter(([k]) => k !== 'voluntario_invitado')
       .flatMap(([k, l]) => rows.filter((s) => (['activo', 'aspirante'].includes(s.estado) || s.id === Number(actual)) && RO.grupoSocio(s) === k).map((s) => [s.id, s.nombre, l]))],
     grupoSocio: (s) => (s.estado === 'aspirante' || s.tipo_membresia === 'aspirante' ? 'aspirante' : (s.cargo && !/^soci[oa]$/i.test(s.cargo)) ? 'socio' : (s.tipo_membresia || 'socio')),

@@ -142,7 +142,9 @@ DW.ready.then(async (me) => {
     };
     const hora = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
     const listaAsis = () => `<div class="ro-h">Llamado a lista · <span data-np>${presentes()}</span> de ${socios.length}</div><div style="max-height:340px;overflow:auto">${RO.GRUPOS_SOCIO.map(([k, l]) => { const g = socios.filter((x) => RO.grupoSocio(x) === k); return g.length ? `<div class="small fw-semibold text-body-secondary mt-2 mb-1">${l} (${g.length})</div><div class="ro-socios">${g.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-pres="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>` : ''; }).join('')}</div>`;
-    const listaInv = () => `<div class="ro-h">Invitados externos (${invitadosL.length})</div>${invitadosL.map((i) => `<div class="small py-1 border-bottom"><b>${esc(i.nombre)}</b>${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}</div>`).join('') || '<p class="small text-body-secondary">Aún no hay invitados.</p>'}
+    const externos = socios.filter((x) => x.tipo_membresia === 'socio_externo' && !invitadosL.some((i) => i.nombre === x.nombre));
+    const listaInv = () => `<div class="ro-h">Invitados externos (${invitadosL.length})</div>
+      ${externos.length ? `<div class="small text-body-secondary mb-1">Socios externos (de otros clubes): toca para registrarlos como invitados</div><div class="d-flex flex-wrap gap-1 mb-2">${externos.map((x) => `<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-ext="${x.socio_id}"><i class="bi bi-plus"></i> ${esc(x.nombre)}</button>`).join('')}</div>` : ''}${invitadosL.map((i) => `<div class="small py-1 border-bottom"><b>${esc(i.nombre)}</b>${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}</div>`).join('') || '<p class="small text-body-secondary">Aún no hay invitados.</p>'}
       <form class="d-flex gap-2 mt-2" data-finv><input class="form-control form-control-sm" name="nombre" placeholder="Nombre del invitado" required><input class="form-control form-control-sm" name="procedencia" placeholder="Club u organización"><button class="btn btn-sm btn-outline-primary">Agregar</button></form>`;
     const tabs = () => [['', ''], ...a.items.map((i) => [i.titulo, '']), ['Cierre', 'bi-flag']];
     function cuerpo() {
@@ -221,6 +223,11 @@ DW.ready.then(async (me) => {
         const it = a.items[paso - 1], ta = el.querySelector('[data-nota]');
         it.notas = ta ? ta.value : (it.notas || it.preparado || ''); it.hecho = true; editando = false; cambios = true;
         return ir(paso + 1);
+      }
+      if (b.dataset.ext) {
+        const x = socios.find((y) => String(y.socio_id) === b.dataset.ext);
+        try { await api(`/api/reuniones/reuniones/${r.id}/invitados`, { method: 'POST', body: { nombre: x.nombre, procedencia: 'Socio externo (otro club)', tipo: 'rotaractiano' } }); invitadosL = (await api(`/api/reuniones/reuniones/${r.id}/invitados`)).rows; externos.splice(externos.indexOf(x), 1); pintar(); } catch (y) { toast(y.message, false); }
+        return;
       }
       if (b.dataset.tq) { try { await api(`/api/tareas/tareas/${b.dataset.tq}`, { method: 'DELETE' }); tareasL = tareasL.filter((t) => String(t.id) !== b.dataset.tq); el.querySelector('[data-tareasbox]').innerHTML = listaTareas(); } catch (x) { toast(x.message, false); } return; }
       if (b.dataset.aa !== undefined) { a.acta_anterior = b.dataset.aa === '1'; cambios = true; return pintar(); }
