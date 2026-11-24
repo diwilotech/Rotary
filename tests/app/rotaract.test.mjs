@@ -243,6 +243,11 @@ export default async function ({ check, newBusiness, newMember }) {
   await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`, { method: 'PUT', body: { ...ad2, inicio: '19:05', fin: '20:40', recaudo: 35000, acta_anterior: true } });
   const ad3 = (await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`)).data.acta, ah2 = await A.app(`/api/reuniones/reuniones/${rr.id}/acta`);
   check('Reuniones: conducción guarda responsable, minutos, hora de inicio y fin, cajita y acta anterior', ad3.items[0].responsable_id === pres.data.id && ad3.items[0].minutos === 5 && ad3.inicio === '19:05' && ad3.recaudo === 35000 && ah2.data.text.includes('Camila Presidenta') && ah2.data.text.includes('Inicio 19:05'));
+  const cj0 = (await A.app('/api/cajas/cajita')).data, filaC = cj0.rows.find((x) => x.id === rr.id);
+  const ing = await A.app(`/api/cajas/cajita/${rr.id}/ingresar`, { method: 'POST', body: {} }), ing2 = await A.app(`/api/cajas/cajita/${rr.id}/ingresar`, { method: 'POST', body: {} });
+  const cj1 = (await A.app('/api/cajas/cajita')).data;
+  check('Finanzas: cajita de macería por reunión y pasa a la Caja menor una sola vez', filaC?.recaudo === 35000 && ing.status === 201 && ing2.status === 409 && cj1.rows.find((x) => x.id === rr.id)?.movimiento_id && cj1.pendiente === cj0.pendiente - 35000, JSON.stringify(filaC));
+  check('Finanzas: el personal no ve la cajita', (await anaU.app('/api/cajas/cajita')).status === 403);
   const ev3 = (await A.app('/api/reuniones/reuniones', { method: 'POST', body: { tipo: 'obra', titulo: 'Jornada', fecha: hoy } })).data;
   check('Reuniones: una obra arranca con su propia agenda (no el orden del día de reunión)', (await A.app(`/api/reuniones/reuniones/${ev3.id}/acta-datos`)).data.acta.items[0].titulo === 'Llegada y registro');
 

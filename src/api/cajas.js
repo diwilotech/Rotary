@@ -139,6 +139,27 @@ export function routes(r) {
     return json({ id: x.meta.last_row_id }, 201);
   });
 
+  // Cajita de macería: lo recaudado en cada reunión (se anota al conducirla) y si ya entró a la Caja menor
+  r.get('/api/cajas/cajita', `tenant:${MOD}`, async (c) => {
+    const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
+    const rows = await all(c.env, `SELECT r.id, r.tipo, r.titulo, r.fecha, CAST(json_extract(r.acta, '$.recaudo') AS INTEGER) recaudo,
+      (SELECT m.id FROM ro_movimientos m WHERE m.business_id = r.business_id AND m.categoria = 'Cajita de macería' AND m.observaciones = 'reunion:' || r.id LIMIT 1) movimiento_id
+      FROM ro_reuniones r WHERE r.business_id = ? AND r.fecha >= ? AND r.fecha < ? AND r.acta IS NOT NULL AND json_valid(r.acta) AND COALESCE(json_extract(r.acta, '$.recaudo'), 0) > 0 ORDER BY r.fecha`,
+      c.businessId, `${anio}-07-01`, `${anio + 1}-07-01`);
+    const total = rows.reduce((t, x) => t + x.recaudo, 0), ingresado = rows.filter((x) => x.movimiento_id).reduce((t, x) => t + x.recaudo, 0);
+    return json({ anio, nombre: `${anio}-${anio + 1}`, rows, total, ingresado, pendiente: total - ingresado, promedio: rows.length ? Math.round(total / rows.length) : 0 });
+  });
+  r.post('/api/cajas/cajita/:id/ingresar', `manager:${MOD}`, async (c) => {
+    const x = await one(c.env, "SELECT id, titulo, fecha, CAST(json_extract(acta, '$.recaudo') AS INTEGER) recaudo FROM ro_reuniones WHERE id = ? AND business_id = ? AND json_valid(acta)", Number(c.params.id) || 0, c.businessId);
+    if (!x || !(x.recaudo > 0)) throw new HttpError(404, 'Esa reunión no tiene recaudo de la cajita');
+    if (await one(c.env, "SELECT 1 FROM ro_movimientos WHERE business_id = ? AND categoria = 'Cajita de macería' AND observaciones = ?", c.businessId, `reunion:${x.id}`)) throw new HttpError(409, 'Ese recaudo ya está en la Caja menor');
+    const t = Date.now();
+    const m = await c.env.DB.prepare(`INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, observaciones, registrado_por, created_at, updated_at)
+      VALUES (?, 'menor', 'ingreso', ?, ?, 'Cajita de macería', ?, ?, ?, ?, ?)`).bind(c.businessId, x.fecha, `Cajita de macería · ${x.titulo}`, x.recaudo, `reunion:${x.id}`, c.session.user_id, t, t).run();
+    await audit(c, `Ingresó a la Caja menor la cajita de macería de «${x.titulo}»`, { modulo: MOD });
+    return json({ id: m.meta.last_row_id }, 201);
+  });
+
   r.post('/api/cajas/distrital/:id/pagar', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req);
     const { codigo } = await distritoDe(c.env, c.businessId);

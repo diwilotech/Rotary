@@ -13,8 +13,37 @@ DW.ready.then(async (me) => {
   const ICON = { menor: 'bi-cup-hot', mayor: 'bi-bricks' };
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   let caja = ['menor', 'mayor'].includes(location.hash.slice(1)) ? location.hash.slice(1) : (() => { try { return localStorage.getItem('ro_caja') || 'menor'; } catch (_) { return 'menor'; } })(), res = null, pro = null, tabla = null, anio = null;
-  const elegir = (k) => { caja = k; try { localStorage.setItem('ro_caja', caja); } catch (_) {} if (res) { pintarCajas(); pintarTabla(); } };
-  const nav = RO.nav(caja, elegir);
+  let cajita = location.hash === '#cajita';
+  const elegir = (k) => {
+    if (k === 'cajita') { cajita = true; view.classList.add('ro-modo-cajita'); return pintarCajita(); }
+    cajita = false; view.classList.remove('ro-modo-cajita');
+    caja = k; try { localStorage.setItem('ro_caja', caja); } catch (_) {} if (res) { pintarCajas(); pintarTabla(); }
+  };
+  const nav = RO.nav(cajita ? 'cajita' : caja, elegir);
+
+  /* ---------- Cajita de macería: lo que se recoge en cada reunión (se anota al conducirla) ---------- */
+  let anioC = null;
+  async function pintarCajita() {
+    const el = view.querySelector('[data-cajita]'); el.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let d; try { d = await api(`/api/cajas/cajita${anioC ? `?anio=${anioC}` : ''}`); } catch (x) { el.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    anioC = d.anio; const max = Math.max(1, ...d.rows.map((x) => x.recaudo));
+    el.innerHTML = `<div class="dw-card mb-3"><div class="d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-coin fs-2" style="color:#E08E0B"></i>
+        <div class="flex-grow-1"><div class="small text-body-secondary">Cajita de macería · año rotario ${esc(d.nombre)}</div><div class="ro-saldo">${C.money(d.total)}</div>
+        <div class="small">${d.rows.length} reuniones · promedio ${C.money(d.promedio)} por reunión${d.pendiente ? ` · <b class="text-warning-emphasis">${C.money(d.pendiente)} por pasar a la Caja menor</b>` : d.total ? ' · <span class="text-success">todo está en la Caja menor</span>' : ''}</div></div>
+        <div class="btn-group btn-group-sm"><button class="btn btn-light" data-cay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-light" data-cay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div></div>
+      ${d.rows.length ? `<div class="dw-card">${d.rows.map((x) => `<div class="d-flex align-items-center gap-3 py-2 border-bottom flex-wrap">
+          <div style="min-width:92px" class="small text-capitalize">${C.day(x.fecha)}</div>
+          <div class="flex-grow-1 min-w-0"><b class="d-block text-truncate small">${esc(x.titulo)}</b><div class="progress mt-1" style="height:8px"><div class="progress-bar" style="width:${Math.round((x.recaudo / max) * 100)}%;background:#E08E0B"></div></div></div>
+          <b style="min-width:90px" class="text-end">${C.money(x.recaudo)}</b>
+          ${x.movimiento_id ? '<span class="badge rounded-pill text-bg-success"><i class="bi bi-check2 me-1"></i>En la caja</span>' : W ? `<button class="btn btn-sm btn-outline-primary" data-cing="${x.id}">Pasar a la Caja menor</button>` : '<span class="badge rounded-pill text-bg-warning">Pendiente</span>'}</div>`).join('')}</div>`
+        : window.App.empty('bi-coin', 'Aún no hay recaudos. Se anotan al conducir cada reunión, en el punto «Cajita de macería».')}`;
+    el.onclick = async (e) => {
+      const y = e.target.closest('[data-cay]'); if (y) { anioC += Number(y.dataset.cay); return pintarCajita(); }
+      const b = e.target.closest('[data-cing]'); if (!b) return;
+      b.disabled = true;
+      try { await api(`/api/cajas/cajita/${b.dataset.cing}/ingresar`, { method: 'POST', body: {} }); toast('Listo: entró a la Caja menor'); pintarCajita(); resumen(); } catch (x) { toast(x.message, false); b.disabled = false; }
+    };
+  }
 
   if (W) {
     acciones.innerHTML = '<button class="btn btn-outline-primary" data-tras><i class="bi bi-arrow-left-right me-1"></i>Trasladar</button>';
@@ -143,7 +172,7 @@ DW.ready.then(async (me) => {
   }
   async function cargar() { await resumen(); pintarTabla(); }
 
-  view.innerHTML = `<style>.ro-cajas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-bottom:16px}
+  view.innerHTML = `<style>.ro-modo-cajita>:not([data-cajita]):not(style){display:none!important}.ro-cajas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-bottom:16px}
     .ro-caja{display:grid;gap:4px;text-align:left;padding:16px;border-radius:16px;border:2px solid var(--bs-border-color);background:var(--bs-body-bg);color:inherit}
     .ro-caja.on{border-color:var(--dw-p);background:linear-gradient(160deg,rgba(var(--dw-p-rgb),.12),var(--bs-body-bg) 70%)}.ro-caja.on i{color:var(--dw-p)}.ro-saldo{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
     .ro-rubros{display:grid;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px}.ro-rubro{padding:8px 10px;border-radius:12px;border:1px solid var(--bs-border-color);background:rgba(var(--dw-p-rgb),.03)}
@@ -153,7 +182,7 @@ DW.ready.then(async (me) => {
     <div class="ro-cajas" data-cajas></div>
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
       <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>Inversión del club · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
-    <h2 class="h6 mb-2" data-tit></h2><div data-movs></div>`;
+    <h2 class="h6 mb-2" data-tit></h2><div data-movs></div><div data-cajita></div>`;
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return resumen(); }
     const rp = e.target.closest('[data-rpagar]'); if (rp) return pagarRubro(rp.dataset.rpagar);
@@ -165,4 +194,5 @@ DW.ready.then(async (me) => {
     elegir(b.dataset.caja);
   });
   await cargar();
+  if (cajita) elegir('cajita');
 });

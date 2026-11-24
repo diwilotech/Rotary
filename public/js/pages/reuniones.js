@@ -61,22 +61,12 @@ DW.ready.then(async (me) => {
         <div class="row g-2 mb-3"><div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${conf.length}</div><div class="small text-body-secondary">Confirmaron</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${no.length}</div><div class="small text-body-secondary">No van</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${a.rows.filter((x) => x.presente === 1).length}</div><div class="small text-body-secondary">Asistieron</div></div></div></div>
-        ${M && pasada ? `<div class="ro-h mt-0">Asistencia</div><div class="ro-socios" data-asis>${a.rows.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-s="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>
-          <button class="btn btn-primary mt-2" data-guardar><i class="bi bi-check2 me-1"></i>Guardar asistencia</button>` : conf.length ? `<div class="small text-body-secondary mb-2">Van: ${conf.map((x) => esc(x.nombre)).join(', ')}</div>` : ''}
-        <div class="d-flex gap-2 flex-wrap mb-2"><button class="btn btn-outline-primary btn-sm" data-inv><i class="bi bi-person-plus me-1"></i>Invitados externos (${r.invitados || 0})</button>
-          ${M ? `<button class="btn btn-primary btn-sm" data-conducir><i class="bi bi-play-circle me-1"></i>Conducir ${{ evento: 'el evento', obra: 'la obra' }[r.tipo] || 'la reunión'}</button>` : ''}
-          ${r.tiene_acta ? `<a class="btn btn-outline-primary btn-sm" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-journal-text me-1"></i>Ver acta · ${r.acta_estado === 'aprobada' ? 'aprobada' : 'borrador'}</a>` : ''}</div>
-        ${r.minuta ? `<div class="ro-h">Minuta</div><div class="dw-card small" style="white-space:pre-wrap;max-height:320px;overflow:auto">${esc(r.minuta)}</div>` : ''}
-        ${r.compromisos ? `<div class="ro-h">Compromisos</div><div class="small" style="white-space:pre-wrap">${esc(r.compromisos)}</div>` : ''}
+        <div class="d-flex gap-2 flex-wrap">${M && r.estado !== 'cancelada' ? `<button class="btn btn-primary flex-grow-1" data-conducir><i class="bi bi-play-circle me-1"></i>${r.tiene_acta ? 'Continuar' : 'Empezar'} ${{ evento: 'el evento', obra: 'la obra' }[r.tipo] || 'la reunión'}</button>` : ''}
+          ${r.tiene_acta ? `<a class="btn btn-outline-primary" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-journal-text me-1"></i>Ver acta</a>` : ''}</div>
       </div>
       ${M ? '<div class="modal-footer border-0 pt-0"><button class="btn btn-light" data-editar><i class="bi bi-pencil me-1"></i>Editar</button></div>' : ''}`;
     el.querySelectorAll('[data-resp]').forEach((b) => (b.onclick = async () => { try { await api(`/api/reuniones/reuniones/${r.id}/responder`, { method: 'POST', body: { respuesta: b.dataset.resp } }); toast('Respuesta guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); } }));
-    el.querySelector('[data-guardar]')?.addEventListener('click', async () => {
-      const marcas = [...el.querySelectorAll('[data-s]')].map((i) => ({ socio_id: Number(i.dataset.s), presente: i.checked }));
-      try { await api(`/api/reuniones/reuniones/${r.id}/asistencia`, { method: 'PUT', body: { marcas } }); toast('Asistencia guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); }
-    });
     el.querySelector('[data-editar]')?.addEventListener('click', () => { m.hide(); editar(r); });
-    el.querySelector('[data-inv]').onclick = () => { m.hide(); invitados(r); };
     el.querySelector('[data-conducir]')?.addEventListener('click', () => { m.hide(); conducir(r); });
   }
 
@@ -100,7 +90,7 @@ DW.ready.then(async (me) => {
   }
 
   /* ---------- Conducir la reunión: pasos de izquierda a derecha ----------
-     0 · Orden del día (se organiza: puntos, responsables y minutos) → «Empezar» → un paso por cada punto (se llenan notas;
+     Arranca en el primer punto del orden del día (al abrir queda la hora de inicio) → un paso por cada punto (se llenan notas;
      el primero trae el llamado a lista, «invitados» la lista de externos, «acta anterior» su aprobación y «cajita» el recaudo)
      → Cierre (compromisos, notas y aprobar el acta). Se guarda solo al pasar de un paso a otro. */
   async function conducir(r) {
@@ -110,7 +100,8 @@ DW.ready.then(async (me) => {
     catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
     const a = d.acta, socios = asis.rows; let invitadosL = inv.rows, aprobada = d.estado === 'aprobada';
     a.items = a.items.map((i) => ({ notas: '', responsable_id: null, minutos: null, ...i }));
-    let paso = a.inicio ? 1 : 0, cambios = false, asisCambio = false;
+    let paso = 1, cambios = false, asisCambio = false;
+    if (!a.inicio) { a.inicio = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16); cambios = true; }   // empieza al abrir
     const presentes = () => socios.filter((x) => x.presente === 1).length;
     const N = () => a.items.length, ULT = () => N() + 1;
     const nombreS = (id) => socios.find((x) => x.socio_id === id)?.nombre || '';
@@ -124,20 +115,8 @@ DW.ready.then(async (me) => {
     const listaAsis = () => `<div class="ro-h">Llamado a lista · <span data-np>${presentes()}</span> de ${socios.length}</div><div class="ro-socios" style="max-height:300px;overflow:auto">${socios.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-pres="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>`;
     const listaInv = () => `<div class="ro-h">Invitados externos (${invitadosL.length})</div>${invitadosL.map((i) => `<div class="small py-1 border-bottom"><b>${esc(i.nombre)}</b>${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}</div>`).join('') || '<p class="small text-body-secondary">Aún no hay invitados.</p>'}
       <form class="d-flex gap-2 mt-2" data-finv><input class="form-control form-control-sm" name="nombre" placeholder="Nombre del invitado" required><input class="form-control form-control-sm" name="procedencia" placeholder="Club u organización"><button class="btn btn-sm btn-outline-primary">Agregar</button></form>`;
-    const tabs = () => [['Orden del día', 'bi-list-ol'], ...a.items.map((i) => [i.titulo, '']), ['Cierre', 'bi-flag']];
+    const tabs = () => [['', ''], ...a.items.map((i) => [i.titulo, '']), ['Cierre', 'bi-flag']];
     function cuerpo() {
-      if (paso === 0) return `<div class="dw-card mb-3 d-grid gap-1" style="border-left:4px solid ${COLOR[r.tipo] || COLOR.reunion}">
-          ${r.descripcion ? `<div><span class="small fw-semibold text-body-secondary">Qué se va a hacer</span><div style="white-space:pre-wrap">${esc(r.descripcion)}</div></div>` : ''}
-          <div><span class="small fw-semibold text-body-secondary">Dónde</span><div>${r.lugar ? lugarHtml(r.lugar) : '<span class="small text-body-secondary">Sin lugar: agrégalo al editar</span>'}${r.enlace ? ` · <a class="small" href="${esc(r.enlace)}" target="_blank" rel="noopener"><i class="bi bi-camera-video me-1"></i>Enlace virtual</a>` : ''}</div></div>
-          <div><span class="small fw-semibold text-body-secondary">Asistentes</span><div class="small">${socios.filter((x) => x.respuesta === 'si').length} socios confirmaron · ${presentes()} presentes · ${invitadosL.length} invitados externos</div></div></div>
-        <p class="small text-body-secondary">Organiza la ${ETQ[r.tipo]?.toLowerCase() || 'reunión'}: ajusta los puntos, quién se encarga de cada uno y cuántos minutos le das. Luego toca «Empezar».</p>
-        <div data-orden>${a.items.map((i, n) => `<div class="ro-oi"><span class="ro-oi-n">${n + 1}</span><div class="flex-grow-1 d-grid gap-1"><input class="form-control form-control-sm fw-semibold" data-ot="${n}" value="${esc(i.titulo)}">
-            <div class="d-flex gap-1 flex-wrap"><select class="form-select form-select-sm" style="max-width:220px" data-or="${n}"><option value="">Responsable…</option>${socios.map((x) => `<option value="${x.socio_id}" ${i.responsable_id === x.socio_id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select>
-            <input class="form-control form-control-sm" style="max-width:110px" type="number" min="0" max="240" placeholder="min" data-om="${n}" value="${i.minutos || ''}"></div></div>
-          <div class="btn-group-vertical btn-group-sm"><button class="btn btn-light" data-oup="${n}" aria-label="Subir"><i class="bi bi-arrow-up"></i></button><button class="btn btn-light" data-odn="${n}" aria-label="Bajar"><i class="bi bi-arrow-down"></i></button></div>
-          <button class="btn btn-sm btn-light" data-orm="${n}" aria-label="Quitar"><i class="bi bi-trash"></i></button></div>`).join('')}</div>
-        <button class="btn btn-sm btn-outline-primary mt-2" data-oadd><i class="bi bi-plus-lg me-1"></i>Agregar punto</button>
-        <div class="small text-body-secondary mt-2">Tiempo previsto: <b>${a.items.reduce((t, i) => t + (Number(i.minutos) || 0), 0)} min</b></div>`;
       if (paso === ULT()) return `<div class="row g-3"><div class="col-md-5"><div class="dw-card h-100"><div class="ro-h mt-0">Resumen</div>
           <div class="small d-grid gap-1"><span><i class="bi bi-people me-1"></i><b>${presentes()}</b> socios presentes</span><span><i class="bi bi-person-plus me-1"></i><b>${invitadosL.length}</b> invitados externos</span>
           <span><i class="bi bi-clock me-1"></i>${a.inicio ? `Inició ${esc(a.inicio)}` : 'Sin hora de inicio'}${a.fin ? ` · terminó ${esc(a.fin)}` : ''}</span>${a.recaudo ? `<span><i class="bi bi-coin me-1"></i>Cajita: ${C.money(a.recaudo)}</span>` : ''}
@@ -146,8 +125,8 @@ DW.ready.then(async (me) => {
           <label class="form-label small fw-semibold">Notas generales</label><textarea class="form-control mb-2" rows="2" data-notas>${esc(a.notas || '')}</textarea>
           <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${aprobada ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div></div>`;
       const i = a.items[paso - 1], sp = paso === 1 ? 'lista' : especial(i.titulo);
-      return `<div class="row g-3"><div class="${sp ? 'col-lg-6' : 'col-12'}"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n">${paso}</span><h3 class="h5 m-0 flex-grow-1">${esc(i.titulo)}</h3>${i.minutos ? `<span class="badge text-bg-light border">${i.minutos} min</span>` : ''}</div>
-          ${i.detalle ? `<p class="small text-body-secondary mb-1">${esc(i.detalle)}</p>` : ''}${i.responsable_id ? `<p class="small mb-2"><i class="bi bi-person-badge me-1"></i>${esc(nombreS(i.responsable_id))}</p>` : ''}
+      return `<div class="row g-3"><div class="${sp ? 'col-lg-6' : 'col-12'}"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n">${paso}</span><h3 class="h5 m-0 flex-grow-1">${esc(i.titulo)}</h3></div>
+          ${i.detalle ? `<p class="small text-body-secondary mb-1">${esc(i.detalle)}</p>` : ''}
           <textarea class="form-control" rows="${sp ? 6 : 9}" data-nota placeholder="Lo que se dijo o decidió en este punto">${esc(i.notas || '')}</textarea>
           <label class="form-check mt-2"><input class="form-check-input" type="checkbox" data-hecho ${i.hecho ? 'checked' : ''}> <span class="form-check-label small">Punto cumplido</span></label></div>
         ${sp ? `<div class="col-lg-6">${sp === 'lista' ? listaAsis() + listaInv() : sp === 'invitados' ? listaInv()
@@ -164,15 +143,14 @@ DW.ready.then(async (me) => {
         <div class="modal-header flex-column align-items-stretch gap-2"><div class="d-flex align-items-center gap-2"><div class="flex-grow-1"><div class="small fw-semibold" style="color:${COLOR[r.tipo] || COLOR.reunion}">${ETQ[r.tipo] || 'Reunión'} · ${esc(r.titulo)}</div>
             <div class="small text-body-secondary"><span class="text-capitalize">${RO.fechaLarga(r.fecha)}</span>${a.inicio ? ` · en curso desde las ${esc(a.inicio)}` : ''}${r.lugar ? ` · <a href="${esc(mapa(r.lugar))}" target="_blank" rel="noopener"><i class="bi bi-geo-alt"></i> ${/^https?:/i.test(r.lugar) ? 'Ubicación' : esc(r.lugar)}</a>` : ''}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
           <div class="progress" style="height:4px"><div class="progress-bar" style="width:${pct}%"></div></div>
-          <div class="ro-st" data-st>${T.map(([t, ic], n) => `<button type="button" class="${n === paso ? 'on' : ''} ${n > 0 && n <= N() && a.items[n - 1].hecho ? 'ok' : ''}" data-ir="${n}">${ic ? `<i class="bi ${ic}"></i>` : `<b>${n}</b>`}<span>${esc(t)}</span></button>`).join('')}</div></div>
+          <div class="ro-st" data-st>${T.map(([t, ic], n) => (n === 0 ? '' : `<button type="button" class="${n === paso ? 'on' : ''} ${n > 0 && n <= N() && a.items[n - 1].hecho ? 'ok' : ''}" data-ir="${n}">${ic ? `<i class="bi ${ic}"></i>` : `<b>${n}</b>`}<span>${esc(t)}</span></button>`)).join('')}</div></div>
         <div class="modal-body"><div class="ro-paso" data-paso>${cuerpo()}</div></div>
-        <div class="modal-footer"><button class="btn btn-light" data-ant ${paso === 0 ? 'disabled' : ''}><i class="bi bi-chevron-left"></i> Anterior</button><span class="small text-body-secondary flex-grow-1 text-center">${paso === 0 ? 'Preparación' : paso === ULT() ? 'Cierre' : `Punto ${paso} de ${N()}`}</span>
-          ${paso === 0 ? `<button class="btn btn-primary" data-sig><i class="bi bi-play-fill me-1"></i>${a.inicio ? 'Continuar' : 'Empezar'}</button>` : paso === ULT() ? `<a class="btn btn-light" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-printer"></i></a><button class="btn btn-success" data-fin><i class="bi bi-check2-circle me-1"></i>Guardar y terminar</button>` : '<button class="btn btn-primary" data-sig>Siguiente <i class="bi bi-chevron-right"></i></button>'}</div>`;
+        <div class="modal-footer"><button class="btn btn-light" data-ant ${paso <= 1 ? 'disabled' : ''}><i class="bi bi-chevron-left"></i> Anterior</button><span class="small text-body-secondary flex-grow-1 text-center">${paso === ULT() ? 'Cierre' : `Punto ${paso} de ${N()}`}</span>
+          ${paso === ULT() ? `<a class="btn btn-light" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-printer"></i></a><button class="btn btn-success" data-fin><i class="bi bi-check2-circle me-1"></i>Guardar y terminar</button>` : '<button class="btn btn-primary" data-sig>Siguiente <i class="bi bi-chevron-right"></i></button>'}</div>`;
       el.querySelector('[data-st] .on')?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
     const ir = async (n, atras = false) => {
-      if (n < 0 || n > ULT()) return;
-      if (paso === 0 && n > 0 && !a.inicio) { a.inicio = hora(); cambios = true; }
+      if (n < 1 || n > ULT()) return;
       paso = n; pintar(); if (atras) el.querySelector('[data-paso]').classList.add('atras');
       try { await guardar(); } catch (x) { toast(x.message, false); }
     };
