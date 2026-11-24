@@ -140,21 +140,21 @@ export function routes(r) {
   const actaDe = async (c, x) => { let a = null; try { a = JSON.parse(x.acta || 'null'); } catch (_) { a = null; }
     if (!a) {
       const base = AGENDA[x.tipo] ? AGENDA[x.tipo].map(([titulo, detalle]) => ({ titulo, detalle })) : (await ordenDelDia(c.env, c.businessId)).items;
-      a = { items: base.map((i) => ({ titulo: i.titulo, detalle: i.detalle, notas: '', responsable_id: null, minutos: null })), compromisos: x.compromisos || '', notas: x.minuta || '' };
+      a = { items: base.map((i) => ({ titulo: i.titulo, detalle: i.detalle, notas: '', preparado: '', responsable_id: null, minutos: null })), compromisos: x.compromisos || '', notas: x.minuta || '' };
     }
     return a; };
   r.get('/api/reuniones/reuniones/:id/acta-datos', `tenant:${MOD}`, async (c) => { const x = await reunionOr404(c, c.params.id); return json({ acta: await actaDe(c, x), estado: x.acta_estado || 'borrador' }); });
   r.put('/api/reuniones/reuniones/:id/acta-datos', `manager:${MOD}`, async (c) => {
     const x = await reunionOr404(c, c.params.id), b = await readJson(c.req);
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => ({ titulo: cast('titulo', 'text', i.titulo) || 'Punto', detalle: cast('detalle', 'long', i.detalle) || '', notas: cast('notas', 'long', i.notas) || '',
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => ({ titulo: cast('titulo', 'text', i.titulo) || 'Punto', detalle: cast('detalle', 'long', i.detalle) || '', notas: cast('notas', 'long', i.notas) || '', preparado: cast('preparado', 'long', i.preparado) || '',
       responsable_id: Number(i.responsable_id) || null, minutos: Math.min(240, Math.max(0, Number(i.minutos) || 0)) || null, hecho: !!i.hecho }));
     // Datos de la conducción: hora de inicio y fin, recaudo de la cajita de macería y si se aprobó el acta anterior
     const hhmm = (v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? v : null);
     const acta = { items, compromisos: cast('compromisos', 'long', b.compromisos) || '', notas: cast('notas', 'long', b.notas) || '',
       inicio: hhmm(b.inicio), fin: hhmm(b.fin), recaudo: Math.max(0, Number(b.recaudo) || 0) || null, acta_anterior: b.acta_anterior === true ? true : b.acta_anterior === false ? false : null };
     const estado = b.estado === 'aprobada' ? 'aprobada' : 'borrador';
-    await c.env.DB.prepare("UPDATE ro_reuniones SET acta = ?, acta_estado = ?, compromisos = ?, estado = CASE WHEN estado IN ('programada','confirmada') AND fecha <= ? THEN 'realizada' ELSE estado END, updated_at = ? WHERE id = ? AND business_id = ?")
-      .bind(JSON.stringify(acta), estado, acta.compromisos, today(), Date.now(), x.id, c.businessId).run();
+    await c.env.DB.prepare("UPDATE ro_reuniones SET acta = ?, acta_estado = ?, compromisos = ?, estado = CASE WHEN ? AND estado IN ('programada','confirmada') AND fecha <= ? THEN 'realizada' ELSE estado END, updated_at = ? WHERE id = ? AND business_id = ?")
+      .bind(JSON.stringify(acta), estado, acta.compromisos, acta.inicio ? 1 : 0, today(), Date.now(), x.id, c.businessId).run();
     await audit(c, `Guardó el acta de «${x.titulo}» (${estado})`, { modulo: MOD });
     return json({ ok: true });
   });

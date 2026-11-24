@@ -62,12 +62,14 @@ DW.ready.then(async (me) => {
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${no.length}</div><div class="small text-body-secondary">No van</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${a.rows.filter((x) => x.presente === 1).length}</div><div class="small text-body-secondary">Asistieron</div></div></div></div>
         <div class="d-flex gap-2 flex-wrap">${M && r.estado !== 'cancelada' ? `<button class="btn btn-primary flex-grow-1" data-conducir><i class="bi bi-play-circle me-1"></i>${r.tiene_acta ? 'Continuar' : 'Empezar'} ${{ evento: 'el evento', obra: 'la obra' }[r.tipo] || 'la reunión'}</button>` : ''}
+          ${M && r.estado !== 'cancelada' ? '<button class="btn btn-outline-primary" data-preparar><i class="bi bi-pencil-square me-1"></i>Preparar</button>' : ''}
           ${r.tiene_acta ? `<a class="btn btn-outline-primary" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-journal-text me-1"></i>Ver acta</a>` : ''}</div>
       </div>
       ${M ? '<div class="modal-footer border-0 pt-0"><button class="btn btn-light" data-editar><i class="bi bi-pencil me-1"></i>Editar</button></div>' : ''}`;
     el.querySelectorAll('[data-resp]').forEach((b) => (b.onclick = async () => { try { await api(`/api/reuniones/reuniones/${r.id}/responder`, { method: 'POST', body: { respuesta: b.dataset.resp } }); toast('Respuesta guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); } }));
     el.querySelector('[data-editar]')?.addEventListener('click', () => { m.hide(); editar(r); });
     el.querySelector('[data-conducir]')?.addEventListener('click', () => { m.hide(); conducir(r); });
+    el.querySelector('[data-preparar]')?.addEventListener('click', () => { m.hide(); preparar(r); });
   }
 
   /* ---------- Invitados externos: los agrega la junta o se registran solos con el enlace ---------- */
@@ -89,6 +91,21 @@ DW.ready.then(async (me) => {
     pintarI();
   }
 
+  /* ---------- Preparar: antes de la reunión se escribe lo que se va a decir en cada punto ---------- */
+  async function preparar(r) {
+    const { el, m } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-lg modal-fullscreen-sm-down' });
+    let d; try { d = await api(`/api/reuniones/reuniones/${r.id}/acta-datos`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
+    const a = d.acta;
+    el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><div><h2 class="modal-title h5">Preparar · ${esc(r.titulo)}</h2><div class="small text-body-secondary">Escribe lo que se va a decir en cada punto. En la reunión solo tocas «Hecho».</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body">${a.items.map((i, n) => `<div class="mb-3"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n" style="display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--dw-p);color:#fff;font-weight:700;font-size:.8rem;flex:none">${n + 1}</span><b>${esc(i.titulo)}</b></div>
+          <textarea class="form-control" rows="2" data-prep="${n}" placeholder="${esc(i.detalle || 'Lo que se va a decir')}">${esc(i.preparado || '')}</textarea></div>`).join('')}</div>
+      <div class="modal-footer"><span class="small text-body-secondary me-auto">${a.items.filter((i) => i.preparado).length} de ${a.items.length} puntos preparados</span><button class="btn btn-primary" data-gprep><i class="bi bi-check2 me-1"></i>Guardar</button></div>`;
+    el.querySelector('[data-gprep]').onclick = async () => {
+      a.items.forEach((i, n) => { i.preparado = el.querySelector(`[data-prep="${n}"]`).value; });
+      try { await api(`/api/reuniones/reuniones/${r.id}/acta-datos`, { method: 'PUT', body: { ...a, estado: d.estado } }); toast('Listo: la reunión quedó preparada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); }
+    };
+  }
+
   /* ---------- Conducir la reunión: pasos de izquierda a derecha ----------
      Arranca en el primer punto del orden del día (al abrir queda la hora de inicio) → un paso por cada punto (se llenan notas;
      el primero trae el llamado a lista, «invitados» la lista de externos, «acta anterior» su aprobación y «cajita» el recaudo)
@@ -100,7 +117,7 @@ DW.ready.then(async (me) => {
     catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
     const a = d.acta, socios = asis.rows; let invitadosL = inv.rows, aprobada = d.estado === 'aprobada';
     a.items = a.items.map((i) => ({ notas: '', responsable_id: null, minutos: null, ...i }));
-    let paso = 1, cambios = false, asisCambio = false;
+    let paso = 1, cambios = false, asisCambio = false, editando = false;
     if (!a.inicio) { a.inicio = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16); cambios = true; }   // empieza al abrir
     const presentes = () => socios.filter((x) => x.presente === 1).length;
     const N = () => a.items.length, ULT = () => N() + 1;
@@ -127,8 +144,10 @@ DW.ready.then(async (me) => {
       const i = a.items[paso - 1], sp = paso === 1 ? 'lista' : especial(i.titulo);
       return `<div class="row g-3"><div class="${sp ? 'col-lg-6' : 'col-12'}"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n">${paso}</span><h3 class="h5 m-0 flex-grow-1">${esc(i.titulo)}</h3></div>
           ${i.detalle ? `<p class="small text-body-secondary mb-1">${esc(i.detalle)}</p>` : ''}
-          <textarea class="form-control" rows="${sp ? 6 : 9}" data-nota placeholder="Lo que se dijo o decidió en este punto">${esc(i.notas || '')}</textarea>
-          <label class="form-check mt-2"><input class="form-check-input" type="checkbox" data-hecho ${i.hecho ? 'checked' : ''}> <span class="form-check-label small">Punto cumplido</span></label></div>
+          ${(() => { const txt = i.notas || i.preparado || '';
+            if (!i.hecho && txt && !editando) return `<div class="dw-card mb-2" style="white-space:pre-wrap">${esc(txt)}</div><div class="d-flex gap-2"><button class="btn btn-success flex-grow-1" data-hecho-b><i class="bi bi-check2-circle me-1"></i>Hecho</button><button class="btn btn-outline-secondary" data-editar-b><i class="bi bi-pencil me-1"></i>Editar</button></div>`;
+            if (i.hecho && !editando) return `<div class="dw-card mb-2" style="white-space:pre-wrap;border-left:4px solid #16a34a">${txt ? esc(txt) : '<span class="text-body-secondary">Sin notas</span>'}</div><div class="d-flex gap-2 align-items-center"><span class="badge rounded-pill text-bg-success"><i class="bi bi-check2 me-1"></i>Hecho</span><button class="btn btn-sm btn-link" data-editar-b>Editar</button></div>`;
+            return `<textarea class="form-control mb-2" rows="${sp ? 5 : 7}" data-nota placeholder="Lo que se dijo o decidió en este punto">${esc(txt)}</textarea><button class="btn btn-success w-100" data-hecho-b><i class="bi bi-check2-circle me-1"></i>Hecho</button>`; })()}</div>
         ${sp ? `<div class="col-lg-6">${sp === 'lista' ? listaAsis() + listaInv() : sp === 'invitados' ? listaInv()
           : sp === 'acta' ? `<div class="ro-h mt-0">Acta anterior</div><p class="small">Lee el acta de la reunión anterior y marca si se aprobó.</p><div class="d-flex gap-2"><button class="btn btn-sm ${a.acta_anterior === true ? 'btn-success' : 'btn-outline-success'}" data-aa="1">Aprobada</button><button class="btn btn-sm ${a.acta_anterior === false ? 'btn-secondary' : 'btn-outline-secondary'}" data-aa="0">Con correcciones</button></div>`
           : `<div class="ro-h mt-0">Cajita de macería</div><label class="small">Recaudado</label><input class="form-control" type="number" min="0" step="500" data-recaudo value="${a.recaudo || ''}" placeholder="0">`}</div>` : ''}</div>`;
@@ -151,7 +170,7 @@ DW.ready.then(async (me) => {
     }
     const ir = async (n, atras = false) => {
       if (n < 1 || n > ULT()) return;
-      paso = n; pintar(); if (atras) el.querySelector('[data-paso]').classList.add('atras');
+      paso = n; editando = false; pintar(); if (atras) el.querySelector('[data-paso]').classList.add('atras');
       try { await guardar(); } catch (x) { toast(x.message, false); }
     };
     pintar();
@@ -178,6 +197,12 @@ DW.ready.then(async (me) => {
       if (b.dataset.ir !== undefined) return ir(Number(b.dataset.ir), Number(b.dataset.ir) < paso);
       if (b.matches('[data-sig]')) return ir(paso + 1);
       if (b.matches('[data-ant]')) return ir(paso - 1, true);
+      if (b.matches('[data-editar-b]')) { editando = true; pintar(); el.querySelector('[data-nota]')?.focus(); return; }
+      if (b.matches('[data-hecho-b]')) {
+        const it = a.items[paso - 1], ta = el.querySelector('[data-nota]');
+        it.notas = ta ? ta.value : (it.notas || it.preparado || ''); it.hecho = true; editando = false; cambios = true;
+        return ir(paso + 1);
+      }
       if (b.dataset.aa !== undefined) { a.acta_anterior = b.dataset.aa === '1'; cambios = true; return pintar(); }
       const n = Number(b.dataset.oup ?? b.dataset.odn ?? b.dataset.orm ?? -1);
       if (b.dataset.oup !== undefined && n > 0) [a.items[n - 1], a.items[n]] = [a.items[n], a.items[n - 1]];
