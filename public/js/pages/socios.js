@@ -110,9 +110,7 @@ DW.ready.then(async (me) => {
     // Después de la junta, un grupo por tipo: los socios del club primero y los externos e invitados al final
     const grupo = (s) => (s.estado === 'aspirante' ? 'aspirante' : s.tipo_membresia || 'socio');
     const bloques = GRUPOS.map(([k, titulo, nota, ic]) => [titulo, nota, ic, demas.filter((s) => grupo(s) === k)]).filter(([, , , l]) => l.length);
-    const cuenta = (k) => vivos.filter((s) => grupo(s) === k).length;
     view.querySelector('[data-lista]').innerHTML = (rows.length ? '' : window.App.empty('bi-people', 'Aún no hay socios. Crea la junta y los socios del club.'))
-      + (rows.length ? `<div class="d-flex flex-wrap gap-2 mb-3 small">${GRUPOS.map(([k, t, , ic]) => `<span class="badge rounded-pill text-bg-light border"><i class="bi ${ic} me-1"></i>${cuenta(k)} ${t.toLowerCase()}</span>`).join('')}</div>` : '')
       + (junta.length ? `<div class="ro-h mt-0"><i class="bi bi-award me-1"></i>Junta directiva</div><div class="ro-junta">${junta.map(tarjetaJunta).join('')}</div>` : '')
       + bloques.map(([t, nota, ic, l]) => `<div class="ro-h"><i class="bi ${ic} me-1"></i>${t} (${l.length})${nota ? ` <span class="fw-normal" style="text-transform:none;letter-spacing:0">· ${nota}</span>` : ''}</div><div class="ro-socios">${l.map(tarjetaSocio).join('')}</div>`).join('')
       + (otros.length ? `<details class="mt-3"><summary class="ro-h d-inline-block">Inactivos y retirados (${otros.length})</summary><div class="ro-socios mt-2">${otros.map(tarjetaSocio).join('')}</div></details>` : '');
@@ -120,9 +118,7 @@ DW.ready.then(async (me) => {
 
   function pintarActivacion() {
     const act = rows.filter((s) => ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia))).sort((a, b) => Number(a.activado) - Number(b.activado) || a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
-    const hechos = act.filter((s) => s.activado).length, mr = act.filter((s) => s.myrotary_id || s.myrotary_at).length;
-    view.querySelector('[data-lista]').innerHTML = `<div class="row g-2 mb-3"><div class="col-sm-6"><div class="dw-card h-100"><div class="d-flex justify-content-between small mb-1"><b>Activados en el club</b><span>${hechos} de ${act.length}</span></div>${C.meter(hechos, act.length || 1)}</div></div>
-        <div class="col-sm-6"><div class="dw-card h-100"><div class="d-flex justify-content-between small mb-1"><b>En My Rotary</b><span>${mr} de ${act.length}</span></div>${C.meter(mr, act.length || 1)}</div></div></div>`
+    view.querySelector('[data-lista]').innerHTML = ''
       + (act.length ? window.App.table([
         { label: 'Socio', main: true, html: (s) => `<span class="d-flex align-items-center gap-2">${RO_.avatar(s, 32)}<span>${esc(s.nombre)}${s.junta ? `<div class="small text-body-secondary fw-normal">${esc(s.cargo)}</div>` : ''}</span></span>` },
         { label: 'Ingreso al club', html: (s) => (s.fecha_ingreso ? C.day(s.fecha_ingreso) : '—') },
@@ -145,19 +141,14 @@ DW.ready.then(async (me) => {
     const el = view.querySelector('[data-lista]'); el.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     let ks = []; try { ks = (await api('/api/socios/certificados')).rows; } catch (x) { el.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
     const hoy = C.todayCo(), anioR = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1;
-    const act = rows.filter((s) => s.activado).length, junta = rows.filter((s) => s.junta && s.estado === 'activo');
     const tipoTxt = (k) => (k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
     const PUEDE = M && !RO_APP;
-    el.innerHTML = `<div class="row g-3 mb-3">
-        <div class="col-12"><div class="dw-card ro-cert ro-cert-club d-flex flex-row align-items-center gap-3 flex-wrap" style="--c:#17458F"><i class="bi bi-building-check"></i>
-          <div class="flex-grow-1"><b>Del club · Certificado de organización</b><div class="small text-body-secondary">Número del club, fecha de fundación y club rotario patrocinador.</div></div>
-          ${PUEDE ? '<button class="btn btn-sm btn-outline-primary" data-cclub>Datos del club</button>' : ''}<a class="btn btn-sm btn-primary" href="/api/socios/club/certificado" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver certificado</a></div></div>
-        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#17458F"><i class="bi bi-patch-check-fill"></i><b>Activación</b><span class="small text-body-secondary">Es socio del club a partir de su fecha de activación.</span>
-          <span class="small"><b>${act}</b> socios activados</span><a class="btn btn-sm btn-outline-primary mt-auto" href="#activacion" data-ir="activacion">Ver activaciones</a></div></div>
-        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#F7A81B"><i class="bi bi-people-fill"></i><b>Junta del año rotario</b><span class="small text-body-secondary">Por haber servido en un cargo de la junta durante el año rotario.</span>
-          <span class="small"><b>${junta.length}</b> en la junta actual</span>${PUEDE ? `<button class="btn btn-sm btn-primary mt-auto" data-cjunta>Expedir a toda la junta ${anioR}-${anioR + 1}</button>` : ''}</div></div>
-        <div class="col-md-4"><div class="dw-card h-100 ro-cert" style="--c:#D41367"><i class="bi bi-award-fill"></i><b>Reconocimientos</b><span class="small text-body-secondary">Para un socio en especial: socio del año, liderazgo, mejor proyecto…</span>
-          <span class="small"><b>${ks.filter((k) => k.tipo === 'reconocimiento').length}</b> entregados</span>${PUEDE ? '<button class="btn btn-sm btn-primary mt-auto" data-creco>Nuevo reconocimiento</button>' : ''}</div></div></div>
+    // Sin tarjetas de estadísticas: solo las acciones y la lista
+    el.innerHTML = `<div class="d-flex flex-wrap gap-2 mb-3">
+        <a class="btn btn-outline-primary" href="/api/socios/club/certificado" target="_blank" rel="noopener"><i class="bi bi-building-check me-1"></i>Certificado del club</a>
+        ${PUEDE ? `<button class="btn btn-light" data-cclub><i class="bi bi-pencil me-1"></i>Datos del club</button>
+        <button class="btn btn-outline-primary" data-cjunta><i class="bi bi-people-fill me-1"></i>Expedir a la junta ${anioR}-${anioR + 1}</button>
+        <button class="btn btn-primary" data-creco><i class="bi bi-award-fill me-1"></i>Nuevo reconocimiento</button>` : ''}</div>
       ${ks.length ? window.App.table([{ label: 'Socio', main: true, html: (k) => esc(k.socio) }, { label: 'Certificado', html: (k) => esc(tipoTxt(k)) }, { label: 'Fecha', html: (k) => C.day(k.fecha) },
         { label: '', cls: 'text-end text-nowrap', html: (k) => `<a class="btn btn-sm btn-outline-primary" href="/api/socios/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a>${PUEDE ? ` <button class="btn btn-sm btn-light" data-cborrar="${k.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}` }], ks)
         : window.App.empty('bi-award', 'Aún no hay certificados de junta ni reconocimientos.')}`;
