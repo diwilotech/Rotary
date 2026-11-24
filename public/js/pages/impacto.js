@@ -30,10 +30,10 @@ DW.ready.then(async (me) => {
     { k: 'lugar', label: 'Lugar', type: 'text' }, { k: 'contacto', label: 'Contacto', type: 'text' }, { k: 'telefono', label: 'Teléfono', type: 'text' },
     { k: 'foto_url', label: 'Foto (enlace https)', type: 'url', full: true }, { k: 'descripcion', label: 'Sobre la comunidad', type: 'long' }];
   const camposB = (proys) => [{ k: 'nombre', label: 'Nombre', type: 'text', required: true }, { k: 'tipo', label: 'Tipo', type: 'text', placeholder: 'niño, adulto mayor…' }, { k: 'edad', label: 'Edad', type: 'int' },
-    ...(proys ? [{ k: 'proyecto_id', label: 'Proyecto (opcional)', type: 'select', options: RO.opts(proys, 'Ninguno en particular') }] : []),
+    ...(proys ? [{ k: 'proyecto_id', label: 'Proyecto (opcional)', type: 'select', options: RO.optsProyectos(proys, null, 'Ninguno en particular') }] : []),
     { k: 'autorizacion_datos', label: 'Datos', type: 'bool', check: 'Autorizó el uso de datos' }, { k: 'autorizacion_imagen', label: 'Imagen', type: 'bool', check: 'Autorizó el uso de imagen' }, { k: 'notas', label: 'Notas', type: 'long' }];
   const camposP = (comus) => [{ k: 'nombre', label: 'Nombre del proyecto', type: 'text', required: true, full: true }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(EST).map(([k, [, l]]) => [k, l]) },
-    { k: 'socio_lider_id', label: 'Líder', type: 'select', options: RO.opts(socios.filter((s) => s.estado === 'activo'), 'Sin líder') },
+    { k: 'socio_lider_id', label: 'Líder', type: 'select', options: RO.optsSocios(socios, 'Sin líder') },
     { k: 'fecha_inicio', label: 'Inicio', type: 'date' }, { k: 'fecha_fin', label: 'Fin', type: 'date' },
     { k: 'comunidad_id', label: 'Comunidad que se impacta', type: 'select', options: RO.opts(comus, 'Sin comunidad'), hint: 'créalas en la pestaña Comunidades' },
     { k: 'presupuesto', label: 'Presupuesto total', type: 'money', hint: 'los aportes se agregan en el Resumen' },

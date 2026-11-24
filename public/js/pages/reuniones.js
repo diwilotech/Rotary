@@ -33,7 +33,7 @@ DW.ready.then(async (me) => {
     { k: 'compromisos', label: 'Compromisos', type: 'long' }];
 
   async function editar(r, fecha) {
-    const out = await C.form({ title: r ? 'Editar' : 'Nueva reunión o evento', fields: CAMPOS, values: r ? { ...r } : { tipo: 'reunion', fecha, estado: 'programada', modalidad: 'presencial' },
+    const out = await C.form({ title: r ? 'Editar' : 'Nueva reunión o evento', fields: CAMPOS.map((f) => (f.k === 'proyecto_id' ? { ...f, options: RO.optsProyectos(proys, r?.proyecto_id) } : f)), values: r ? { ...r } : { tipo: 'reunion', fecha, estado: 'programada', modalidad: 'presencial' },
       onDelete: r ? () => api(`/api/reuniones/reuniones/${r.id}`, { method: 'DELETE' }) : null });
     if (out === 'deleted') { toast('Borrada'); return cargar(); }
     if (!out) return;
@@ -124,9 +124,9 @@ DW.ready.then(async (me) => {
         <span class="text-body-secondary"> · ${esc(socios.find((x) => x.socio_id === t.socio_id)?.nombre || 'sin responsable')}${t.fecha_limite ? ` · ${C.day(t.fecha_limite)}` : ''} · ${t.proyecto_id ? `<i class="bi bi-globe-americas"></i> ${esc(proys.find((x) => x.id === t.proyecto_id)?.nombre || 'proyecto')}` : 'del club'}</span></span>
         <button type="button" class="btn btn-sm btn-light py-0" data-tq="${t.id}" aria-label="Quitar"><i class="bi bi-x-lg"></i></button></div>`).join('') || '<p class="small text-body-secondary mb-1">Aún no hay tareas de esta reunión.</p>'}
       <form class="row g-2 mt-1" data-ftarea><div class="col-12"><input class="form-control form-control-sm" name="titulo" placeholder="¿Qué hay que hacer?" required></div>
-        <div class="col-sm-6"><select class="form-select form-select-sm" name="socio_id" required><option value="">¿Quién?</option>${socios.map((x) => `<option value="${x.socio_id}">${esc(x.nombre)}</option>`).join('')}</select></div>
+        <div class="col-sm-6"><select class="form-select form-select-sm" name="socio_id" required><option value="">¿Quién?</option>${RO.GRUPOS_SOCIO.filter(([k]) => k !== 'voluntario_invitado').map(([k, l]) => { const g = socios.filter((x) => RO.grupoSocio(x) === k && x.estado !== 'inactivo' && x.estado !== 'retirado'); return g.length ? `<optgroup label="${l}">${g.map((x) => `<option value="${x.socio_id}">${esc(x.nombre)}</option>`).join('')}</optgroup>` : ''; }).join('')}</select></div>
         <div class="col-sm-6"><input class="form-control form-control-sm" type="date" name="fecha_limite" aria-label="Para cuándo"></div>
-        <div class="col-sm-8"><select class="form-select form-select-sm" name="proyecto_id"><option value="">Del club</option>${proys.map((x) => `<option value="${x.id}" ${r.proyecto_id === x.id ? 'selected' : ''}>Proyecto: ${esc(x.nombre)}</option>`).join('')}</select></div>
+        <div class="col-sm-8"><select class="form-select form-select-sm" name="proyecto_id"><option value="">Del club</option>${RO.optsProyectos(proys, r.proyecto_id).slice(1).map(([id, n]) => `<option value="${id}" ${r.proyecto_id === id ? 'selected' : ''}>Proyecto: ${esc(n)}</option>`).join('')}</select></div>
         <div class="col-sm-4"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Asignar</button></div></form>`;
     a.items = a.items.map((i) => ({ notas: '', responsable_id: null, minutos: null, ...i }));
     let paso = 1, cambios = false, asisCambio = false, editando = false;
@@ -141,7 +141,7 @@ DW.ready.then(async (me) => {
       await api(`/api/reuniones/reuniones/${r.id}/acta-datos`, { method: 'PUT', body: { ...a, estado: aprobada ? 'aprobada' : 'borrador' } }); cambios = false;
     };
     const hora = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
-    const listaAsis = () => `<div class="ro-h">Llamado a lista · <span data-np>${presentes()}</span> de ${socios.length}</div><div class="ro-socios" style="max-height:300px;overflow:auto">${socios.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-pres="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>`;
+    const listaAsis = () => `<div class="ro-h">Llamado a lista · <span data-np>${presentes()}</span> de ${socios.length}</div><div style="max-height:340px;overflow:auto">${RO.GRUPOS_SOCIO.map(([k, l]) => { const g = socios.filter((x) => RO.grupoSocio(x) === k); return g.length ? `<div class="small fw-semibold text-body-secondary mt-2 mb-1">${l} (${g.length})</div><div class="ro-socios">${g.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-pres="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>` : ''; }).join('')}</div>`;
     const listaInv = () => `<div class="ro-h">Invitados externos (${invitadosL.length})</div>${invitadosL.map((i) => `<div class="small py-1 border-bottom"><b>${esc(i.nombre)}</b>${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}</div>`).join('') || '<p class="small text-body-secondary">Aún no hay invitados.</p>'}
       <form class="d-flex gap-2 mt-2" data-finv><input class="form-control form-control-sm" name="nombre" placeholder="Nombre del invitado" required><input class="form-control form-control-sm" name="procedencia" placeholder="Club u organización"><button class="btn btn-sm btn-outline-primary">Agregar</button></form>`;
     const tabs = () => [['', ''], ...a.items.map((i) => [i.titulo, '']), ['Cierre', 'bi-flag']];

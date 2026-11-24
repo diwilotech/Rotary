@@ -56,7 +56,7 @@ export function routes(r) {
 
   r.get('/api/reuniones/reuniones/:id/asistencia', `tenant:${MOD}`, async (c) => {
     const reu = await api.get(c, 'reuniones', Number(c.params.id));
-    const rows = await all(c.env, `SELECT s.id socio_id, s.nombre, s.cargo, a.respuesta, a.presente FROM ro_socios s
+    const rows = await all(c.env, `SELECT s.id socio_id, s.nombre, s.cargo, s.tipo_membresia, s.estado, a.respuesta, a.presente FROM ro_socios s
       LEFT JOIN ro_asistencia a ON a.socio_id = s.id AND a.business_id = s.business_id AND a.reunion_id = ?
       WHERE s.business_id = ? AND (s.estado = 'activo' OR a.id IS NOT NULL) ORDER BY s.nombre`, reu.id, c.businessId);
     return json({ reunion: reu, rows });

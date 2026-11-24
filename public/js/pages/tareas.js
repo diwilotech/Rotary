@@ -13,7 +13,7 @@ DW.ready.then(async (me) => {
   if (!RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nueva tarea</button>';
   acciones.querySelector('[data-nuevo]')?.addEventListener('click', () => editar(null));
 
-  const campos = [{ k: 'titulo', label: 'Tarea', type: 'text', required: true, full: true }, { k: 'socio_id', label: 'Responsable', type: 'select', options: RO.opts(socios.filter((s) => s.estado === 'activo'), 'Sin responsable') },
+  const campos = [{ k: 'titulo', label: 'Tarea', type: 'text', required: true, full: true }, { k: 'socio_id', label: 'Responsable', type: 'select', options: RO.optsSocios(socios) },
     { k: 'fecha_limite', label: 'Fecha límite', type: 'date' }, { k: 'estado', label: 'Estado', type: 'select', options: [...COLS.map(([k, l]) => [k, l]), ['cancelada', 'Cancelada']] },
     { k: 'prioridad', label: 'Prioridad', type: 'select', options: [['normal', 'Normal'], ['alta', 'Alta'], ['baja', 'Baja']] },
     ...(proyectos.length ? [{ k: 'proyecto_id', label: 'Proyecto', type: 'select', options: RO.opts(proyectos, 'Ninguno') }] : []),
@@ -21,7 +21,7 @@ DW.ready.then(async (me) => {
 
   async function editar(t) {
     const ck = (t?.checklist || []).map((i) => `${i.hecho ? 'x ' : ''}${i.texto}`).join('\n');
-    const out = await C.form({ title: t ? 'Editar tarea' : 'Nueva tarea', fields: campos, values: t ? { ...t, checklist_txt: ck } : { estado: 'pendiente', prioridad: 'normal', socio_id: yo?.id || '' },
+    const out = await C.form({ title: t ? 'Editar tarea' : 'Nueva tarea', fields: campos.map((f) => (f.k === 'proyecto_id' ? { ...f, options: RO.optsProyectos(proyectos, t?.proyecto_id) } : f.k === 'socio_id' ? { ...f, options: RO.optsSocios(socios, 'Sin responsable', t?.socio_id) } : f)), values: t ? { ...t, checklist_txt: ck } : { estado: 'pendiente', prioridad: 'normal', socio_id: yo?.id || '' },
       onDelete: t && me.canManage ? () => api(`/api/tareas/tareas/${t.id}`, { method: 'DELETE' }) : null });
     if (out === 'deleted') { toast('Tarea borrada'); return cargar(); }
     if (!out) return;

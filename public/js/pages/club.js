@@ -53,6 +53,15 @@
       return cache.proy;
     },
     opts: (rows, empty = '—', label = 'nombre') => [['', empty], ...rows.map((r) => [r.id, r[label]])],
+    // Proyectos que se pueden elegir: solo los vivos (propuesta, planeación o en curso). Si el registro ya tenía uno cerrado, se conserva.
+    VIVOS: ['propuesta', 'planeacion', 'en_curso'],
+    optsProyectos: (rows, actual = null, empty = 'Ninguno') => [['', empty], ...rows.filter((p) => RO.VIVOS.includes(p.estado) || (actual && p.id === Number(actual))).map((p) => [p.id, p.nombre])],
+    // Grupo de cada persona del club: socios (y la junta), aspirantes, honorarios, externos y voluntarios invitados
+    GRUPOS_SOCIO: [['socio', 'Socios del club'], ['aspirante', 'Aspirantes'], ['honorario', 'Socios honorarios'], ['socio_externo', 'Socios externos'], ['voluntario_invitado', 'Voluntarios invitados']],
+    // Opciones de socio por grupos (para <select>): socios del club, aspirantes, honorarios y externos; sin voluntarios ni inactivos
+    optsSocios: (rows, empty = 'Sin responsable', actual = null) => [['', empty], ...RO.GRUPOS_SOCIO.filter(([k]) => k !== 'voluntario_invitado')
+      .flatMap(([k, l]) => rows.filter((s) => (['activo', 'aspirante'].includes(s.estado) || s.id === Number(actual)) && RO.grupoSocio(s) === k).map((s) => [s.id, s.nombre, l]))],
+    grupoSocio: (s) => (s.estado === 'aspirante' || s.tipo_membresia === 'aspirante' ? 'aspirante' : (s.cargo && !/^soci[oa]$/i.test(s.cargo)) ? 'socio' : (s.tipo_membresia || 'socio')),
     // Sube un archivo crudo (foto o PDF). Devuelve el JSON de la respuesta.
     async subir(url, file) {
       if (file.size > 5 * 1024 * 1024) throw new Error('El archivo pesa más de 5 MB');

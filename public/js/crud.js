@@ -39,7 +39,12 @@
         if (f.type === 'bool') return `<div class="form-check form-switch mt-1"><input class="form-check-input" type="checkbox" id="${id}" name="${f.k}" ${v ? 'checked' : ''}><label class="form-check-label" for="${id}">${esc(f.check || 'Sí')}</label></div>`;
         if (f.type === 'select' || f.ref) {
           const opts = f.ref ? [['', f.empty || '—'], ...lists[f.ref].map((r) => [r.id, r[LABEL[f.ref] || 'name'] || r.nombre || r.titulo || `#${r.id}`])] : f.options;
-          return `<select class="form-select" id="${id}" name="${f.k}" ${req}>${opts.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
+          // [valor, etiqueta, grupo?]: con grupo, se arman <optgroup> en el orden en que aparecen
+          const op = ([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`;
+          let html = '', g = null;
+          for (const o of opts) { if ((o[2] || null) !== g) { if (g) html += '</optgroup>'; g = o[2] || null; if (g) html += `<optgroup label="${esc(g)}">`; } html += op(o); }
+          if (g) html += '</optgroup>';
+          return `<select class="form-select" id="${id}" name="${f.k}" ${req}>${html}</select>`;
         }
         const type = { date: 'date', month: 'month', money: 'number', usd: 'number', int: 'number', email: 'email', url: 'url' }[f.type] || 'text';
         const extra = f.type === 'money' ? 'min="0" step="1" inputmode="numeric"' : f.type === 'usd' ? 'min="0" step="0.01" inputmode="decimal"' : f.type === 'int' ? 'step="1" inputmode="numeric"' : '';
@@ -104,7 +109,7 @@
       if (cfg.onEdit) return cfg.onEdit(row, changed);
       if (readOnlyApp) return;
       const canDel = cfg.canDelete ?? !!me?.canManage;
-      const out = await form({ title: row ? `Editar ${cfg.title}` : (cfg.newText || 'Nuevo'), fields: cfg.fields, values: row ? { ...row } : { ...(cfg.defaults?.() || {}) }, base: cfg.base,
+      const out = await form({ title: row ? `Editar ${cfg.title}` : (cfg.newText || 'Nuevo'), fields: typeof cfg.fields === 'function' ? cfg.fields(row) : cfg.fields, values: row ? { ...row } : { ...(cfg.defaults?.() || {}) }, base: cfg.base,
         onDelete: row && canDel ? () => api(`${base()}/${row.id}`, { method: 'DELETE' }) : null });
       if (out === 'deleted') { toast('Borrado'); changed(); return; }
       if (!out) return;
