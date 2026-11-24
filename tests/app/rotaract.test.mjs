@@ -238,6 +238,14 @@ export default async function ({ check, newBusiness, newMember }) {
   const ah = await A.app(`/api/reuniones/reuniones/${rr.id}/acta`);
   check('Reuniones: acta con el orden del día sugerido (8 puntos), guardada e imprimible', ad.acta.items.length === 8 && ad.acta.items[0].titulo === 'Toque de campana' && ga.status === 200 && ah.data.text.includes('Se abrió a las 7:05') && ah.data.text.includes('Invitada Externa') && ah.data.text.includes('APROBADA'));
 
+  const ad2 = (await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`)).data.acta;
+  ad2.items[0].responsable_id = pres.data.id; ad2.items[0].minutos = 5; ad2.items[0].hecho = true;
+  await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`, { method: 'PUT', body: { ...ad2, inicio: '19:05', fin: '20:40', recaudo: 35000, acta_anterior: true } });
+  const ad3 = (await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`)).data.acta, ah2 = await A.app(`/api/reuniones/reuniones/${rr.id}/acta`);
+  check('Reuniones: conducción guarda responsable, minutos, hora de inicio y fin, cajita y acta anterior', ad3.items[0].responsable_id === pres.data.id && ad3.items[0].minutos === 5 && ad3.inicio === '19:05' && ad3.recaudo === 35000 && ah2.data.text.includes('Camila Presidenta') && ah2.data.text.includes('Inicio 19:05'));
+  const ev3 = (await A.app('/api/reuniones/reuniones', { method: 'POST', body: { tipo: 'obra', titulo: 'Jornada', fecha: hoy } })).data;
+  check('Reuniones: una obra arranca con su propia agenda (no el orden del día de reunión)', (await A.app(`/api/reuniones/reuniones/${ev3.id}/acta-datos`)).data.acta.items[0].titulo === 'Llegada y registro');
+
   /* Obras ancladas a proyectos de Impacto */
   const pob = (await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Obra de prueba', financiacion: 'caja_mayor' } })).data;
   const ob1 = await A.app('/api/reuniones/reuniones', { method: 'POST', body: { tipo: 'obra', titulo: 'Jornada de pintura', fecha: hoy, proyecto_id: pob.id } });

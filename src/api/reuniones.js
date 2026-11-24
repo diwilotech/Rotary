@@ -132,14 +132,26 @@ export function routes(r) {
   });
 
   /* Acta: por el orden del día del club, con asistentes e invitados */
+  // Agenda por tipo: las reuniones usan el orden del día del club (el del distrito o el sugerido); eventos y obras, una propia
+  const AGENDA = {
+    evento: [['Registro de asistentes', 'Socios e invitados se registran al llegar.'], ['Apertura', 'Bienvenida y propósito del evento.'], ['Desarrollo', 'Lo central del evento.'], ['Cierre y agradecimientos', 'Fotos, anuncios y despedida.']],
+    obra: [['Llegada y registro', 'Quiénes llegaron a la jornada.'], ['Instrucciones y seguridad', 'Grupos, tareas y cuidados.'], ['Jornada de servicio', 'El trabajo con la comunidad.'], ['Beneficiados y fotos', 'A cuántas personas se llegó y evidencia.'], ['Cierre', 'Agradecimientos y siguiente paso.']],
+  };
   const actaDe = async (c, x) => { let a = null; try { a = JSON.parse(x.acta || 'null'); } catch (_) { a = null; }
-    if (!a) a = { items: (await ordenDelDia(c.env, c.businessId)).items.map((i) => ({ titulo: i.titulo, detalle: i.detalle, notas: '' })), compromisos: x.compromisos || '', notas: x.minuta || '' };
+    if (!a) {
+      const base = AGENDA[x.tipo] ? AGENDA[x.tipo].map(([titulo, detalle]) => ({ titulo, detalle })) : (await ordenDelDia(c.env, c.businessId)).items;
+      a = { items: base.map((i) => ({ titulo: i.titulo, detalle: i.detalle, notas: '', responsable_id: null, minutos: null })), compromisos: x.compromisos || '', notas: x.minuta || '' };
+    }
     return a; };
   r.get('/api/reuniones/reuniones/:id/acta-datos', `tenant:${MOD}`, async (c) => { const x = await reunionOr404(c, c.params.id); return json({ acta: await actaDe(c, x), estado: x.acta_estado || 'borrador' }); });
   r.put('/api/reuniones/reuniones/:id/acta-datos', `manager:${MOD}`, async (c) => {
     const x = await reunionOr404(c, c.params.id), b = await readJson(c.req);
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => ({ titulo: cast('titulo', 'text', i.titulo) || 'Punto', detalle: cast('detalle', 'long', i.detalle) || '', notas: cast('notas', 'long', i.notas) || '' }));
-    const acta = { items, compromisos: cast('compromisos', 'long', b.compromisos) || '', notas: cast('notas', 'long', b.notas) || '' };
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => ({ titulo: cast('titulo', 'text', i.titulo) || 'Punto', detalle: cast('detalle', 'long', i.detalle) || '', notas: cast('notas', 'long', i.notas) || '',
+      responsable_id: Number(i.responsable_id) || null, minutos: Math.min(240, Math.max(0, Number(i.minutos) || 0)) || null, hecho: !!i.hecho }));
+    // Datos de la conducción: hora de inicio y fin, recaudo de la cajita de macería y si se aprobó el acta anterior
+    const hhmm = (v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? v : null);
+    const acta = { items, compromisos: cast('compromisos', 'long', b.compromisos) || '', notas: cast('notas', 'long', b.notas) || '',
+      inicio: hhmm(b.inicio), fin: hhmm(b.fin), recaudo: Math.max(0, Number(b.recaudo) || 0) || null, acta_anterior: b.acta_anterior === true ? true : b.acta_anterior === false ? false : null };
     const estado = b.estado === 'aprobada' ? 'aprobada' : 'borrador';
     await c.env.DB.prepare("UPDATE ro_reuniones SET acta = ?, acta_estado = ?, compromisos = ?, estado = CASE WHEN estado IN ('programada','confirmada') AND fecha <= ? THEN 'realizada' ELSE estado END, updated_at = ? WHERE id = ? AND business_id = ?")
       .bind(JSON.stringify(acta), estado, acta.compromisos, today(), Date.now(), x.id, c.businessId).run();
@@ -148,6 +160,7 @@ export function routes(r) {
   });
   r.get('/api/reuniones/reuniones/:id/acta', `tenant:${MOD}`, async (c) => {
     const x = await reunionOr404(c, c.params.id), a = await actaDe(c, x);
+    const socios = await all(c.env, 'SELECT id, nombre FROM ro_socios WHERE business_id = ?', c.businessId);
     const [biz, pres, inv, junta] = await Promise.all([one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId),
       all(c.env, 'SELECT s.nombre, s.cargo FROM ro_asistencia a JOIN ro_socios s ON s.id = a.socio_id AND s.business_id = a.business_id WHERE a.business_id = ? AND a.reunion_id = ? AND a.presente = 1 ORDER BY s.nombre', c.businessId, x.id),
       all(c.env, 'SELECT nombre, procedencia, tipo FROM ro_reunion_invitados WHERE business_id = ? AND reunion_id = ? ORDER BY created_at', c.businessId, x.id),
@@ -168,7 +181,8 @@ ol{padding-left:18px}ol li{margin-bottom:8px}ol li b{color:#1d2433}.det{color:#6
 <header>${await logoOficial(c, club)}<div><h1>Acta de reunión</h1><div>${e(x.titulo)}</div><div class="det">${e(fecha)}${x.hora_ini ? ` · ${e(x.hora_ini)}` : ''}${x.lugar ? ` · ${e(x.lugar)}` : ''}</div><span class="est">${x.acta_estado === 'aprobada' ? 'APROBADA' : 'BORRADOR'}</span></div></header>
 <h2>Asistentes (${pres.length} socios${inv.length ? ` · ${inv.length} invitados` : ''})</h2><div class="cols">${pres.map((s) => `${e(s.nombre)}${s.cargo ? ` <span class="det">· ${e(s.cargo)}</span>` : ''}`).join('<br>') || '<span class="det">Sin asistencia registrada.</span>'}</div>
 ${inv.length ? `<h2>Invitados externos</h2><div class="cols">${inv.map((i) => `${e(i.nombre)}${i.procedencia ? ` <span class="det">· ${e(i.procedencia)}</span>` : ''}`).join('<br>')}</div>` : ''}
-<h2>Orden del día</h2><ol>${a.items.map((i) => `<li><b>${e(i.titulo)}</b>${i.notas ? `<div class="nota">${e(i.notas)}</div>` : i.detalle ? `<div class="det">${e(i.detalle)}</div>` : ''}</li>`).join('')}</ol>
+${a.inicio ? `<p class="det">Inicio ${e(a.inicio)}${a.fin ? ` · cierre ${e(a.fin)}` : ''}${a.acta_anterior === true ? ' · se aprobó el acta anterior' : ''}${a.recaudo ? ` · cajita de macería: $${Number(a.recaudo).toLocaleString('es-CO')}` : ''}</p>` : ''}
+<h2>Orden del día</h2><ol>${a.items.map((i) => { const rs = socios.find((x) => x.id === i.responsable_id); return `<li><b>${e(i.titulo)}</b>${rs ? ` <span class="det">· ${e(rs.nombre)}</span>` : ''}${i.notas ? `<div class="nota">${e(i.notas)}</div>` : i.detalle ? `<div class="det">${e(i.detalle)}</div>` : ''}</li>`; }).join('')}</ol>
 ${a.notas ? `<h2>Notas</h2><div>${e(a.notas)}</div>` : ''}${a.compromisos ? `<h2>Compromisos</h2><div>${e(a.compromisos)}</div>` : ''}
 <div class="firmas"><div>${e(p?.nombre || '')}<br><span class="det">Presidencia del club</span></div><div>${e(sec?.nombre || '')}<br><span class="det">Secretaría del club</span></div></div></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });

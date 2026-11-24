@@ -27,8 +27,8 @@ DW.ready.then(async (me) => {
   const CAMPOS = [{ k: 'tipo', label: 'Tipo', type: 'select', options: [['reunion', 'Reunión'], ['evento', 'Evento'], ['obra', 'Obra (jornada de servicio)']] }, { k: 'titulo', label: 'Título', type: 'text', required: true },
     { k: 'fecha', label: 'Fecha', type: 'date', required: true }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(EST).map(([k, [, l]]) => [k, l]) },
     { k: 'hora_ini', label: 'Hora de inicio', type: 'text', placeholder: '19:00' }, { k: 'hora_fin', label: 'Hora de fin', type: 'text', placeholder: '21:00' },
-    { k: 'modalidad', label: 'Modalidad', type: 'select', options: [['presencial', 'Presencial'], ['virtual', 'Virtual'], ['mixta', 'Mixta']] }, { k: 'lugar', label: 'Lugar', type: 'text' },
-    { k: 'enlace', label: 'Enlace (virtual)', type: 'url', full: true }, { k: 'descripcion', label: 'Descripción / orden del día', type: 'long' },
+    { k: 'modalidad', label: 'Modalidad', type: 'select', options: [['presencial', 'Presencial'], ['virtual', 'Virtual'], ['mixta', 'Mixta']] }, { k: 'lugar', label: 'Lugar', type: 'text', hint: 'dirección o enlace de Google Maps' },
+    { k: 'enlace', label: 'Enlace (virtual)', type: 'url', full: true }, { k: 'descripcion', label: 'Qué se va a hacer', type: 'long' },
     ...(proys.length ? [{ k: 'proyecto_id', label: 'Proyecto de Impacto', type: 'select', options: RO.opts(proys, 'Ninguno'), full: true, hint: 'las obras se anclan a un proyecto' }] : []),
     { k: 'compromisos', label: 'Compromisos', type: 'long' }];
 
@@ -40,6 +40,9 @@ DW.ready.then(async (me) => {
     try { await api(r ? `/api/reuniones/reuniones/${r.id}` : '/api/reuniones/reuniones', { method: r ? 'PATCH' : 'POST', body: out }); toast('Guardado'); ym = out.fecha.slice(0, 7); cargar(); } catch (x) { toast(x.message, false); }
   }
 
+  // Enlace para abrir el lugar: si el lugar ya es un enlace (Google Maps, Waze…) se usa tal cual; si no, se busca en Google Maps
+  const mapa = (l) => (/^https?:\/\//i.test(l || '') ? l : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l || '')}`);
+  const lugarHtml = (l) => (l ? `<span class="small"><i class="bi bi-geo-alt me-1"></i>${/^https?:/i.test(l) ? 'Ubicación' : esc(l)} · <a href="${esc(mapa(l))}" target="_blank" rel="noopener">Abrir en el mapa</a></span>` : '');
   const cuando = (f) => { const d = Math.round((Date.parse(f) - Date.parse(hoy)) / 864e5); return d === 0 ? 'hoy' : d === 1 ? 'mañana' : d > 1 ? `en ${d} días` : d === -1 ? 'ayer' : `hace ${-d} días`; };
 
   async function detalle(r) {
@@ -52,8 +55,8 @@ DW.ready.then(async (me) => {
         <h2 class="modal-title h5">${esc(r.titulo)}</h2><div class="small text-body-secondary text-capitalize">${RO.fechaLarga(r.fecha)}${r.hora_ini ? ` · ${esc(r.hora_ini)}${r.hora_fin ? `–${esc(r.hora_fin)}` : ''}` : ''}</div></div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body">
-        <div class="d-flex flex-wrap gap-2 mb-3">${C.chip(...(EST[r.estado] || EST.programada))}<span class="badge rounded-pill text-bg-light text-capitalize">${esc(r.modalidad)}</span>${r.lugar ? `<span class="small"><i class="bi bi-geo-alt me-1"></i>${esc(r.lugar)}</span>` : ''}${r.enlace ? `<a class="small" href="${esc(r.enlace)}" target="_blank" rel="noopener"><i class="bi bi-camera-video me-1"></i>Entrar</a>` : ''}</div>
-        ${r.descripcion ? `<p class="small" style="white-space:pre-wrap">${esc(r.descripcion)}</p>` : ''}
+        <div class="d-flex flex-wrap gap-2 mb-3">${C.chip(...(EST[r.estado] || EST.programada))}<span class="badge rounded-pill text-bg-light text-capitalize">${esc(r.modalidad)}</span>${lugarHtml(r.lugar)}${r.enlace ? `<a class="small" href="${esc(r.enlace)}" target="_blank" rel="noopener"><i class="bi bi-camera-video me-1"></i>Entrar</a>` : ''}</div>
+        ${r.descripcion ? `<div class="ro-h mt-0">Qué se va a hacer</div><p class="small" style="white-space:pre-wrap">${esc(r.descripcion)}</p>` : ''}
         ${yo !== undefined && r.estado !== 'cancelada' && !pasada ? `<div class="dw-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap"><span class="small flex-grow-1">¿Vas a asistir?</span><button class="btn btn-sm ${yo.respuesta === 'si' ? 'btn-success' : 'btn-outline-success'}" data-resp="si">Sí, voy</button><button class="btn btn-sm ${yo.respuesta === 'no' ? 'btn-secondary' : 'btn-outline-secondary'}" data-resp="no">No puedo</button></div>` : ''}
         <div class="row g-2 mb-3"><div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${conf.length}</div><div class="small text-body-secondary">Confirmaron</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${no.length}</div><div class="small text-body-secondary">No van</div></div></div>
@@ -61,7 +64,8 @@ DW.ready.then(async (me) => {
         ${M && pasada ? `<div class="ro-h mt-0">Asistencia</div><div class="ro-socios" data-asis>${a.rows.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-s="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>
           <button class="btn btn-primary mt-2" data-guardar><i class="bi bi-check2 me-1"></i>Guardar asistencia</button>` : conf.length ? `<div class="small text-body-secondary mb-2">Van: ${conf.map((x) => esc(x.nombre)).join(', ')}</div>` : ''}
         <div class="d-flex gap-2 flex-wrap mb-2"><button class="btn btn-outline-primary btn-sm" data-inv><i class="bi bi-person-plus me-1"></i>Invitados externos (${r.invitados || 0})</button>
-          <button class="btn btn-outline-primary btn-sm" data-acta><i class="bi bi-journal-text me-1"></i>${M ? 'Acta de la reunión' : 'Ver acta'}${r.tiene_acta ? ` · ${r.acta_estado === 'aprobada' ? 'aprobada' : 'borrador'}` : ''}</button></div>
+          ${M ? `<button class="btn btn-primary btn-sm" data-conducir><i class="bi bi-play-circle me-1"></i>Conducir ${{ evento: 'el evento', obra: 'la obra' }[r.tipo] || 'la reunión'}</button>` : ''}
+          ${r.tiene_acta ? `<a class="btn btn-outline-primary btn-sm" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-journal-text me-1"></i>Ver acta · ${r.acta_estado === 'aprobada' ? 'aprobada' : 'borrador'}</a>` : ''}</div>
         ${r.minuta ? `<div class="ro-h">Minuta</div><div class="dw-card small" style="white-space:pre-wrap;max-height:320px;overflow:auto">${esc(r.minuta)}</div>` : ''}
         ${r.compromisos ? `<div class="ro-h">Compromisos</div><div class="small" style="white-space:pre-wrap">${esc(r.compromisos)}</div>` : ''}
       </div>
@@ -73,7 +77,7 @@ DW.ready.then(async (me) => {
     });
     el.querySelector('[data-editar]')?.addEventListener('click', () => { m.hide(); editar(r); });
     el.querySelector('[data-inv]').onclick = () => { m.hide(); invitados(r); };
-    el.querySelector('[data-acta]').onclick = () => { m.hide(); M ? acta(r) : window.open(`/api/reuniones/reuniones/${r.id}/acta`, '_blank', 'noopener'); };
+    el.querySelector('[data-conducir]')?.addEventListener('click', () => { m.hide(); conducir(r); });
   }
 
   /* ---------- Invitados externos: los agrega la junta o se registran solos con el enlace ---------- */
@@ -95,22 +99,122 @@ DW.ready.then(async (me) => {
     pintarI();
   }
 
-  /* ---------- Acta: notas por cada punto del orden del día (el del distrito o el sugerido) ---------- */
-  async function acta(r) {
-    const { el, m } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
-    let d; try { d = await api(`/api/reuniones/reuniones/${r.id}/acta-datos`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
-    const a = d.acta;
-    el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><div><h2 class="modal-title h5">Acta · ${esc(r.titulo)}</h2><div class="small text-body-secondary text-capitalize">${RO.fechaLarga(r.fecha)}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-      <div class="modal-body"><p class="small text-body-secondary">Orden del día del club (lo puede ajustar el distrito). Escribe lo que pasó en cada punto.</p>
-        <ol class="ps-3" data-items>${a.items.map((i, n) => `<li class="mb-3"><b>${esc(i.titulo)}</b>${i.detalle ? `<div class="small text-body-secondary">${esc(i.detalle)}</div>` : ''}<textarea class="form-control form-control-sm mt-1" rows="2" data-n="${n}" placeholder="Lo que se dijo o decidió">${esc(i.notas || '')}</textarea></li>`).join('')}</ol>
-        <label class="form-label small fw-semibold">Notas generales</label><textarea class="form-control form-control-sm mb-2" rows="2" data-notas>${esc(a.notas || '')}</textarea>
-        <label class="form-label small fw-semibold">Compromisos</label><textarea class="form-control form-control-sm mb-2" rows="2" data-comp>${esc(a.compromisos || '')}</textarea>
-        <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${d.estado === 'aprobada' ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div>
-      <div class="modal-footer"><a class="btn btn-light me-auto" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Ver e imprimir</a><button class="btn btn-primary" data-gacta><i class="bi bi-check2 me-1"></i>Guardar acta</button></div>`;
-    el.querySelector('[data-gacta]').onclick = async () => {
-      const items = a.items.map((i, n) => ({ ...i, notas: el.querySelector(`[data-n="${n}"]`).value }));
-      try { await api(`/api/reuniones/reuniones/${r.id}/acta-datos`, { method: 'PUT', body: { items, notas: el.querySelector('[data-notas]').value, compromisos: el.querySelector('[data-comp]').value, estado: el.querySelector('[data-aprob]').checked ? 'aprobada' : 'borrador' } }); toast('Acta guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); }
+  /* ---------- Conducir la reunión: pasos de izquierda a derecha ----------
+     0 · Orden del día (se organiza: puntos, responsables y minutos) → «Empezar» → un paso por cada punto (se llenan notas;
+     el primero trae el llamado a lista, «invitados» la lista de externos, «acta anterior» su aprobación y «cajita» el recaudo)
+     → Cierre (compromisos, notas y aprobar el acta). Se guarda solo al pasar de un paso a otro. */
+  async function conducir(r) {
+    const { el, m } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-xl modal-fullscreen-sm-down' });
+    let d, asis, inv;
+    try { [d, asis, inv] = await Promise.all([api(`/api/reuniones/reuniones/${r.id}/acta-datos`), api(`/api/reuniones/reuniones/${r.id}/asistencia`), api(`/api/reuniones/reuniones/${r.id}/invitados`)]); }
+    catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
+    const a = d.acta, socios = asis.rows; let invitadosL = inv.rows, aprobada = d.estado === 'aprobada';
+    a.items = a.items.map((i) => ({ notas: '', responsable_id: null, minutos: null, ...i }));
+    let paso = a.inicio ? 1 : 0, cambios = false, asisCambio = false;
+    const presentes = () => socios.filter((x) => x.presente === 1).length;
+    const N = () => a.items.length, ULT = () => N() + 1;
+    const nombreS = (id) => socios.find((x) => x.socio_id === id)?.nombre || '';
+    const especial = (t) => (/invitad/i.test(t) ? 'invitados' : /acta anterior/i.test(t) ? 'acta' : /cajita|macer/i.test(t) ? 'cajita' : /registro|llamado|lista|llegada/i.test(t) ? 'lista' : '');
+    const guardar = async (final = false) => {
+      if (asisCambio) { await api(`/api/reuniones/reuniones/${r.id}/asistencia`, { method: 'PUT', body: { marcas: socios.map((x) => ({ socio_id: x.socio_id, presente: x.presente === 1 })) } }).catch(() => {}); asisCambio = false; }
+      if (!cambios && !final) return;
+      await api(`/api/reuniones/reuniones/${r.id}/acta-datos`, { method: 'PUT', body: { ...a, estado: aprobada ? 'aprobada' : 'borrador' } }); cambios = false;
     };
+    const hora = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
+    const listaAsis = () => `<div class="ro-h">Llamado a lista · <span data-np>${presentes()}</span> de ${socios.length}</div><div class="ro-socios" style="max-height:300px;overflow:auto">${socios.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-pres="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>`;
+    const listaInv = () => `<div class="ro-h">Invitados externos (${invitadosL.length})</div>${invitadosL.map((i) => `<div class="small py-1 border-bottom"><b>${esc(i.nombre)}</b>${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}</div>`).join('') || '<p class="small text-body-secondary">Aún no hay invitados.</p>'}
+      <form class="d-flex gap-2 mt-2" data-finv><input class="form-control form-control-sm" name="nombre" placeholder="Nombre del invitado" required><input class="form-control form-control-sm" name="procedencia" placeholder="Club u organización"><button class="btn btn-sm btn-outline-primary">Agregar</button></form>`;
+    const tabs = () => [['Orden del día', 'bi-list-ol'], ...a.items.map((i) => [i.titulo, '']), ['Cierre', 'bi-flag']];
+    function cuerpo() {
+      if (paso === 0) return `<div class="dw-card mb-3 d-grid gap-1" style="border-left:4px solid ${COLOR[r.tipo] || COLOR.reunion}">
+          ${r.descripcion ? `<div><span class="small fw-semibold text-body-secondary">Qué se va a hacer</span><div style="white-space:pre-wrap">${esc(r.descripcion)}</div></div>` : ''}
+          <div><span class="small fw-semibold text-body-secondary">Dónde</span><div>${r.lugar ? lugarHtml(r.lugar) : '<span class="small text-body-secondary">Sin lugar: agrégalo al editar</span>'}${r.enlace ? ` · <a class="small" href="${esc(r.enlace)}" target="_blank" rel="noopener"><i class="bi bi-camera-video me-1"></i>Enlace virtual</a>` : ''}</div></div>
+          <div><span class="small fw-semibold text-body-secondary">Asistentes</span><div class="small">${socios.filter((x) => x.respuesta === 'si').length} socios confirmaron · ${presentes()} presentes · ${invitadosL.length} invitados externos</div></div></div>
+        <p class="small text-body-secondary">Organiza la ${ETQ[r.tipo]?.toLowerCase() || 'reunión'}: ajusta los puntos, quién se encarga de cada uno y cuántos minutos le das. Luego toca «Empezar».</p>
+        <div data-orden>${a.items.map((i, n) => `<div class="ro-oi"><span class="ro-oi-n">${n + 1}</span><div class="flex-grow-1 d-grid gap-1"><input class="form-control form-control-sm fw-semibold" data-ot="${n}" value="${esc(i.titulo)}">
+            <div class="d-flex gap-1 flex-wrap"><select class="form-select form-select-sm" style="max-width:220px" data-or="${n}"><option value="">Responsable…</option>${socios.map((x) => `<option value="${x.socio_id}" ${i.responsable_id === x.socio_id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select>
+            <input class="form-control form-control-sm" style="max-width:110px" type="number" min="0" max="240" placeholder="min" data-om="${n}" value="${i.minutos || ''}"></div></div>
+          <div class="btn-group-vertical btn-group-sm"><button class="btn btn-light" data-oup="${n}" aria-label="Subir"><i class="bi bi-arrow-up"></i></button><button class="btn btn-light" data-odn="${n}" aria-label="Bajar"><i class="bi bi-arrow-down"></i></button></div>
+          <button class="btn btn-sm btn-light" data-orm="${n}" aria-label="Quitar"><i class="bi bi-trash"></i></button></div>`).join('')}</div>
+        <button class="btn btn-sm btn-outline-primary mt-2" data-oadd><i class="bi bi-plus-lg me-1"></i>Agregar punto</button>
+        <div class="small text-body-secondary mt-2">Tiempo previsto: <b>${a.items.reduce((t, i) => t + (Number(i.minutos) || 0), 0)} min</b></div>`;
+      if (paso === ULT()) return `<div class="row g-3"><div class="col-md-5"><div class="dw-card h-100"><div class="ro-h mt-0">Resumen</div>
+          <div class="small d-grid gap-1"><span><i class="bi bi-people me-1"></i><b>${presentes()}</b> socios presentes</span><span><i class="bi bi-person-plus me-1"></i><b>${invitadosL.length}</b> invitados externos</span>
+          <span><i class="bi bi-clock me-1"></i>${a.inicio ? `Inició ${esc(a.inicio)}` : 'Sin hora de inicio'}${a.fin ? ` · terminó ${esc(a.fin)}` : ''}</span>${a.recaudo ? `<span><i class="bi bi-coin me-1"></i>Cajita: ${C.money(a.recaudo)}</span>` : ''}
+          <span><i class="bi bi-check2-square me-1"></i>${a.items.filter((i) => i.notas).length} de ${N()} puntos con notas</span></div></div></div>
+        <div class="col-md-7"><label class="form-label small fw-semibold">Compromisos</label><textarea class="form-control mb-2" rows="3" data-comp placeholder="Quién hace qué y para cuándo">${esc(a.compromisos || '')}</textarea>
+          <label class="form-label small fw-semibold">Notas generales</label><textarea class="form-control mb-2" rows="2" data-notas>${esc(a.notas || '')}</textarea>
+          <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${aprobada ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div></div>`;
+      const i = a.items[paso - 1], sp = paso === 1 ? 'lista' : especial(i.titulo);
+      return `<div class="row g-3"><div class="${sp ? 'col-lg-6' : 'col-12'}"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n">${paso}</span><h3 class="h5 m-0 flex-grow-1">${esc(i.titulo)}</h3>${i.minutos ? `<span class="badge text-bg-light border">${i.minutos} min</span>` : ''}</div>
+          ${i.detalle ? `<p class="small text-body-secondary mb-1">${esc(i.detalle)}</p>` : ''}${i.responsable_id ? `<p class="small mb-2"><i class="bi bi-person-badge me-1"></i>${esc(nombreS(i.responsable_id))}</p>` : ''}
+          <textarea class="form-control" rows="${sp ? 6 : 9}" data-nota placeholder="Lo que se dijo o decidió en este punto">${esc(i.notas || '')}</textarea>
+          <label class="form-check mt-2"><input class="form-check-input" type="checkbox" data-hecho ${i.hecho ? 'checked' : ''}> <span class="form-check-label small">Punto cumplido</span></label></div>
+        ${sp ? `<div class="col-lg-6">${sp === 'lista' ? listaAsis() + listaInv() : sp === 'invitados' ? listaInv()
+          : sp === 'acta' ? `<div class="ro-h mt-0">Acta anterior</div><p class="small">Lee el acta de la reunión anterior y marca si se aprobó.</p><div class="d-flex gap-2"><button class="btn btn-sm ${a.acta_anterior === true ? 'btn-success' : 'btn-outline-success'}" data-aa="1">Aprobada</button><button class="btn btn-sm ${a.acta_anterior === false ? 'btn-secondary' : 'btn-outline-secondary'}" data-aa="0">Con correcciones</button></div>`
+          : `<div class="ro-h mt-0">Cajita de macería</div><label class="small">Recaudado</label><input class="form-control" type="number" min="0" step="500" data-recaudo value="${a.recaudo || ''}" placeholder="0">`}</div>` : ''}</div>`;
+    }
+    function pintar() {
+      const T = tabs(), pct = Math.round((paso / ULT()) * 100);
+      el.querySelector('.modal-content').innerHTML = `<style>.ro-st{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.ro-st::-webkit-scrollbar{display:none}
+          .ro-st button{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg);border-radius:999px;padding:5px 11px;font-size:.78rem;color:inherit;max-width:210px}
+          .ro-st button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ro-st button.on{background:var(--dw-p);border-color:var(--dw-p);color:#fff}.ro-st button.ok{border-color:#16a34a}.ro-st b{font-size:.7rem;opacity:.8}
+          .ro-oi{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--bs-border-color)}.ro-oi-n{display:inline-grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:var(--dw-p);color:#fff;font-weight:700;font-size:.85rem}
+          .ro-paso{animation:roIn .22s ease}@keyframes roIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}.ro-paso.atras{animation-name:roOut}@keyframes roOut{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}</style>
+        <div class="modal-header flex-column align-items-stretch gap-2"><div class="d-flex align-items-center gap-2"><div class="flex-grow-1"><div class="small fw-semibold" style="color:${COLOR[r.tipo] || COLOR.reunion}">${ETQ[r.tipo] || 'Reunión'} · ${esc(r.titulo)}</div>
+            <div class="small text-body-secondary"><span class="text-capitalize">${RO.fechaLarga(r.fecha)}</span>${a.inicio ? ` · en curso desde las ${esc(a.inicio)}` : ''}${r.lugar ? ` · <a href="${esc(mapa(r.lugar))}" target="_blank" rel="noopener"><i class="bi bi-geo-alt"></i> ${/^https?:/i.test(r.lugar) ? 'Ubicación' : esc(r.lugar)}</a>` : ''}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+          <div class="progress" style="height:4px"><div class="progress-bar" style="width:${pct}%"></div></div>
+          <div class="ro-st" data-st>${T.map(([t, ic], n) => `<button type="button" class="${n === paso ? 'on' : ''} ${n > 0 && n <= N() && a.items[n - 1].hecho ? 'ok' : ''}" data-ir="${n}">${ic ? `<i class="bi ${ic}"></i>` : `<b>${n}</b>`}<span>${esc(t)}</span></button>`).join('')}</div></div>
+        <div class="modal-body"><div class="ro-paso" data-paso>${cuerpo()}</div></div>
+        <div class="modal-footer"><button class="btn btn-light" data-ant ${paso === 0 ? 'disabled' : ''}><i class="bi bi-chevron-left"></i> Anterior</button><span class="small text-body-secondary flex-grow-1 text-center">${paso === 0 ? 'Preparación' : paso === ULT() ? 'Cierre' : `Punto ${paso} de ${N()}`}</span>
+          ${paso === 0 ? `<button class="btn btn-primary" data-sig><i class="bi bi-play-fill me-1"></i>${a.inicio ? 'Continuar' : 'Empezar'}</button>` : paso === ULT() ? `<a class="btn btn-light" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-printer"></i></a><button class="btn btn-success" data-fin><i class="bi bi-check2-circle me-1"></i>Guardar y terminar</button>` : '<button class="btn btn-primary" data-sig>Siguiente <i class="bi bi-chevron-right"></i></button>'}</div>`;
+      el.querySelector('[data-st] .on')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
+    const ir = async (n, atras = false) => {
+      if (n < 0 || n > ULT()) return;
+      if (paso === 0 && n > 0 && !a.inicio) { a.inicio = hora(); cambios = true; }
+      paso = n; pintar(); if (atras) el.querySelector('[data-paso]').classList.add('atras');
+      try { await guardar(); } catch (x) { toast(x.message, false); }
+    };
+    pintar();
+    el.addEventListener('input', (e) => {
+      const t = e.target, n = Number(t.dataset.ot ?? t.dataset.om ?? -1);
+      if (t.dataset.ot !== undefined) a.items[n].titulo = t.value; else if (t.dataset.om !== undefined) a.items[n].minutos = Number(t.value) || null;
+      else if (t.matches('[data-nota]')) a.items[paso - 1].notas = t.value; else if (t.matches('[data-comp]')) a.compromisos = t.value; else if (t.matches('[data-notas]')) a.notas = t.value;
+      else if (t.matches('[data-recaudo]')) a.recaudo = Number(t.value) || null; else return;
+      cambios = true;
+    });
+    el.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.dataset.or !== undefined) { a.items[Number(t.dataset.or)].responsable_id = Number(t.value) || null; cambios = true; }
+      else if (t.dataset.pres) { const x = socios.find((y) => String(y.socio_id) === t.dataset.pres); x.presente = t.checked ? 1 : 0; asisCambio = true; const np = el.querySelector('[data-np]'); if (np) np.textContent = presentes(); }
+      else if (t.matches('[data-hecho]')) { a.items[paso - 1].hecho = t.checked; cambios = true; el.querySelector(`[data-ir="${paso}"]`)?.classList.toggle('ok', t.checked); }
+      else if (t.matches('[data-aprob]')) { aprobada = t.checked; cambios = true; }
+    });
+    el.addEventListener('submit', async (e) => {
+      if (!e.target.matches('[data-finv]')) return; e.preventDefault();
+      try { await api(`/api/reuniones/reuniones/${r.id}/invitados`, { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); invitadosL = (await api(`/api/reuniones/reuniones/${r.id}/invitados`)).rows; pintar(); } catch (x) { toast(x.message, false); }
+    });
+    el.addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ir !== undefined) return ir(Number(b.dataset.ir), Number(b.dataset.ir) < paso);
+      if (b.matches('[data-sig]')) return ir(paso + 1);
+      if (b.matches('[data-ant]')) return ir(paso - 1, true);
+      if (b.dataset.aa !== undefined) { a.acta_anterior = b.dataset.aa === '1'; cambios = true; return pintar(); }
+      const n = Number(b.dataset.oup ?? b.dataset.odn ?? b.dataset.orm ?? -1);
+      if (b.dataset.oup !== undefined && n > 0) [a.items[n - 1], a.items[n]] = [a.items[n], a.items[n - 1]];
+      else if (b.dataset.odn !== undefined && n < N() - 1) [a.items[n + 1], a.items[n]] = [a.items[n], a.items[n + 1]];
+      else if (b.dataset.orm !== undefined) a.items.splice(n, 1);
+      else if (b.matches('[data-oadd]')) a.items.push({ titulo: 'Nuevo punto', detalle: '', notas: '', responsable_id: null, minutos: null });
+      else if (b.matches('[data-fin]')) { a.fin = a.fin || hora(); try { await guardar(true); toast('Listo: el acta quedó guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); } return; }
+      else return;
+      cambios = true; pintar();
+    });
+    // Deslizar con el dedo: izquierda = siguiente, derecha = anterior
+    let x0 = null;
+    el.addEventListener('touchstart', (e) => { if (!e.target.closest('textarea,input,select,[data-st]')) x0 = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener('touchend', (e) => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 70) ir(paso + (dx < 0 ? 1 : -1), dx > 0); });
+    el.addEventListener('hide.bs.modal', () => { guardar().catch(() => {}); cargar(); }, { once: true });
   }
 
   /* ---------- Listas del año rotario (julio a junio): reuniones y eventos ---------- */
@@ -120,7 +224,7 @@ DW.ready.then(async (me) => {
     view.innerHTML = `${barra()}<div class="dw-card mb-3 d-flex align-items-center gap-2"><b class="flex-grow-1">${{ evento: 'Eventos', obra: 'Obras' }[vista] || 'Reuniones'} del año rotario ${anio}-${anio + 1}</b>
         <div class="btn-group btn-group-sm"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
       ${lista.length ? window.App.table([{ label: 'Fecha', html: (x) => `<span class="text-capitalize">${C.day(x.fecha)}</span>${x.hora_ini ? `<div class="small text-body-secondary">${esc(x.hora_ini)}</div>` : ''}` },
-        { label: ETQ[vista] || 'Reunión', main: true, html: (x) => `<a href="#" data-ev="${x.id}" class="fw-semibold text-decoration-none">${esc(x.titulo)}</a><div class="small text-body-secondary fw-normal">${esc(x.lugar || x.modalidad || '')}${x.proyecto ? ` · <i class="bi bi-globe-americas"></i> ${esc(x.proyecto)}` : ''}</div>` },
+        { label: ETQ[vista] || 'Reunión', main: true, html: (x) => `<a href="#" data-ev="${x.id}" class="fw-semibold text-decoration-none">${esc(x.titulo)}</a><div class="small text-body-secondary fw-normal">${x.lugar ? `<a href="${esc(mapa(x.lugar))}" target="_blank" rel="noopener"><i class="bi bi-geo-alt"></i> ${/^https?:/i.test(x.lugar) ? 'Ubicación' : esc(x.lugar)}</a>` : esc(x.modalidad || '')}${x.proyecto ? ` · <i class="bi bi-globe-americas"></i> ${esc(x.proyecto)}` : ''}</div>` },
         { label: 'Estado', html: (x) => C.chip(...(EST[x.estado] || EST.programada)) }, { label: 'Socios', cls: 'text-end', html: (x) => (x.presentes || (x.fecha <= hoy ? 0 : `${x.confirmados} conf.`)) },
         { label: 'Externos', cls: 'text-end', html: (x) => x.invitados || '—' }, { label: 'Acta', html: ACT }], lista)
         : window.App.empty(ICO[vista] || 'bi-people', `No hay ${{ evento: 'eventos', obra: 'obras' }[vista] || 'reuniones'} en este año rotario.`)}`;
