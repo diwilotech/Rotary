@@ -8,7 +8,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
-import { PAGA_CUOTA, EN_DISTRITO, enDistrito, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
+import { PAGA_CUOTA, EN_DISTRITO, enDistrito, ORDEN_DIA, ordenDelDia, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
 
 async function distritoOError(c) {
   const d = await distritoDe(c.env, c.businessId);
@@ -69,6 +69,18 @@ export function routes(r) {
     ]);
     socios.sort((a, b) => cargoOrden(a.cargo) - cargoOrden(b.cargo) || a.nombre.localeCompare(b.nombre));
     return json({ club: { id, nombre: club.name }, socios, proyectos, reuniones, saldos: sal, obligaciones: obl });
+  });
+
+  /* Orden del día de las reuniones ordinarias: el distrito lo edita y sus clubes lo usan en el acta */
+  r.get('/api/distrito/orden', 'tenant', async (c) => { await distritoOError(c); return json({ ...(await ordenDelDia(c.env, c.businessId)), sugerido: ORDEN_DIA }); });
+  r.put('/api/distrito/orden', 'manager', async (c) => {
+    await distritoOError(c);
+    const b = await readJson(c.req), items = (Array.isArray(b.items) ? b.items : []).slice(0, 30)
+      .map((i) => ({ titulo: cast('titulo', 'text', i.titulo), detalle: cast('detalle', 'long', i.detalle) || '' })).filter((i) => i.titulo);
+    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, es_distrito, orden_dia, updated_at) VALUES (?, 1, ?, ?) ON CONFLICT(business_id) DO UPDATE SET orden_dia = excluded.orden_dia, updated_at = excluded.updated_at')
+      .bind(c.businessId, items.length ? JSON.stringify(items) : null, Date.now()).run();
+    await audit(c, 'Cambió el orden del día de las reuniones del distrito', { modulo: 'distrito' });
+    return json({ ok: true, items });
   });
 
   /* Cuota distrital */

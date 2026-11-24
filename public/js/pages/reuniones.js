@@ -1,6 +1,7 @@
 // Reuniones: calendario didáctico del mes. Abre en HOY («estás aquí»), muestra reuniones y eventos con colores distintos,
 // la próxima con cuenta regresiva y la línea de lo que viene. Tocar un día vacío crea (junta); tocar una reunión abre su detalle:
-// confirmaciones, asistencia, minuta y compromisos.
+// confirmaciones, asistencia, invitados externos (con enlace para que se registren solos) y el acta por el orden del día.
+// Además, las listas del año rotario: «Reuniones del año» y «Eventos del año».
 DW.ready.then(async (me) => {
   if (!me.pageAllowed) return;
   const { api, esc, toast, modal } = window.App;
@@ -16,7 +17,7 @@ DW.ready.then(async (me) => {
   const lunes = (iso) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
   const mesMas = (ym, n) => { const d = new Date(`${ym}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); };
   const hoy = C.todayCo();
-  let ym = hoy.slice(0, 7), rows = [], proximas = [];
+  let ym = hoy.slice(0, 7), rows = [], proximas = [], vista = { '#reuniones': 'reunion', '#eventos': 'evento' }[location.hash] || 'calendario', anio = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1, lista = [];
 
   if (M) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nueva reunión o evento</button>';
   acciones.querySelector('[data-nuevo]')?.addEventListener('click', () => editar(null, hoy));
@@ -56,6 +57,8 @@ DW.ready.then(async (me) => {
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-5 fw-bold">${a.rows.filter((x) => x.presente === 1).length}</div><div class="small text-body-secondary">Asistieron</div></div></div></div>
         ${M && pasada ? `<div class="ro-h mt-0">Asistencia</div><div class="ro-socios" data-asis>${a.rows.map((x) => `<label class="ro-scard"><input class="form-check-input m-0" type="checkbox" data-s="${x.socio_id}" ${x.presente === 1 ? 'checked' : ''}><span class="flex-grow-1">${esc(x.nombre)}</span>${x.respuesta === 'si' ? '<i class="bi bi-hand-thumbs-up text-success" title="Confirmó"></i>' : ''}</label>`).join('')}</div>
           <button class="btn btn-primary mt-2" data-guardar><i class="bi bi-check2 me-1"></i>Guardar asistencia</button>` : conf.length ? `<div class="small text-body-secondary mb-2">Van: ${conf.map((x) => esc(x.nombre)).join(', ')}</div>` : ''}
+        <div class="d-flex gap-2 flex-wrap mb-2"><button class="btn btn-outline-primary btn-sm" data-inv><i class="bi bi-person-plus me-1"></i>Invitados externos (${r.invitados || 0})</button>
+          <button class="btn btn-outline-primary btn-sm" data-acta><i class="bi bi-journal-text me-1"></i>${M ? 'Acta de la reunión' : 'Ver acta'}${r.tiene_acta ? ` · ${r.acta_estado === 'aprobada' ? 'aprobada' : 'borrador'}` : ''}</button></div>
         ${r.minuta ? `<div class="ro-h">Minuta</div><div class="dw-card small" style="white-space:pre-wrap;max-height:320px;overflow:auto">${esc(r.minuta)}</div>` : ''}
         ${r.compromisos ? `<div class="ro-h">Compromisos</div><div class="small" style="white-space:pre-wrap">${esc(r.compromisos)}</div>` : ''}
       </div>
@@ -66,7 +69,60 @@ DW.ready.then(async (me) => {
       try { await api(`/api/reuniones/reuniones/${r.id}/asistencia`, { method: 'PUT', body: { marcas } }); toast('Asistencia guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); }
     });
     el.querySelector('[data-editar]')?.addEventListener('click', () => { m.hide(); editar(r); });
+    el.querySelector('[data-inv]').onclick = () => { m.hide(); invitados(r); };
+    el.querySelector('[data-acta]').onclick = () => { m.hide(); M ? acta(r) : window.open(`/api/reuniones/reuniones/${r.id}/acta`, '_blank', 'noopener'); };
   }
+
+  /* ---------- Invitados externos: los agrega la junta o se registran solos con el enlace ---------- */
+  const TIPO_INV = { invitado: 'Invitado', rotario: 'Rotario', rotaractiano: 'Rotaractiano de otro club', interactiano: 'Interactiano', orador: 'Orador' };
+  async function invitados(r) {
+    const { el } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
+    const pintarI = async () => {
+      const d = await api(`/api/reuniones/reuniones/${r.id}/invitados`).catch((x) => ({ rows: [], error: x.message }));
+      el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><h2 class="modal-title h5">Invitados externos · ${esc(r.titulo)}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">${M ? `<div class="dw-card p-2 mb-3 d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-link-45deg fs-4" style="color:var(--dw-p)"></i><span class="small flex-grow-1">Comparte un enlace para que los invitados se registren solos (con su autorización de datos).</span><button class="btn btn-sm btn-primary" data-link>Copiar enlace</button></div>
+          <form class="row g-2 mb-3" data-fi><div class="col-sm-5"><input class="form-control form-control-sm" name="nombre" placeholder="Nombre" required></div><div class="col-sm-4"><input class="form-control form-control-sm" name="procedencia" placeholder="Club u organización"></div>
+            <div class="col-sm-3"><select class="form-select form-select-sm" name="tipo">${Object.entries(TIPO_INV).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div><div class="col-12"><button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg me-1"></i>Agregar invitado</button></div></form>` : ''}
+          ${d.rows.length ? d.rows.map((i) => `<div class="d-flex align-items-center gap-2 py-2 border-bottom">${RO.avatar({ nombre: i.nombre }, 34)}<div class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(i.nombre)}</b><span class="small text-body-secondary">${TIPO_INV[i.tipo] || 'Invitado'}${i.procedencia ? ` · ${esc(i.procedencia)}` : ''}${i.via === 'enlace' ? ' · se registró con el enlace' : ''}</span></div>${M ? `<button class="btn btn-sm btn-light" data-qi="${i.id}" aria-label="Quitar"><i class="bi bi-x-lg"></i></button>` : ''}</div>`).join('')
+            : '<p class="small text-body-secondary mb-0">Aún no hay invitados externos.</p>'}</div>`;
+      el.querySelector('[data-link]')?.addEventListener('click', async () => { try { const x = await api(`/api/reuniones/reuniones/${r.id}/enlace`, { method: 'POST', body: {} }); await navigator.clipboard?.writeText(x.url).catch(() => prompt('Copia el enlace:', x.url)); toast('Enlace copiado'); } catch (x) { toast(x.message, false); } });
+      el.querySelector('[data-fi]')?.addEventListener('submit', async (ev) => { ev.preventDefault(); try { await api(`/api/reuniones/reuniones/${r.id}/invitados`, { method: 'POST', body: Object.fromEntries(new FormData(ev.target)) }); pintarI(); cargar(); } catch (x) { toast(x.message, false); } });
+      el.querySelectorAll('[data-qi]').forEach((b) => (b.onclick = async () => { try { await api(`/api/reuniones/invitados/${b.dataset.qi}`, { method: 'DELETE' }); pintarI(); cargar(); } catch (x) { toast(x.message, false); } }));
+    };
+    pintarI();
+  }
+
+  /* ---------- Acta: notas por cada punto del orden del día (el del distrito o el sugerido) ---------- */
+  async function acta(r) {
+    const { el, m } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
+    let d; try { d = await api(`/api/reuniones/reuniones/${r.id}/acta-datos`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
+    const a = d.acta;
+    el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><div><h2 class="modal-title h5">Acta · ${esc(r.titulo)}</h2><div class="small text-body-secondary text-capitalize">${RO.fechaLarga(r.fecha)}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body"><p class="small text-body-secondary">Orden del día del club (lo puede ajustar el distrito). Escribe lo que pasó en cada punto.</p>
+        <ol class="ps-3" data-items>${a.items.map((i, n) => `<li class="mb-3"><b>${esc(i.titulo)}</b>${i.detalle ? `<div class="small text-body-secondary">${esc(i.detalle)}</div>` : ''}<textarea class="form-control form-control-sm mt-1" rows="2" data-n="${n}" placeholder="Lo que se dijo o decidió">${esc(i.notas || '')}</textarea></li>`).join('')}</ol>
+        <label class="form-label small fw-semibold">Notas generales</label><textarea class="form-control form-control-sm mb-2" rows="2" data-notas>${esc(a.notas || '')}</textarea>
+        <label class="form-label small fw-semibold">Compromisos</label><textarea class="form-control form-control-sm mb-2" rows="2" data-comp>${esc(a.compromisos || '')}</textarea>
+        <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${d.estado === 'aprobada' ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div>
+      <div class="modal-footer"><a class="btn btn-light me-auto" href="/api/reuniones/reuniones/${r.id}/acta" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Ver e imprimir</a><button class="btn btn-primary" data-gacta><i class="bi bi-check2 me-1"></i>Guardar acta</button></div>`;
+    el.querySelector('[data-gacta]').onclick = async () => {
+      const items = a.items.map((i, n) => ({ ...i, notas: el.querySelector(`[data-n="${n}"]`).value }));
+      try { await api(`/api/reuniones/reuniones/${r.id}/acta-datos`, { method: 'PUT', body: { items, notas: el.querySelector('[data-notas]').value, compromisos: el.querySelector('[data-comp]').value, estado: el.querySelector('[data-aprob]').checked ? 'aprobada' : 'borrador' } }); toast('Acta guardada'); m.hide(); cargar(); } catch (x) { toast(x.message, false); }
+    };
+  }
+
+  /* ---------- Listas del año rotario (julio a junio): reuniones y eventos ---------- */
+  const barra = () => `<div class="d-flex flex-wrap gap-2 mb-3">${[['calendario', 'Calendario', 'bi-calendar3'], ['reunion', 'Reuniones del año', 'bi-people'], ['evento', 'Eventos del año', 'bi-stars']].map(([k, l, ic]) => `<button type="button" class="btn btn-sm rounded-pill ${vista === k ? 'btn-primary' : 'btn-light'}" data-vista="${k}"><i class="bi ${ic} me-1"></i>${l}</button>`).join('')}</div>`;
+  function pintarLista() {
+    const ACT = (x) => (x.tiene_acta ? C.chip(x.acta_estado === 'aprobada' ? 'ok' : 'soon', x.acta_estado === 'aprobada' ? 'Aprobada' : 'Borrador') : '<span class="small text-body-secondary">—</span>');
+    view.innerHTML = `${barra()}<div class="dw-card mb-3 d-flex align-items-center gap-2"><b class="flex-grow-1">${vista === 'evento' ? 'Eventos' : 'Reuniones'} del año rotario ${anio}-${anio + 1}</b>
+        <div class="btn-group btn-group-sm"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
+      ${lista.length ? window.App.table([{ label: 'Fecha', html: (x) => `<span class="text-capitalize">${C.day(x.fecha)}</span>${x.hora_ini ? `<div class="small text-body-secondary">${esc(x.hora_ini)}</div>` : ''}` },
+        { label: vista === 'evento' ? 'Evento' : 'Reunión', main: true, html: (x) => `<a href="#" data-ev="${x.id}" class="fw-semibold text-decoration-none">${esc(x.titulo)}</a><div class="small text-body-secondary fw-normal">${esc(x.lugar || x.modalidad || '')}</div>` },
+        { label: 'Estado', html: (x) => C.chip(...(EST[x.estado] || EST.programada)) }, { label: 'Socios', cls: 'text-end', html: (x) => (x.presentes || (x.fecha <= hoy ? 0 : `${x.confirmados} conf.`)) },
+        { label: 'Externos', cls: 'text-end', html: (x) => x.invitados || '—' }, { label: 'Acta', html: ACT }], lista)
+        : window.App.empty(vista === 'evento' ? 'bi-stars' : 'bi-people', `No hay ${vista === 'evento' ? 'eventos' : 'reuniones'} en este año rotario.`)}`;
+  }
+
 
   function pintar() {
     const primero = `${ym}-01`, ultimo = mas(`${mesMas(ym, 1)}-01`, -1), desde = lunes(primero), hasta = mas(lunes(ultimo), 6);
@@ -83,7 +139,7 @@ DW.ready.then(async (me) => {
         .ro-pasado .dw-ev{opacity:.6}.ro-cancel{text-decoration:line-through;opacity:.5}.ro-hoy-box{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
         .ro-hoy-dia{width:64px;height:64px;border-radius:16px;background:var(--dw-p);color:#fff;display:grid;place-items:center;line-height:1;text-align:center}.ro-hoy-dia b{font-size:1.6rem;display:block}.ro-hoy-dia span{font-size:.7rem;text-transform:uppercase}
         .ro-tl{list-style:none;padding:0;margin:0;border-left:2px solid var(--bs-border-color);margin-left:8px}.ro-tl li{position:relative;padding:0 0 14px 18px}.ro-tl li:before{content:"";position:absolute;left:-7px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px var(--bs-body-bg)}</style>
-      <div class="dw-card mb-3 ro-hoy-box"><div class="ro-hoy-dia"><span>${DIAS[new Date(`${hoy}T12:00:00Z`).getUTCDay()]}</span><b>${+hoy.slice(8)}</b></div>
+      ${barra()}<div class="dw-card mb-3 ro-hoy-box"><div class="ro-hoy-dia"><span>${DIAS[new Date(`${hoy}T12:00:00Z`).getUTCDay()]}</span><b>${+hoy.slice(8)}</b></div>
         <div class="flex-grow-1"><div class="small text-body-secondary">Hoy es</div><div class="fw-semibold text-capitalize">${RO.fechaLarga(hoy)}</div>
         <div class="small mt-1">${prox ? `Próxima: <a href="#" data-ev="${prox.id}"><b>${esc(prox.titulo)}</b></a> · <span style="color:${COLOR[prox.tipo]}">${ETQ[prox.tipo]}</span> · <b>${cuando(prox.fecha)}</b>${prox.hora_ini ? ` a las ${esc(prox.hora_ini)}` : ''}` : 'No hay reuniones programadas.'}</div></div>
         <div class="dw-legend m-0"><span><i style="background:${COLOR.reunion}"></i>Reuniones</span><span><i style="background:${COLOR.evento}"></i>Eventos</span></div></div>
@@ -96,6 +152,7 @@ DW.ready.then(async (me) => {
   }
 
   async function cargar() {
+    if (vista !== 'calendario') { lista = (await api(`/api/reuniones/anio?anio=${anio}&tipo=${vista}`)).rows; return pintarLista(); }
     const desde = lunes(`${ym}-01`), hasta = mas(lunes(mas(`${mesMas(ym, 1)}-01`, -1)), 6);
     const [d, p] = await Promise.all([api(`/api/reuniones/calendario?desde=${desde}&hasta=${hasta}`), api(`/api/reuniones/calendario?desde=${hoy}&hasta=${mas(hoy, 120)}`)]);
     rows = d.rows; proximas = p.rows.filter((x) => x.estado !== 'cancelada');
@@ -103,8 +160,10 @@ DW.ready.then(async (me) => {
   }
 
   view.addEventListener('click', (e) => {
+    const vb = e.target.closest('[data-vista]'); if (vb) { vista = vb.dataset.vista; history.replaceState(null, '', vista === 'calendario' ? location.pathname : `#${vista === 'evento' ? 'eventos' : 'reuniones'}`); return cargar(); }
+    const ay = e.target.closest('[data-ay]'); if (ay) { anio += Number(ay.dataset.ay); return cargar(); }
     const ev = e.target.closest('[data-ev]');
-    if (ev) { e.preventDefault(); const r = [...rows, ...proximas].find((x) => String(x.id) === ev.dataset.ev); if (r) detalle(r); return; }
+    if (ev) { e.preventDefault(); const r = [...rows, ...proximas, ...lista].find((x) => String(x.id) === ev.dataset.ev); if (r) detalle(r); return; }
     if (e.target.closest('[data-prev]')) { ym = mesMas(ym, -1); return cargar(); }
     if (e.target.closest('[data-next]')) { ym = mesMas(ym, 1); return cargar(); }
     if (e.target.closest('[data-hoy]')) { ym = hoy.slice(0, 7); return cargar(); }

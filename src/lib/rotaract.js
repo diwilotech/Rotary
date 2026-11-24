@@ -124,6 +124,26 @@ export async function clubesDelDistrito(env, codigo) {
 export const EN_DISTRITO = `business_id IN (SELECT b.id FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
   WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ?)`;
 export const enDistrito = (env, codigo) => [env.DISTRITO_DEFECTO || '4271', codigo];
+// Orden del día sugerido de una reunión ordinaria. El distrito lo puede cambiar para sus clubes (ro_club_config.orden_dia).
+export const ORDEN_DIA = [
+  { titulo: 'Toque de campana', detalle: 'La presidencia da apertura oficial a la sesión.' },
+  { titulo: 'Saludo a los símbolos y lectura de valores', detalle: 'Invocación Rotaract, La Prueba Cuádruple y el Objetivo de Rotary.' },
+  { titulo: 'Presentación de invitados', detalle: 'El macero da la bienvenida a socios visitantes, rotarios o invitados especiales.' },
+  { titulo: 'Lectura y aprobación del acta anterior', detalle: 'A cargo de la secretaría del club.' },
+  { titulo: 'Informes de directiva y comités', detalle: 'Avances de proyectos de servicio, tesorería y actividades próximas.' },
+  { titulo: 'Tema central o capacitación', detalle: 'Charla de un orador invitado, debate o taller de desarrollo profesional.' },
+  { titulo: 'Asuntos varios y cajita de macería', detalle: 'Anuncios rápidos y recaudación simbólica para el fondo de compañerismo o proyectos.' },
+  { titulo: 'Toque de campana de cierre', detalle: 'Clausura formal de la reunión.' },
+];
+// El orden del día que usa un club: el de su distrito (si el distrito lo editó) o el sugerido
+export async function ordenDelDia(env, bid) {
+  const { codigo, es_distrito } = await distritoDe(env, bid);
+  const r = await one(env, es_distrito ? 'SELECT orden_dia FROM ro_club_config WHERE business_id = ?' : `SELECT k.orden_dia FROM ro_club_config k JOIN businesses b ON b.id = k.business_id
+    WHERE k.es_distrito = 1 AND COALESCE(k.distrito, ?) = ? AND k.orden_dia IS NOT NULL AND b.archived_at IS NULL ORDER BY k.updated_at DESC LIMIT 1`, ...(es_distrito ? [bid] : [env.DISTRITO_DEFECTO || '4271', codigo]));
+  try { const l = JSON.parse(r?.orden_dia || 'null'); if (Array.isArray(l) && l.length) return { items: l, origen: 'distrito', codigo }; } catch (_) { /* el sugerido */ }
+  return { items: ORDEN_DIA, origen: 'sugerido', codigo };
+}
+
 // Socios que cuentan para la cuota distrital: activos y que pagan cuota.
 export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid))?.n || 0;
 // Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.
@@ -219,7 +239,7 @@ const FONDO = false;
 // Logotipo oficial de Rotaract (public/img/marca/rotaract.svg) con el nombre del club debajo, alineado a la derecha con
 // «Rotaract» en Open Sans Light, igual que el archivo del Brand Center (mismas medidas que public/js/pages/marca-club.js).
 export const nombreDelClub = (n) => String(n || '').replace(/^\s*rotaract\s+/i, '').replace(/^club\s+(de|del|of)?\s*/i, '').trim() || String(n || 'Club');
-async function logoOficial(c, club) {
+export async function logoOficial(c, club) {
   let arte = '';
   try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rotaract.svg', c.url.origin))); arte = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0]; } catch (_) { arte = ''; }
   if (!arte) return `<span class="club">${esc(club)}</span>`;

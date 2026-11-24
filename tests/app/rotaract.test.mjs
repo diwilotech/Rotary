@@ -218,6 +218,26 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Certificados: el del club (organización) lleva número, fundación y patrocinador', cclub.status === 200 && cclub.data.text.includes('Club No. 215847') && cclub.data.text.includes('Club Rotario Prueba') && cclub.data.text.includes('Certificado de organización'));
   check('Certificados: B no ve los de A y un socio no ve los de otro', (await B.app(`/api/socios/certificados/${cr.data.id}`)).status === 404 && (await anaU.app('/api/socios/certificados')).status === 403);
 
+  /* Reuniones: listas del año, invitados externos (y enlace público), acta por el orden del día */
+  const rr = (await A.app('/api/reuniones/reuniones', { method: 'POST', body: { titulo: 'Reunión ordinaria', fecha: hoy, hora_ini: '19:00' } })).data;
+  const anioRot = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1;
+  const la = (await A.app(`/api/reuniones/anio?anio=${anioRot}&tipo=reunion`)).data;
+  check('Reuniones: lista del año rotario (julio a junio) sin exponer el enlace', la.rows.some((x) => x.id === rr.id) && !('token' in la.rows[0]));
+  await A.app(`/api/reuniones/reuniones/${rr.id}/invitados`, { method: 'POST', body: { nombre: 'Rotario Visitante', procedencia: 'Club Rotario Prueba', tipo: 'rotario' } });
+  const enl = (await A.app(`/api/reuniones/reuniones/${rr.id}/enlace`, { method: 'POST', body: {} })).data;
+  const tok = enl.url.split('/r/')[1];
+  const pag = await fetch(enl.url.replace(/^https?:\/\/[^/]+/, 'http://localhost:8799'));
+  const pub = await fetch(`http://localhost:8799/api/publico/r/${tok}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-app': '1' }, body: JSON.stringify({ nombre: 'Invitada Externa', tipo: 'invitado', autoriza: true }) });
+  const sinAut = await fetch(`http://localhost:8799/api/publico/r/${tok}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-app': '1' }, body: JSON.stringify({ nombre: 'X' }) });
+  const invs = (await A.app(`/api/reuniones/reuniones/${rr.id}/invitados`)).data.rows;
+  check('Reuniones: invitados externos por la junta y por el enlace (con autorización de datos)', pag.status === 200 && pub.status === 201 && sinAut.status === 400 && invs.length === 2 && invs.some((x) => x.via === 'enlace'), `${pag.status} ${pub.status} ${sinAut.status}`);
+  check('Reuniones: B no ve los invitados de A', (await B.app(`/api/reuniones/reuniones/${rr.id}/invitados`)).status === 404);
+  const ad = (await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`)).data;
+  ad.acta.items[0].notas = 'Se abrió a las 7:05 p. m.';
+  const ga = await A.app(`/api/reuniones/reuniones/${rr.id}/acta-datos`, { method: 'PUT', body: { ...ad.acta, estado: 'aprobada' } });
+  const ah = await A.app(`/api/reuniones/reuniones/${rr.id}/acta`);
+  check('Reuniones: acta con el orden del día sugerido (8 puntos), guardada e imprimible', ad.acta.items.length === 8 && ad.acta.items[0].titulo === 'Toque de campana' && ga.status === 200 && ah.data.text.includes('Se abrió a las 7:05') && ah.data.text.includes('Invitada Externa') && ah.data.text.includes('APROBADA'));
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);
@@ -228,6 +248,9 @@ export default async function ({ check, newBusiness, newMember }) {
   const vence = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
   const vs = 10000 + Math.floor(Math.random() * 900) + 1;   // valor único: la base local guarda cuotas de corridas anteriores
   const qd = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota distrital prueba', valor_socio: vs, vence } });
+  const od = await D.app('/api/distrito/orden', { method: 'PUT', body: { items: [{ titulo: 'Apertura' }, { titulo: 'Informe' }, { titulo: 'Cierre' }] } });
+  check('Distrito: edita el orden del día y los clubes lo usan; un club no lo puede cambiar', od.status === 200 && (await A.app('/api/reuniones/orden')).data.items.length === 3 && (await A.app('/api/distrito/orden', { method: 'PUT', body: { items: [] } })).status === 403);
+  await D.app('/api/distrito/orden', { method: 'PUT', body: { items: [] } });
   check('Distrito: un club no puede crear cuotas distritales', (await A.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'x', valor_socio: 1, vence } })).status === 403);
   let pj = (await A.app('/api/cajas/proyectado')).data, ob = pj.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito')?.cuotas_distritales.find((o) => o.id === qd.data.id);
   check('Finanzas: la cuota distrital llega al club como obligación proyectada', qd.status === 201 && ob && ob.total === ob.socios * vs && ob.socios > 0 && pj.meses.length === 12 && pj.meses.some((m) => m.oblig_proy >= ob.total) && pj.por_pagar >= ob.total && pj.falta === Math.max(0, pj.por_pagar - pj.saldo), JSON.stringify(ob));

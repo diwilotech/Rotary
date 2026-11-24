@@ -9,9 +9,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'cuotas'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
+  let tab = ['anio', 'cuotas', 'orden'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['cuotas', 'Cuota distrital', '#cuotas', 'bi-bank']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['cuotas', 'Cuota distrital', '#cuotas', 'bi-bank'], ['orden', 'Orden del día', '#orden', 'bi-list-ol']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -90,9 +90,37 @@ DW.ready.then(async (me) => {
       </div>`;
   }
 
+  // Orden del día de las reuniones ordinarias: el distrito lo ajusta y sus clubes lo usan en el acta de cada reunión
+  async function pintarOrden() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    const d = await api('/api/distrito/orden'); let items = d.items.map((i) => ({ ...i }));
+    const dibujar = () => {
+      view.innerHTML = `<p class="small text-body-secondary">${d.origen === 'distrito' ? 'Este es el orden del día que usan los clubes del distrito en sus actas.' : 'Los clubes usan el orden del día sugerido. Si lo cambias aquí, todos los clubes del distrito usarán el tuyo.'}</p>
+        <div class="dw-card"><ol class="ps-3 mb-2" data-ol>${items.map((i, n) => `<li class="mb-2"><div class="d-flex gap-2 align-items-start"><div class="flex-grow-1"><input class="form-control form-control-sm fw-semibold" data-t="${n}" value="${esc(i.titulo)}" ${M ? '' : 'disabled'}>
+            <input class="form-control form-control-sm mt-1" data-d="${n}" value="${esc(i.detalle || '')}" placeholder="Detalle (opcional)" ${M ? '' : 'disabled'}></div>
+            ${M ? `<div class="btn-group-vertical btn-group-sm"><button class="btn btn-light" data-up="${n}" aria-label="Subir"><i class="bi bi-arrow-up"></i></button><button class="btn btn-light" data-dn="${n}" aria-label="Bajar"><i class="bi bi-arrow-down"></i></button></div><button class="btn btn-sm btn-light" data-rm="${n}" aria-label="Quitar"><i class="bi bi-trash"></i></button>` : ''}</div></li>`).join('')}</ol>
+          ${M ? '<div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-outline-primary" data-add><i class="bi bi-plus-lg me-1"></i>Agregar punto</button><button class="btn btn-sm btn-light" data-sug>Volver al sugerido</button><span class="flex-grow-1"></span><button class="btn btn-sm btn-primary" data-save><i class="bi bi-check2 me-1"></i>Guardar orden del día</button></div>' : ''}</div>`;
+    };
+    const leer = () => { items = items.map((i, n) => ({ titulo: view.querySelector(`[data-t="${n}"]`)?.value || i.titulo, detalle: view.querySelector(`[data-d="${n}"]`)?.value || '' })); };
+    dibujar();
+    view.onclick = async (e) => {
+      const b = e.target.closest('button'); if (!b || !M) return; leer();
+      const n = Number(b.dataset.up ?? b.dataset.dn ?? b.dataset.rm);
+      if (b.dataset.up !== undefined && n > 0) [items[n - 1], items[n]] = [items[n], items[n - 1]];
+      else if (b.dataset.dn !== undefined && n < items.length - 1) [items[n + 1], items[n]] = [items[n], items[n + 1]];
+      else if (b.dataset.rm !== undefined) items.splice(n, 1);
+      else if (b.dataset.add !== undefined) items.push({ titulo: 'Nuevo punto', detalle: '' });
+      else if (b.dataset.sug !== undefined) items = d.sugerido.map((i) => ({ ...i }));
+      else if (b.dataset.save !== undefined) { try { const r = await api('/api/distrito/orden', { method: 'PUT', body: { items } }); items = r.items; d.origen = 'distrito'; toast('Orden del día guardado: ya lo usan los clubes'); } catch (x) { toast(x.message, false); } }
+      dibujar();
+    };
+  }
+
   function pintar() {
     acciones.innerHTML = tab === 'cuotas' && M ? '<button class="btn btn-primary" data-nueva><i class="bi bi-plus-lg me-1"></i>Nueva cuota distrital</button>' : '';
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => editar(null));
+    view.onclick = null;
+    if (tab === 'orden') return pintarOrden();
     if (tab === 'cuotas') return pintarCuotas();
     return tab === 'anio' ? pintarAnio() : pintarClubes();
   }
