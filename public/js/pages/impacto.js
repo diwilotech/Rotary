@@ -254,7 +254,7 @@ DW.ready.then(async (me) => {
         url: x.comprobante ? `/api/cajas/movimientos/${x.id}/comprobante` : null, mv: x }))].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
     const financiadores = d.aportes.filter((a) => a.tipo_aporte === 'financiera' && (a.monto > 0 || d.soportes.some((x) => x.aporte_id === a.id)));
     const lapiz = (a) => (M ? `<button class="btn btn-sm btn-link p-0 ms-1" data-aped="${a.id}" aria-label="Editar aporte"><i class="bi bi-pencil"></i></button>` : '');
-    const SEC = [['resumen', 'Resumen', 'bi-card-text'], ['docs', `Documentación (${d.docs.length})`, 'bi-folder2-open'], ['comunidad', `Comunidad (${d.beneficiarios.length})`, 'bi-house-heart'], ['alianzas', `Alianzas (${ali.length})`, 'bi-people'], ['finanzas', `Finanzas (${movsP.length})`, 'bi-cash-stack']];
+    const SEC = [['resumen', 'Resumen', 'bi-card-text'], ['docs', `Documentación (${d.docs.length})`, 'bi-folder2-open'], ['comunidad', `Comunidad (${d.beneficiarios.length})`, 'bi-house-heart'], ['alianzas', `Alianzas (${ali.length})`, 'bi-people'], ['finanzas', `Finanzas (${movsP.length})`, 'bi-cash-stack'], ['actividades', `Actividades (${(d.actividades || []).length})`, 'bi-calendar-event']];
     const cuerpo = {
       resumen: () => `<div class="row g-3"><div class="col-lg-7"><div class="dw-card h-100">
           ${p.descripcion ? `<div class="ro-h mt-0">De qué se trata</div><p style="white-space:pre-wrap">${esc(p.descripcion)}</p>` : ''}${p.objetivo ? `<div class="ro-h">Objetivo</div><p style="white-space:pre-wrap">${esc(p.objetivo)}</p>` : ''}
@@ -299,6 +299,13 @@ DW.ready.then(async (me) => {
             <div class="col-6 col-md-3"><div class="dw-card text-center py-2"><div class="small text-body-secondary">Sin comprobante</div><b class="fs-5 ${movsP.some((x) => !x.url) ? 'text-warning' : ''}">${movsP.filter((x) => !x.url).length}</b></div></div></div>
           ${grupos.length ? grupos.map(cuadro).join('') : `<div class="dw-card">${window.App.empty('bi-cash-stack', `Aún no hay fondos ni movimientos. ${M ? 'Agrega un financiador en Resumen → Financiadores (del club o de una alianza) y registra sus recibos de caja o cuentas de cobro.' : ''}`)}</div>`}`;
       },
+      // Actividades: obras (jornadas de servicio), reuniones y eventos anclados al proyecto desde Reuniones
+      actividades: () => { const A = d.actividades || [], TI = { obra: ['bi-hammer', 'Obra', '#E08E0B'], reunion: ['bi-people', 'Reunión', 'var(--dw-p)'], evento: ['bi-stars', 'Evento', '#0067C8'] };
+        return `<div class="dw-card"><div class="d-flex gap-2 flex-wrap mb-2 align-items-center"><span class="ro-h m-0 flex-grow-1">Actividades del proyecto</span>${M ? '<button class="btn btn-sm btn-primary" data-actnueva><i class="bi bi-hammer me-1"></i>Nueva obra</button>' : ''}<a class="btn btn-sm btn-outline-primary" href="/staff/reuniones.html#obras"><i class="bi bi-calendar3 me-1"></i>Ver en Reuniones</a></div>
+          ${A.length ? A.map((x) => { const [ic, l, col] = TI[x.tipo] || TI.reunion; return `<div class="d-flex align-items-center gap-3 py-2 border-bottom"><span class="d-grid rounded-3 text-white" style="width:40px;height:40px;place-items:center;background:${col};flex:none"><i class="bi ${ic}"></i></span>
+            <div class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.titulo)}</b><span class="small text-body-secondary text-capitalize">${l} · ${C.day(x.fecha)}${x.hora_ini ? ` · ${esc(x.hora_ini)}` : ''}${x.lugar ? ` · ${esc(x.lugar)}` : ''}</span></div>
+            <span class="small text-body-secondary text-end">${x.presentes ? `${x.presentes} socios` : ''}${x.invitados ? `<br>${x.invitados} externos` : ''}</span></div>`; }).join('')
+            : '<p class="small text-body-secondary mb-0">Aún no hay actividades. Crea una obra (jornada de servicio) o, en Reuniones, ancla una reunión o evento a este proyecto.</p>'}</div>`; },
       docs: () => `<div class="dw-card"><div class="d-flex gap-2 flex-wrap mb-2"><span class="ro-h m-0 flex-grow-1">Documentación del proyecto</span>${W ? '<button class="btn btn-sm btn-primary" data-dnuevo><i class="bi bi-file-earmark-plus me-1"></i>Nuevo documento</button><button class="btn btn-sm btn-outline-primary" data-dsubir><i class="bi bi-upload me-1"></i>Subir archivo</button><button class="btn btn-sm btn-outline-primary" data-denlace><i class="bi bi-link-45deg me-1"></i>Enlace</button>' : ''}</div>
         ${d.docs.length ? `<div class="ro-docs">${d.docs.map((x) => `<div class="ro-doc"><i class="bi ${x.tipo === 'documento' ? 'bi-file-earmark-richtext' : x.tipo === 'pdf' ? 'bi-file-earmark-pdf text-danger' : x.tipo === 'imagen' ? 'bi-file-earmark-image text-primary' : 'bi-link-45deg text-success'}" ${x.tipo === 'documento' ? 'style="color:var(--dw-p)"' : ''}></i>
             ${x.tipo === 'documento' ? `<a class="flex-grow-1 min-w-0 text-truncate" href="#" data-dver="${x.id}">${esc(x.nombre)}</a>` : `<a class="flex-grow-1 min-w-0 text-truncate" href="/api/impacto/docs/${x.id}" target="_blank" rel="noopener">${esc(x.nombre)}</a>`}
@@ -338,6 +345,14 @@ DW.ready.then(async (me) => {
     await pintar();
     view.onclick = async (e) => {
       const b = e.target.closest('[data-sec]'); if (b) { sec = b.dataset.sec; view.querySelectorAll('[data-sec]').forEach((x) => x.className = `btn btn-sm rounded-pill ${x === b ? 'btn-primary' : 'btn-light'}`); return pintar(); }
+      if (e.target.closest('[data-actnueva]')) {
+        const out = await C.form({ title: `Nueva obra · ${p.nombre}`, fields: [{ k: 'titulo', label: 'Nombre de la jornada', type: 'text', required: true, full: true }, { k: 'fecha', label: 'Fecha', type: 'date', required: true },
+          { k: 'hora_ini', label: 'Hora de inicio', type: 'text', placeholder: '08:00' }, { k: 'hora_fin', label: 'Hora de fin', type: 'text', placeholder: '13:00' }, { k: 'lugar', label: 'Lugar', type: 'text', full: true }, { k: 'descripcion', label: 'Qué se hará', type: 'long' }],
+          values: { titulo: `Jornada · ${p.nombre}`, fecha: C.todayCo() }, okText: 'Crear obra' });
+        if (!out) return;
+        try { await api('/api/reuniones/reuniones', { method: 'POST', body: { ...out, tipo: 'obra', proyecto_id: p.id, estado: 'programada', modalidad: 'presencial' } }); toast('Obra creada: ya está en el calendario'); sec = 'actividades'; abrir(p.id); } catch (x) { toast(x.message, false); }
+        return;
+      }
       if (e.target.closest('[data-apnuevo]')) return editarAporte(p, null, 'club');
       const so = e.target.closest('[data-sop]'); if (so) return soportes(d, Number(so.dataset.sop));
       const fk = (a) => movsP[+e.target.closest(`[${a}]`)?.getAttribute(a)];

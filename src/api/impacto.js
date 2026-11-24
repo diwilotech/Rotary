@@ -209,7 +209,12 @@ export function routes(r) {
     ]);
     const soportes = await all(c.env, `SELECT s.id, s.aporte_id, s.fecha, COALESCE(m.monto, s.monto) monto, s.forma, s.notas, s.items, s.mime, s.archivo_key IS NOT NULL archivo, s.movimiento_id, m.caja, m.categoria
       FROM ro_aporte_soportes s LEFT JOIN ro_movimientos m ON m.id = s.movimiento_id AND m.business_id = s.business_id WHERE s.business_id = ? AND s.proyecto_id = ? ORDER BY s.fecha DESC, s.id DESC`, c.businessId, p.id);
-    return json({ proyecto: p, comunidad, beneficiarios, tareas, aportes, soportes, alianzas: aportes.filter((a) => a.origen === 'alianza'), movimientos, docs });
+    // Actividades del proyecto: obras (jornadas de servicio), reuniones y eventos anclados a él desde Reuniones
+    const actividades = await all(c.env, `SELECT r.id, r.tipo, r.titulo, r.fecha, r.hora_ini, r.lugar, r.estado,
+      (SELECT COUNT(*) FROM ro_asistencia a WHERE a.business_id = r.business_id AND a.reunion_id = r.id AND a.presente = 1) presentes,
+      (SELECT COUNT(*) FROM ro_reunion_invitados i WHERE i.business_id = r.business_id AND i.reunion_id = r.id) invitados
+      FROM ro_reuniones r WHERE r.business_id = ? AND r.proyecto_id = ? ORDER BY r.fecha DESC`, c.businessId, p.id);
+    return json({ proyecto: p, comunidad, beneficiarios, tareas, aportes, soportes, alianzas: aportes.filter((a) => a.origen === 'alianza'), movimientos, docs, actividades });
   });
   r.get('/api/impacto/comunidades/:id/detalle', `tenant:${MOD}`, async (c) => {
     const id = Number(c.params.id) || 0;

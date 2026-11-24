@@ -238,6 +238,12 @@ export default async function ({ check, newBusiness, newMember }) {
   const ah = await A.app(`/api/reuniones/reuniones/${rr.id}/acta`);
   check('Reuniones: acta con el orden del día sugerido (8 puntos), guardada e imprimible', ad.acta.items.length === 8 && ad.acta.items[0].titulo === 'Toque de campana' && ga.status === 200 && ah.data.text.includes('Se abrió a las 7:05') && ah.data.text.includes('Invitada Externa') && ah.data.text.includes('APROBADA'));
 
+  /* Obras ancladas a proyectos de Impacto */
+  const pob = (await A.app('/api/impacto/proyectos', { method: 'POST', body: { nombre: 'Obra de prueba', financiacion: 'caja_mayor' } })).data;
+  const ob1 = await A.app('/api/reuniones/reuniones', { method: 'POST', body: { tipo: 'obra', titulo: 'Jornada de pintura', fecha: hoy, proyecto_id: pob.id } });
+  const detO = (await A.app(`/api/impacto/proyectos/${pob.id}/detalle`)).data, listO = (await A.app(`/api/reuniones/anio?anio=${anioRot}&tipo=obra`)).data.rows;
+  check('Reuniones: obra anclada a un proyecto (sale en las actividades del proyecto y en la lista de obras)', ob1.status === 201 && detO.actividades?.some((x) => x.id === ob1.data.id) && listO.find((x) => x.id === ob1.data.id)?.proyecto === 'Obra de prueba', JSON.stringify(detO.actividades));
+
   /* Distrito: ve los clubes de su código (solo lectura) y les pone la cuota distrital → Finanzas · Proyectado del club */
   const D = await newBusiness('Distrito 4271', { login: true });
   sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito) VALUES ('${D.id}', '4271', 1), ('${B.id}', '9999', 0)`);

@@ -29,7 +29,7 @@ export function routes(r) {
     const mods = new Set((await visibleModules(c.env, bid, c.role, c.modulos)).map((m) => m.id));
     const q = [];
     if (mods.has('reuniones')) q.push(all(c.env, "SELECT id, tipo, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE business_id = ? AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?", bid, desde, hasta)
-      .then((rs) => rs.forEach((x) => add(x.tipo === 'evento' ? 'evento' : 'reunion', x.fecha, x.titulo, { hora: x.hora_ini, lugar: x.lugar, ruta: '/staff/reuniones.html' }))));
+      .then((rs) => rs.forEach((x) => add(['evento', 'obra'].includes(x.tipo) ? x.tipo : 'reunion', x.fecha, x.titulo, { hora: x.hora_ini, lugar: x.lugar, ruta: '/staff/reuniones.html' }))));
     if (mods.has('tareas')) q.push(all(c.env, `SELECT t.titulo, t.fecha_limite, s.nombre socio FROM ro_tareas t LEFT JOIN ro_socios s ON s.id = t.socio_id AND s.business_id = t.business_id
         WHERE t.business_id = ? AND t.estado IN ('pendiente', 'en_curso') AND t.fecha_limite BETWEEN ? AND ?`, bid, desde, hasta)
       .then((rs) => rs.forEach((x) => add('tarea', x.fecha_limite, x.titulo, { detalle: x.socio, ruta: '/staff/tareas.html' }))));

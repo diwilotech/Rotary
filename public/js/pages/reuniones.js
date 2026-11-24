@@ -9,25 +9,28 @@ DW.ready.then(async (me) => {
   RO.nav('reuniones');
   const view = document.querySelector('[data-view]'), acciones = document.querySelector('[data-acciones]');
   const M = me.canManage && !me.business.readOnly;
-  const COLOR = { reunion: 'var(--dw-p)', evento: '#f59e0b' };
-  const ETQ = { reunion: 'Reunión', evento: 'Evento' };
+  const COLOR = { reunion: 'var(--dw-p)', evento: '#0067C8', obra: '#E08E0B' };
+  const ETQ = { reunion: 'Reunión', evento: 'Evento', obra: 'Obra' };
+  const ICO = { reunion: 'bi-people-fill', evento: 'bi-stars', obra: 'bi-hammer' };
   const EST = { programada: ['free', 'Programada'], confirmada: ['ok', 'Confirmada'], realizada: ['ok', 'Realizada'], cancelada: ['bad', 'Cancelada'] };
   const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const mas = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
   const lunes = (iso) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
   const mesMas = (ym, n) => { const d = new Date(`${ym}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); };
   const hoy = C.todayCo();
-  let ym = hoy.slice(0, 7), rows = [], proximas = [], vista = { '#reuniones': 'reunion', '#eventos': 'evento' }[location.hash] || 'calendario', anio = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1, lista = [];
+  let ym = hoy.slice(0, 7), rows = [], proximas = [], vista = { '#reuniones': 'reunion', '#eventos': 'evento', '#obras': 'obra' }[location.hash] || 'calendario', anio = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1, lista = [];
 
   if (M) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nueva reunión o evento</button>';
   acciones.querySelector('[data-nuevo]')?.addEventListener('click', () => editar(null, hoy));
 
-  const CAMPOS = [{ k: 'tipo', label: 'Tipo', type: 'select', options: [['reunion', 'Reunión'], ['evento', 'Evento']] }, { k: 'titulo', label: 'Título', type: 'text', required: true },
+  const proys = me.modules.some((x) => x.id === 'impacto') ? await RO.proyectos() : [];
+  const CAMPOS = [{ k: 'tipo', label: 'Tipo', type: 'select', options: [['reunion', 'Reunión'], ['evento', 'Evento'], ['obra', 'Obra (jornada de servicio)']] }, { k: 'titulo', label: 'Título', type: 'text', required: true },
     { k: 'fecha', label: 'Fecha', type: 'date', required: true }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(EST).map(([k, [, l]]) => [k, l]) },
     { k: 'hora_ini', label: 'Hora de inicio', type: 'text', placeholder: '19:00' }, { k: 'hora_fin', label: 'Hora de fin', type: 'text', placeholder: '21:00' },
     { k: 'modalidad', label: 'Modalidad', type: 'select', options: [['presencial', 'Presencial'], ['virtual', 'Virtual'], ['mixta', 'Mixta']] }, { k: 'lugar', label: 'Lugar', type: 'text' },
     { k: 'enlace', label: 'Enlace (virtual)', type: 'url', full: true }, { k: 'descripcion', label: 'Descripción / orden del día', type: 'long' },
-    { k: 'minuta', label: 'Minuta / acta', type: 'long' }, { k: 'compromisos', label: 'Compromisos', type: 'long' }];
+    ...(proys.length ? [{ k: 'proyecto_id', label: 'Proyecto de Impacto', type: 'select', options: RO.opts(proys, 'Ninguno'), full: true, hint: 'las obras se anclan a un proyecto' }] : []),
+    { k: 'compromisos', label: 'Compromisos', type: 'long' }];
 
   async function editar(r, fecha) {
     const out = await C.form({ title: r ? 'Editar' : 'Nueva reunión o evento', fields: CAMPOS, values: r ? { ...r } : { tipo: 'reunion', fecha, estado: 'programada', modalidad: 'presencial' },
@@ -111,16 +114,16 @@ DW.ready.then(async (me) => {
   }
 
   /* ---------- Listas del año rotario (julio a junio): reuniones y eventos ---------- */
-  const barra = () => `<div class="d-flex flex-wrap gap-2 mb-3">${[['calendario', 'Calendario', 'bi-calendar3'], ['reunion', 'Reuniones del año', 'bi-people'], ['evento', 'Eventos del año', 'bi-stars']].map(([k, l, ic]) => `<button type="button" class="btn btn-sm rounded-pill ${vista === k ? 'btn-primary' : 'btn-light'}" data-vista="${k}"><i class="bi ${ic} me-1"></i>${l}</button>`).join('')}</div>`;
+  const barra = () => `<div class="d-flex flex-wrap gap-2 mb-3">${[['calendario', 'Calendario', 'bi-calendar3'], ['reunion', 'Reuniones del año', 'bi-people'], ['evento', 'Eventos del año', 'bi-stars'], ['obra', 'Obras del año', 'bi-hammer']].map(([k, l, ic]) => `<button type="button" class="btn btn-sm rounded-pill ${vista === k ? 'btn-primary' : 'btn-light'}" data-vista="${k}"><i class="bi ${ic} me-1"></i>${l}</button>`).join('')}</div>`;
   function pintarLista() {
     const ACT = (x) => (x.tiene_acta ? C.chip(x.acta_estado === 'aprobada' ? 'ok' : 'soon', x.acta_estado === 'aprobada' ? 'Aprobada' : 'Borrador') : '<span class="small text-body-secondary">—</span>');
-    view.innerHTML = `${barra()}<div class="dw-card mb-3 d-flex align-items-center gap-2"><b class="flex-grow-1">${vista === 'evento' ? 'Eventos' : 'Reuniones'} del año rotario ${anio}-${anio + 1}</b>
+    view.innerHTML = `${barra()}<div class="dw-card mb-3 d-flex align-items-center gap-2"><b class="flex-grow-1">${{ evento: 'Eventos', obra: 'Obras' }[vista] || 'Reuniones'} del año rotario ${anio}-${anio + 1}</b>
         <div class="btn-group btn-group-sm"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
       ${lista.length ? window.App.table([{ label: 'Fecha', html: (x) => `<span class="text-capitalize">${C.day(x.fecha)}</span>${x.hora_ini ? `<div class="small text-body-secondary">${esc(x.hora_ini)}</div>` : ''}` },
-        { label: vista === 'evento' ? 'Evento' : 'Reunión', main: true, html: (x) => `<a href="#" data-ev="${x.id}" class="fw-semibold text-decoration-none">${esc(x.titulo)}</a><div class="small text-body-secondary fw-normal">${esc(x.lugar || x.modalidad || '')}</div>` },
+        { label: ETQ[vista] || 'Reunión', main: true, html: (x) => `<a href="#" data-ev="${x.id}" class="fw-semibold text-decoration-none">${esc(x.titulo)}</a><div class="small text-body-secondary fw-normal">${esc(x.lugar || x.modalidad || '')}${x.proyecto ? ` · <i class="bi bi-globe-americas"></i> ${esc(x.proyecto)}` : ''}</div>` },
         { label: 'Estado', html: (x) => C.chip(...(EST[x.estado] || EST.programada)) }, { label: 'Socios', cls: 'text-end', html: (x) => (x.presentes || (x.fecha <= hoy ? 0 : `${x.confirmados} conf.`)) },
         { label: 'Externos', cls: 'text-end', html: (x) => x.invitados || '—' }, { label: 'Acta', html: ACT }], lista)
-        : window.App.empty(vista === 'evento' ? 'bi-stars' : 'bi-people', `No hay ${vista === 'evento' ? 'eventos' : 'reuniones'} en este año rotario.`)}`;
+        : window.App.empty(ICO[vista] || 'bi-people', `No hay ${{ evento: 'eventos', obra: 'obras' }[vista] || 'reuniones'} en este año rotario.`)}`;
   }
 
 
@@ -132,18 +135,26 @@ DW.ready.then(async (me) => {
       const ev = rows.filter((x) => x.fecha === f).sort((p, q) => String(p.hora_ini || '').localeCompare(String(q.hora_ini || '')));
       return `<td class="${f === hoy ? 'hoy' : ''} ${f.startsWith(ym) ? '' : 'fuera'} ${f < hoy ? 'ro-pasado' : ''} ${ev.length ? '' : 'vacio'}" data-f="${f}" data-dia="${DIAS[new Date(`${f}T12:00:00Z`).getUTCDay()]} ${+f.slice(8)}">
         <div class="dw-mes-n">${+f.slice(8)}</div>${f === hoy ? '<span class="ro-aqui">Estás aquí</span>' : ''}
-        ${ev.map((x) => `<a class="dw-ev dw-ev--mini${x.estado === 'cancelada' ? ' ro-cancel' : ''}" href="#" data-ev="${x.id}" style="--ev:${COLOR[x.tipo]}" title="${esc(x.titulo)}"><b>${esc(x.hora_ini || '')}</b> ${esc(x.titulo)}${x.mi_respuesta === 'si' ? ' ✓' : ''}</a>`).join('')}</td>`;
+        ${ev.slice(0, 2).map((x) => `<a class="ro-evc${x.estado === 'cancelada' ? ' ro-cancel' : ''}" href="#" data-ev="${x.id}" style="--ev:${COLOR[x.tipo] || COLOR.reunion}" title="${esc(x.titulo)}">
+          <span class="ro-evc-h"><i class="bi ${ICO[x.tipo] || ICO.reunion}"></i>${esc(x.hora_ini || ETQ[x.tipo] || '')}${x.mi_respuesta === 'si' ? '<i class="bi bi-check-circle-fill ms-auto" title="Vas"></i>' : ''}</span>
+          <span class="ro-evc-t">${esc(x.titulo)}</span>${x.proyecto ? `<span class="ro-evc-p"><i class="bi bi-globe-americas"></i> ${esc(x.proyecto)}</span>` : ''}</a>`).join('')}
+        ${ev.length > 2 ? `<a class="ro-evc-mas" href="#" data-ev="${ev[2].id}">+${ev.length - 2} más</a>` : ''}</td>`;
     };
     const prox = proximas[0];
     view.innerHTML = `<style>.ro-aqui{display:inline-block;margin:0 0 3px;font-size:.62rem;font-weight:700;color:#fff;background:var(--dw-p);border-radius:999px;padding:1px 7px;vertical-align:middle}
-        .ro-pasado .dw-ev{opacity:.6}.ro-cancel{text-decoration:line-through;opacity:.5}.ro-hoy-box{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+        .ro-pasado .ro-evc{opacity:.62}.ro-cal .dw-mes td{height:138px;padding:5px}
+        .ro-evc{display:flex;flex-direction:column;gap:1px;margin-bottom:4px;padding:5px 7px;border-radius:9px;border-left:4px solid var(--ev);background:color-mix(in srgb,var(--ev) 13%,var(--bs-body-bg));color:inherit;text-decoration:none;line-height:1.2;overflow:hidden}
+        .ro-evc:hover{background:color-mix(in srgb,var(--ev) 22%,var(--bs-body-bg));color:inherit}
+        .ro-evc-h{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;color:var(--ev)}.ro-evc-t{font-size:.78rem;font-weight:600;overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+        .ro-evc-p{font-size:.66rem;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ro-evc-mas{font-size:.7rem;font-weight:600;text-decoration:none}
+        @media (max-width:767.98px){.ro-cal .dw-mes td{height:auto}.ro-evc{padding:8px 10px}.ro-evc-t{font-size:.9rem}}.ro-cancel{text-decoration:line-through;opacity:.5}.ro-hoy-box{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
         .ro-hoy-dia{width:64px;height:64px;border-radius:16px;background:var(--dw-p);color:#fff;display:grid;place-items:center;line-height:1;text-align:center}.ro-hoy-dia b{font-size:1.6rem;display:block}.ro-hoy-dia span{font-size:.7rem;text-transform:uppercase}
         .ro-tl{list-style:none;padding:0;margin:0;border-left:2px solid var(--bs-border-color);margin-left:8px}.ro-tl li{position:relative;padding:0 0 14px 18px}.ro-tl li:before{content:"";position:absolute;left:-7px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px var(--bs-body-bg)}</style>
       ${barra()}<div class="dw-card mb-3 ro-hoy-box"><div class="ro-hoy-dia"><span>${DIAS[new Date(`${hoy}T12:00:00Z`).getUTCDay()]}</span><b>${+hoy.slice(8)}</b></div>
         <div class="flex-grow-1"><div class="small text-body-secondary">Hoy es</div><div class="fw-semibold text-capitalize">${RO.fechaLarga(hoy)}</div>
         <div class="small mt-1">${prox ? `Próxima: <a href="#" data-ev="${prox.id}"><b>${esc(prox.titulo)}</b></a> · <span style="color:${COLOR[prox.tipo]}">${ETQ[prox.tipo]}</span> · <b>${cuando(prox.fecha)}</b>${prox.hora_ini ? ` a las ${esc(prox.hora_ini)}` : ''}` : 'No hay reuniones programadas.'}</div></div>
-        <div class="dw-legend m-0"><span><i style="background:${COLOR.reunion}"></i>Reuniones</span><span><i style="background:${COLOR.evento}"></i>Eventos</span></div></div>
-      <div class="row g-3"><div class="col-lg-9"><div class="dw-card">
+        <div class="dw-legend m-0"><span><i style="background:${COLOR.reunion}"></i>Reuniones</span><span><i style="background:${COLOR.evento}"></i>Eventos</span><span><i style="background:${COLOR.obra}"></i>Obras</span></div></div>
+      <div class="row g-3"><div class="col-lg-9"><div class="dw-card ro-cal">
         <div class="d-flex align-items-center gap-2 mb-3"><button class="btn btn-light" data-prev aria-label="Mes anterior"><i class="bi bi-chevron-left"></i></button>
           <b class="flex-grow-1 text-center text-capitalize fs-5">${titulo}</b>${ym !== hoy.slice(0, 7) ? '<button class="btn btn-outline-primary btn-sm" data-hoy><i class="bi bi-geo-alt-fill me-1"></i>Volver a hoy</button>' : ''}<button class="btn btn-light" data-next aria-label="Mes siguiente"><i class="bi bi-chevron-right"></i></button></div>
         <table class="dw-semana dw-mes" data-dt="off"><thead><tr>${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((x) => `<th>${x}</th>`).join('')}</tr></thead>
@@ -160,7 +171,7 @@ DW.ready.then(async (me) => {
   }
 
   view.addEventListener('click', (e) => {
-    const vb = e.target.closest('[data-vista]'); if (vb) { vista = vb.dataset.vista; history.replaceState(null, '', vista === 'calendario' ? location.pathname : `#${vista === 'evento' ? 'eventos' : 'reuniones'}`); return cargar(); }
+    const vb = e.target.closest('[data-vista]'); if (vb) { vista = vb.dataset.vista; history.replaceState(null, '', vista === 'calendario' ? location.pathname : `#${{ evento: 'eventos', obra: 'obras' }[vista] || 'reuniones'}`); return cargar(); }
     const ay = e.target.closest('[data-ay]'); if (ay) { anio += Number(ay.dataset.ay); return cargar(); }
     const ev = e.target.closest('[data-ev]');
     if (ev) { e.preventDefault(); const r = [...rows, ...proximas, ...lista].find((x) => String(x.id) === ev.dataset.ev); if (r) detalle(r); return; }

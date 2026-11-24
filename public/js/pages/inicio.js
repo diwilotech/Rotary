@@ -60,7 +60,7 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
   async mount(host, { me }) {
     const { api, esc } = window.App;
     const C = window.App.Crud;
-    const T = { reunion: ['#be185d', 'Reunión', 'bi-people'], evento: ['#f59e0b', 'Evento', 'bi-stars'], tarea: ['#0ea5e9', 'Tarea', 'bi-check2-square'], cumple: ['#8b5cf6', 'Cumpleaños', 'bi-cake2'],
+    const T = { reunion: ['#be185d', 'Reunión', 'bi-people'], evento: ['#0067C8', 'Evento', 'bi-stars'], obra: ['#E08E0B', 'Obra', 'bi-hammer'], tarea: ['#0ea5e9', 'Tarea', 'bi-check2-square'], cumple: ['#8b5cf6', 'Cumpleaños', 'bi-cake2'],
       proyecto: ['#16a34a', 'Proyecto', 'bi-globe-americas'], cuota: ['#64748b', 'Cuota', 'bi-wallet2'], distrital: ['#dc2626', 'Cuota distrital', 'bi-bank'] };
     const hoy = C.todayCo();
     const mas = (f, n) => { const d = new Date(`${f}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };

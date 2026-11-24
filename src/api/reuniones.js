@@ -17,7 +17,7 @@ import { socioDeSesionOError, ordenDelDia, logoOficial, cargoOrden, anioRotarioD
 
 const MOD = 'reuniones';
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
-export const TIPOS = ['reunion', 'evento'];
+export const TIPOS = ['reunion', 'evento', 'obra'];   // obra = jornada de servicio (se ancla a un proyecto de Impacto)
 
 function horas(row) {
   for (const k of ['hora_ini', 'hora_fin']) if (row[k] && !HORA.test(row[k])) throw new HttpError(400, 'Hora no válida (HH:MM)');
@@ -34,10 +34,11 @@ export const ENTITIES = {
     async decorate(c, rows) {
       if (!rows.length) return rows;
       // Por negocio (sin lista IN de ids: D1 acepta máx. 100 parámetros)
-      const [cnt, inv] = await Promise.all([all(c.env, "SELECT reunion_id, SUM(respuesta = 'si') si, SUM(respuesta = 'no') no, SUM(presente = 1) presentes FROM ro_asistencia WHERE business_id = ? GROUP BY reunion_id", c.businessId),
-        all(c.env, 'SELECT reunion_id, COUNT(*) n FROM ro_reunion_invitados WHERE business_id = ? GROUP BY reunion_id', c.businessId)]);
+      const [cnt, inv, prs] = await Promise.all([all(c.env, "SELECT reunion_id, SUM(respuesta = 'si') si, SUM(respuesta = 'no') no, SUM(presente = 1) presentes FROM ro_asistencia WHERE business_id = ? GROUP BY reunion_id", c.businessId),
+        all(c.env, 'SELECT reunion_id, COUNT(*) n FROM ro_reunion_invitados WHERE business_id = ? GROUP BY reunion_id', c.businessId),
+        rows.some((x) => x.proyecto_id) ? all(c.env, 'SELECT id, nombre FROM ro_proyectos WHERE business_id = ?', c.businessId) : []]);
       return rows.map((r) => { const k = cnt.find((x) => x.reunion_id === r.id) || {}; const { token: _t, ...x } = r;
-        return { ...x, confirmados: k.si || 0, declinaron: k.no || 0, presentes: k.presentes || 0, invitados: inv.find((y) => y.reunion_id === r.id)?.n || 0, tiene_acta: !!r.acta, enlace_registro: !!r.token }; });
+        return { ...x, proyecto: prs.find((p) => p.id === r.proyecto_id)?.nombre || null, confirmados: k.si || 0, declinaron: k.no || 0, presentes: k.presentes || 0, invitados: inv.find((y) => y.reunion_id === r.id)?.n || 0, tiene_acta: !!r.acta, enlace_registro: !!r.token }; });
     } },
 };
 
@@ -95,7 +96,7 @@ export function routes(r) {
   const reunionOr404 = async (c, id) => { const x = await one(c.env, 'SELECT * FROM ro_reuniones WHERE id = ? AND business_id = ?', Number(id) || 0, c.businessId); if (!x) throw new HttpError(404, 'Reunión no encontrada'); return x; };
   // Listas del año rotario (julio a junio): reuniones u eventos
   r.get('/api/reuniones/anio', `tenant:${MOD}`, async (c) => {
-    const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), tipo = c.url.searchParams.get('tipo') === 'evento' ? 'evento' : 'reunion';
+    const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), tipo = TIPOS.includes(c.url.searchParams.get('tipo')) ? c.url.searchParams.get('tipo') : 'reunion';
     const rows = await all(c.env, 'SELECT * FROM ro_reuniones WHERE business_id = ? AND tipo = ? AND fecha >= ? AND fecha < ? ORDER BY fecha, hora_ini', c.businessId, tipo, `${anio}-07-01`, `${anio + 1}-07-01`);
     return json({ anio, nombre: `${anio}-${anio + 1}`, rows: await ENTITIES.reuniones.decorate(c, rows) });
   });
