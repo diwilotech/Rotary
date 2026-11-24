@@ -322,5 +322,11 @@ export default async function ({ check, newBusiness, newMember }) {
   const calA = (await A.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || [];
   check('Inicio: el calendario junta reuniones, tareas y cuota distrital', calA.some((x) => x.tipo === 'distrital') && calA.every((x) => x.fecha >= hoy && x.fecha <= vence), JSON.stringify(calA.map((x) => x.tipo)));
   check('Inicio: el calendario rechaza rangos largos', (await A.app('/api/club/calendario?desde=2026-01-01&hasta=2026-12-31')).status === 400);
+  const rsm = await A.app('/api/club/resumen');
+  check('Inicio: la junta ve «Cómo va el club» con alertas', rsm.status === 200 && Array.isArray(rsm.data.alertas) && typeof rsm.data.cajas?.menor === 'number' && typeof rsm.data.cuotas?.pct === 'number', JSON.stringify(rsm.data).slice(0, 300));
+  const rst = await (await newMember(A.id, 'staff')).app('/api/club/resumen');
+  check('Inicio: un socio sin junta no ve el resumen (403)', rst.status === 403, `${rst.status} ${JSON.stringify(rst.data).slice(0, 200)}`);
+  const mov = await A.app('/api/cajas/resumen');
+  check('Finanzas: cada caja trae su revisión (entradas, salidas, sin comprobante)', mov.data.cajas.every((k) => k.revision && typeof k.revision.sin_comprobante === 'number'));
   check('Inicio: el distrito ve las fechas de sus cuotas', ((await D.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || []).some((x) => x.tipo === 'distrital'));
 }

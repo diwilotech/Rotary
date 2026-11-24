@@ -44,7 +44,11 @@ DW.ready.then(async (me) => {
     const out = await C.form({ title: p ? 'Editar proyecto' : 'Nuevo proyecto', fields: camposP(await comunidades()), values: p ? { ...p } : { estado: 'propuesta' }, onDelete: p ? () => api(`/api/impacto/proyectos/${p.id}`, { method: 'DELETE' }) : null });
     if (out === 'deleted') { toast('Proyecto borrado'); abierto = null; ir(); return cargar(); }
     if (!out) return;
-    try { const r = await api(p ? `/api/impacto/proyectos/${p.id}` : '/api/impacto/proyectos', { method: p ? 'PATCH' : 'POST', body: out }); toast('Guardado'); abierto ? abrir(abierto) : p ? cargar() : abrir(r.id); } catch (x) { toast(x.message, false); }
+    // Pasar a «Finalizado» desde el formulario: primero se guarda lo demás y luego la lista de cierre decide el estado
+    const fin = p && out.estado === 'finalizado' && p.estado !== 'finalizado';
+    if (fin) out.estado = p.estado;
+    try { const r = await api(p ? `/api/impacto/proyectos/${p.id}` : '/api/impacto/proyectos', { method: p ? 'PATCH' : 'POST', body: out });
+      if (fin) { await cerrarProyecto(p.id); return abierto ? abrir(abierto) : cargar(); } toast('Guardado'); abierto ? abrir(abierto) : p ? cargar() : abrir(r.id); } catch (x) { toast(x.message, false); }
   }
   async function editarC(cm, despues) {
     const out = await C.form({ title: cm ? 'Editar comunidad' : 'Nueva comunidad', fields: camposC, values: cm ? { ...cm } : {}, onDelete: cm ? () => api(`/api/impacto/comunidades/${cm.id}`, { method: 'DELETE' }) : null });
@@ -117,6 +121,74 @@ DW.ready.then(async (me) => {
   const barra = (titulo, v, meta, color, sub = '', extra = '') => `<div class="mb-2"><div class="d-flex justify-content-between gap-2 small"><span class="min-w-0"><b>${titulo}</b>${sub ? ` <span class="text-body-secondary">${sub}</span>` : ''}${extra}</span><span class="text-nowrap">${C.money(v)} <span class="text-body-secondary">de ${C.money(meta)}</span></span></div>
     <div class="progress" style="height:10px"><div class="progress-bar" style="width:${meta ? Math.min(100, Math.round((v / meta) * 100)) : 0}%;background:${color}"></div></div></div>`;
   const benefLista = (bs) => (bs.length ? `<div class="ro-benef">${bs.map((b) => `<div class="ro-b"><span class="ro-av" style="width:32px;height:32px;font-size:12px">${esc(RO.initials(b.nombre))}</span><span class="min-w-0"><b class="d-block text-truncate small">${esc(b.nombre)}</b><span class="small text-body-secondary">${b.edad ? `${b.edad} años` : ''}${b.tipo ? `${b.edad ? ' · ' : ''}${esc(b.tipo)}` : ''}</span></span>${b.autorizacion_datos ? '<i class="bi bi-shield-check text-success ms-auto" title="Autorizó datos"></i>' : '<i class="bi bi-shield-x text-danger ms-auto" title="Sin autorización de datos"></i>'}</div>`).join('')}</div>` : '');
+
+  // Lista de proyectos: embudo por estado arriba (clic = filtrar) y los proyectos agrupados por estado; los finalizados y
+  // cancelados plegados. También vista de tabla (orden y búsqueda con datatable.js).
+  let estadoF = '', vistaP = (() => { try { return localStorage.getItem('ro_proy_vista') || 'tarjetas'; } catch (_) { return 'tarjetas'; } })();
+  const ORDEN_EST = ['en_curso', 'planeacion', 'propuesta', 'finalizado', 'cancelado'];
+  function pintarLista() {
+    if (!rows.length) { view.innerHTML = window.App.empty('bi-globe-americas', 'Aún no hay proyectos de servicio.'); return; }
+    const n = (k) => rows.filter((p) => p.estado === k).length;
+    const lista = estadoF ? rows.filter((p) => p.estado === estadoF) : rows;
+    const cab = `<div class="d-flex flex-wrap gap-2 align-items-stretch mb-3"><div class="ro-embudo flex-grow-1">${['propuesta', 'planeacion', 'en_curso', 'finalizado'].map((k) => `<button type="button" class="${estadoF === k ? 'on' : ''}" data-est="${k}"><span class="small text-body-secondary">${EST[k][1]}</span><b>${n(k)}</b></button>`).join('<i class="bi bi-chevron-right align-self-center text-body-secondary d-none d-md-inline"></i>')}</div>
+      <div class="btn-group btn-group-sm align-self-center" role="group" aria-label="Vista"><button type="button" class="btn ${vistaP === 'tarjetas' ? 'btn-primary' : 'btn-light'}" data-vp="tarjetas" title="Tarjetas"><i class="bi bi-grid-3x2-gap"></i></button><button type="button" class="btn ${vistaP === 'tabla' ? 'btn-primary' : 'btn-light'}" data-vp="tabla" title="Tabla"><i class="bi bi-table"></i></button></div></div>`;
+    if (vistaP === 'tabla') {
+      view.innerHTML = cab + `<div class="dw-card p-0 table-responsive"><table class="table dw-table align-middle mb-0"><thead><tr><th>Proyecto</th><th>Estado</th><th>Responsable</th><th>Comunidad</th><th>Beneficiados</th><th>Tareas</th><th>Inicio</th></tr></thead><tbody>
+        ${lista.map((p) => `<tr data-p="${p.id}" style="cursor:pointer"><td><b>${esc(p.nombre)}</b></td><td data-order="${ORDEN_EST.indexOf(p.estado)}">${C.chip(...(EST[p.estado] || EST.propuesta))}</td><td>${esc(p.lider || '—')}</td>
+          <td>${(p.comunidades || []).length ? esc(p.comunidades.join(' · ')) : '<span class="text-warning">Sin comunidad</span>'}</td><td>${C.num(p.beneficiados_total)}</td><td>${p.tareas_hechas}/${p.tareas}</td><td data-order="${esc(p.fecha_inicio || '')}">${p.fecha_inicio ? C.day(p.fecha_inicio) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
+      return;
+    }
+    view.innerHTML = cab + ORDEN_EST.map((k) => { const l = lista.filter((p) => p.estado === k); if (!l.length) return '';
+      return `<details class="ro-pgrp mb-3" ${estadoF || !['finalizado', 'cancelado'].includes(k) ? 'open' : ''}><summary class="ro-h">${EST[k][1]} (${l.length})</summary><div class="ro-pgrid mt-2">${l.map(tarjeta).join('')}</div></details>`; }).join('');
+  }
+  view.addEventListener('click', (e) => {
+    if (tab !== 'proyectos' || abierto) return;
+    const b = e.target.closest('[data-est]'); if (b) { estadoF = estadoF === b.dataset.est ? '' : b.dataset.est; return pintarLista(); }
+    const v = e.target.closest('[data-vp]'); if (v) { vistaP = v.dataset.vp; try { localStorage.setItem('ro_proy_vista', vistaP); } catch (_) {} return pintarLista(); }
+  });
+
+  // Cierre del proyecto: antes de pasarlo a «Finalizado» se revisa que esté completo. Las tareas abiertas se deben cerrar
+  // (aquí mismo, como hechas o canceladas); lo demás son avisos y se puede finalizar igual.
+  async function cerrarProyecto(id) {
+    let d; try { d = await api(`/api/impacto/proyectos/${id}/detalle`); } catch (x) { toast(x.message, false); return false; }
+    const p = d.proyecto, abiertas = d.tareas.filter((t) => ['pendiente', 'en_curso'].includes(t.estado));
+    const fin = d.aportes.filter((a) => a.tipo_aporte === 'financiera' && a.monto > 0);
+    const sinSoporte = fin.filter((a) => !d.soportes.some((x) => x.aporte_id === a.id));
+    const informe = d.docs.some((x) => x.tipo === 'documento' || /informe|cierre|final/i.test(x.nombre || ''));
+    const items = [
+      [!abiertas.length, `Tareas cerradas${abiertas.length ? ` · faltan ${abiertas.length}` : ''}`, true],
+      [!!p.comunidad_id || d.beneficiarios.length > 0, 'Comunidad del proyecto elegida', false],
+      [d.beneficiarios.length > 0, `Beneficiarios registrados (${d.beneficiarios.length})`, false],
+      [!sinSoporte.length, fin.length ? `Comprobantes de cada financiador${sinSoporte.length ? ` · faltan de ${sinSoporte.map((a) => a.nombre || 'Club').join(', ')}` : ''}` : 'Sin financiadores con dinero', false],
+      [informe, 'Informe final en Documentación', false],
+      [!!p.fecha_fin, 'Fecha de cierre', false]];
+    return new Promise((ok) => {
+      const { el, m } = window.App.modal(`<div class="modal-header"><h2 class="modal-title h5">Finalizar «${esc(p.nombre)}»</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body"><p class="small text-body-secondary">Antes de finalizar, revisa que el proyecto quede completo.</p>
+        <div class="list-group mb-3">${items.map(([bien, t, req]) => `<div class="list-group-item d-flex gap-2 align-items-center"><i class="bi ${bien ? 'bi-check-circle-fill text-success' : req ? 'bi-x-circle-fill text-danger' : 'bi-exclamation-circle-fill text-warning'}"></i><span class="flex-grow-1">${t}</span>${!bien && req ? '<span class="badge text-bg-danger">Obligatorio</span>' : ''}</div>`).join('')}</div>
+        ${abiertas.length ? `<div class="dw-card p-2 mb-2"><div class="small fw-semibold mb-1">Tareas abiertas</div>${abiertas.map((t) => `<div class="d-flex align-items-center gap-2 small py-1 border-bottom" data-tid="${t.id}"><span class="flex-grow-1">${esc(t.titulo)}${t.responsable ? ` <span class="text-body-secondary">· ${esc(t.responsable)}</span>` : ''}</span><button class="btn btn-sm btn-success py-0" data-tx="hecha">Hecha</button><button class="btn btn-sm btn-light py-0" data-tx="cancelada">Cancelar</button></div>`).join('')}
+          <div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-success" data-todas="hecha">Todas hechas</button><button class="btn btn-sm btn-outline-secondary" data-todas="cancelada">Cancelar todas</button></div></div>` : ''}
+        <div class="row g-2"><div class="col-sm-6"><label class="form-label small">Fecha de cierre</label><input type="date" class="form-control" data-ffin value="${esc(p.fecha_fin || C.todayCo())}"></div></div></div>
+        <div class="modal-footer"><button class="btn btn-light" data-bs-dismiss="modal">Todavía no</button><button class="btn btn-primary" data-fin ${abiertas.length ? 'disabled' : ''}><i class="bi bi-flag-fill me-1"></i>Finalizar proyecto</button></div>`);
+      let hecho = false;
+      const quedan = () => el.querySelectorAll('[data-tid]').length;
+      const cerrarT = async (fila, estado) => { await api(`/api/tareas/tareas/${fila.dataset.tid}`, { method: 'PATCH', body: { estado } }); fila.remove(); if (!quedan()) { el.querySelector('[data-fin]').disabled = false; el.querySelector('.list-group-item i.text-danger')?.classList.replace('bi-x-circle-fill', 'bi-check-circle-fill'); el.querySelector('.list-group-item i.text-danger')?.classList.replace('text-danger', 'text-success'); } };
+      el.addEventListener('click', async (e) => {
+        const t = e.target.closest('[data-tx]'); if (t) { t.disabled = true; try { await cerrarT(t.closest('[data-tid]'), t.dataset.tx); } catch (x) { toast(x.message, false); t.disabled = false; } return; }
+        const a = e.target.closest('[data-todas]'); if (a) { a.disabled = true; try { for (const f of [...el.querySelectorAll('[data-tid]')]) await cerrarT(f, a.dataset.todas); } catch (x) { toast(x.message, false); } a.disabled = false; return; }
+        if (e.target.closest('[data-fin]')) {
+          try { await api(`/api/impacto/proyectos/${p.id}`, { method: 'PATCH', body: { estado: 'finalizado', fecha_fin: el.querySelector('[data-ffin]').value || null } }); hecho = true; toast('Proyecto finalizado'); m.hide(); } catch (x) { toast(x.message, false); }
+        }
+      });
+      el.addEventListener('hidden.bs.modal', () => ok(hecho));
+    });
+  }
+
+  // Portada del proyecto: se sube una foto (queda en los archivos del proyecto) y se usa en la tarjeta y en el encabezado.
+  async function subirPortada(p) {
+    const f = await RO.elegirArchivo('image/*'); if (!f) return;
+    try { const r = await RO.subir('/api/impacto/archivos', f); await api(`/api/impacto/proyectos/${p.id}`, { method: 'PATCH', body: { foto_url: `${location.origin}/api/impacto/archivos/${r.key}` } }); toast('Portada actualizada'); abrir(p.id); } catch (x) { toast(x.message, false); }
+  }
 
   /* ---------- documentos ---------- */
   const editor = D.editor({ puedeBorrar: M });
@@ -242,9 +314,12 @@ DW.ready.then(async (me) => {
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     let d; try { d = await api(`/api/impacto/proyectos/${abierto}/detalle`); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
     const p = d.proyecto, cm = d.comunidad; ultimo = d;
-    acciones.innerHTML = `<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>Proyectos</button>${M ? '<button class="btn btn-outline-primary" data-ed><i class="bi bi-pencil me-1"></i>Editar</button>' : ''}`;
+    const vivo = ['propuesta', 'planeacion', 'en_curso'].includes(p.estado);
+    acciones.innerHTML = `<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>Proyectos</button>${M ? `<button class="btn btn-light" data-portada><i class="bi bi-image me-1"></i>Portada</button>${vivo ? '<button class="btn btn-outline-success" data-finalizar><i class="bi bi-flag me-1"></i>Finalizar</button>' : ''}<button class="btn btn-outline-primary" data-ed><i class="bi bi-pencil me-1"></i>Editar</button>` : ''}`;
     acciones.querySelector('[data-volver]').onclick = () => { abierto = null; ir(); cargar(); };
     acciones.querySelector('[data-ed]')?.addEventListener('click', () => editarP(p));
+    acciones.querySelector('[data-portada]')?.addEventListener('click', () => subirPortada(p));
+    acciones.querySelector('[data-finalizar]')?.addEventListener('click', async () => { if (await cerrarProyecto(p.id)) abrir(p.id); });
     const club = d.aportes.filter((a) => a.origen === 'club'), ali = d.aportes.filter((a) => a.origen === 'alianza');
     // Finanzas del proyecto: soportes de cada fondo (club o alianza) + lo que se registró directo en las cajas con este proyecto
     const fondoDe = (a) => (!a ? 'Fondo' : a.origen === 'club' ? `Club · ${a.caja === 'menor' ? 'Caja menor' : 'Caja mayor'}` : (a.nombre || 'Alianza'));
@@ -433,7 +508,7 @@ DW.ready.then(async (me) => {
       if (M) { acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nuevo proyecto</button>'; acciones.querySelector('[data-nuevo]').onclick = () => editarP(null); }
       rows = (await api('/api/impacto/tarjetas')).rows;
       view.onclick = (e) => { const c = e.target.closest('[data-p]'); if (c) { sec = 'resumen'; abrir(c.dataset.p); } };
-      view.innerHTML = rows.length ? `<div class="ro-pgrid">${rows.map(tarjeta).join('')}</div>` : window.App.empty('bi-globe-americas', 'Aún no hay proyectos de servicio.');
+      pintarLista();
       return;
     }
     if (tab === 'comunidades') {
@@ -457,7 +532,9 @@ DW.ready.then(async (me) => {
 
   document.head.insertAdjacentHTML('beforeend', `<style>.ro-pgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr))}
     .ro-pcard{padding:0;border-radius:16px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg);overflow:hidden;text-align:left;color:inherit;transition:transform .12s}.ro-pcard:hover{transform:translateY(-2px);border-color:var(--dw-p)}
-    .ro-pimg{height:120px;background:linear-gradient(135deg,rgba(var(--dw-p-rgb),.35),rgba(var(--dw-p-rgb),.08)) center/cover;display:grid;place-items:center;font-size:2.4rem;color:var(--dw-p);position:relative}.ro-pest{position:absolute;top:8px;right:8px}
+    .ro-pimg{height:120px;background:linear-gradient(135deg,rgba(var(--dw-p-rgb),.35),rgba(var(--dw-p-rgb),.08)) center/cover;display:grid;place-items:center;font-size:2.4rem;color:var(--dw-p);position:relative}.ro-pest{position:absolute;top:8px;right:8px;font-size:.8rem;line-height:1.2}.ro-pest .badge,.ro-pest>*{font-size:.75rem}
+    .ro-pgrp>summary{list-style:none;cursor:pointer}.ro-pgrp>summary::-webkit-details-marker{display:none}.ro-pgrp>summary::before{content:"\\F285";font-family:bootstrap-icons;display:inline-block;margin-right:6px;transition:transform .15s}.ro-pgrp[open]>summary::before{transform:rotate(90deg)}
+    .ro-embudo{display:flex;gap:4px;flex-wrap:wrap}.ro-embudo button{flex:1 1 110px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg);border-radius:12px;padding:8px 10px;text-align:left;color:inherit}.ro-embudo button b{display:block;font-size:1.3rem}.ro-embudo button.on{border-color:var(--dw-p);background:rgba(var(--dw-p-rgb),.08)}
     .ro-pstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}.ro-pstats span{display:flex;flex-direction:column;font-size:.72rem;color:var(--bs-secondary-color);background:rgba(var(--dw-p-rgb),.05);border-radius:10px;padding:6px 2px}.ro-pstats b{font-size:1.05rem;color:var(--bs-body-color)}
     .ro-phero{position:relative;border-radius:18px;overflow:hidden;min-height:150px;display:flex;align-items:flex-end;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.6)),var(--img,linear-gradient(135deg,var(--dw-p),color-mix(in srgb,var(--dw-p) 50%,#000))) center/cover;color:#fff}.ro-phero-in{padding:18px}
     .ro-docs{display:grid;gap:6px}.ro-doc{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--bs-border-color)}.ro-doc .bi{font-size:1.3rem}

@@ -58,7 +58,7 @@ export async function configCuota(env, bid) {
 export async function cartera(c, socioId = null) {
   const hoy = today(), mesHoy = hoy.slice(0, 7);
   const [socios, periodos, pagos] = await Promise.all([
-    all(c.env, `SELECT id, nombre, cargo, tipo_membresia, estado, fecha_ingreso, activado_at, foto_key, foto_url FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA} ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
+    all(c.env, `SELECT id, nombre, cargo, tipo_membresia, estado, fecha_ingreso, activado_at, foto_key, foto_url, telefono FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA} ${socioId ? 'AND id = ?' : ''} ORDER BY nombre`, c.businessId, ...(socioId ? [socioId] : [])),
     all(c.env, 'SELECT mes, monto, vence FROM ro_periodos WHERE business_id = ? AND mes <= ? ORDER BY mes', c.businessId, mesHoy),
     all(c.env, `SELECT socio_id, SUM(monto) total, MAX(fecha) ultimo FROM ro_pagos WHERE business_id = ? AND estado = 'verificado' GROUP BY socio_id`, c.businessId),
   ]);
@@ -70,7 +70,7 @@ export async function cartera(c, socioId = null) {
     const pg = pagos.find((x) => x.socio_id === s.id);
     const pagado = pg?.total || 0, saldo = Math.max(0, esperado - pagado);
     const estado = pagado >= esperado ? (pagado > esperado ? 'adelantado' : 'al_dia') : pagado >= vencido ? 'por_vencer' : 'debe';
-    return { socio_id: s.id, nombre: s.nombre, cargo: s.cargo, tipo: s.tipo_membresia, fecha_ingreso: s.fecha_ingreso, activado_at: s.activado_at, desde: debidos[0]?.mes || null, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null, esperado, pagado, saldo, a_favor: Math.max(0, pagado - esperado), vencido: Math.max(0, vencido - pagado), estado, ultimo_pago: pg?.ultimo || null, periodos: debidos.length };
+    return { socio_id: s.id, nombre: s.nombre, cargo: s.cargo, telefono: s.telefono || null, tipo: s.tipo_membresia, fecha_ingreso: s.fecha_ingreso, activado_at: s.activado_at, desde: debidos[0]?.mes || null, foto: s.foto_key || s.foto_url ? `/api/socios/foto/${s.id}` : null, esperado, pagado, saldo, a_favor: Math.max(0, pagado - esperado), vencido: Math.max(0, vencido - pagado), estado, ultimo_pago: pg?.ultimo || null, periodos: debidos.length };
   });
 }
 

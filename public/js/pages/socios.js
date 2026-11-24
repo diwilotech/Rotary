@@ -8,7 +8,8 @@ DW.ready.then(async (me) => {
   const RO_ = window.RO, M = me.canManage, RO_APP = me.business.readOnly;
   const CARGOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club', 'Director/a de Servicio a la Comunidad',
     'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos', 'Presidente/a del Comité de la Fundación del club'];
-  let tab = location.hash === '#certificados' || location.hash === '#activacion' ? 'certificados' : 'socios', filtro = '', rows = [];
+  let tab = location.hash === '#certificados' || location.hash === '#activacion' ? 'certificados' : 'socios', filtro = '', rows = [], chip = 'todos';
+  let vista = (() => { try { return localStorage.getItem('ro_socios_vista') || 'tarjetas'; } catch (_) { return 'tarjetas'; } })();
   RO_.nav(tab, (k) => { tab = k; pintar(); });
 
   if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
@@ -44,6 +45,22 @@ DW.ready.then(async (me) => {
       <div class="${s.activado_at ? 'on' : ''}"><i class="bi bi-patch-check"></i><span>Activación en el club</span><b>${s.activado_at ? C.day(s.activado_at) : 'Sin activar'}</b></div>
       <div class="${s.myrotary_at || s.myrotary_id ? 'on' : ''}"><i class="bi bi-globe2"></i><span>My Rotary</span><b>${s.myrotary_at ? C.day(s.myrotary_at) : s.myrotary_id ? 'Sin fecha' : 'No está'}</b>${s.myrotary_id ? `<small>ID ${esc(s.myrotary_id)}</small>` : ''}</div></div>`;
 
+  // Ciclo del socio: lo que le falta para quedar completo (ingreso → activación con certificado → My Rotary, acceso y firma si es junta)
+  function pasos(s, R) {
+    if (!['activo', 'aspirante'].includes(s.estado) || ['socio_externo', 'voluntario_invitado'].includes(s.tipo_membresia) && !s.junta) return '';
+    const p = [];
+    if (!s.fecha_ingreso) p.push(['bi-door-open', 'Registrar la fecha de ingreso al club', M ? `data-editar="${s.id}"` : '']);
+    if (s.estado === 'aspirante' || s.tipo_membresia === 'aspirante') p.push(['bi-hourglass-split', 'Aspirante: cuando cumpla el proceso, cámbialo a socio y actívalo', M ? `data-editar="${s.id}"` : '']);
+    else if (!s.activado) p.push(['bi-patch-check', 'Activarlo en el club (genera su certificado)', M ? `data-activar="${s.id}"` : '']);
+    if (!s.myrotary_id && !s.myrotary_at && s.estado === 'activo') p.push(['bi-globe2', 'Registrarlo en My Rotary', M ? `data-mr="${s.id}"` : '']);
+    if (!s.email) p.push(['bi-envelope', 'Falta su correo (sin él no puede entrar a la app)', M ? `data-editar="${s.id}"` : '']);
+    else if (!(R && R.acceso)) p.push(['bi-key', 'Darle acceso a la app', '']);
+    if (s.junta && !s.tiene_firma) p.push(['bi-pen', 'Falta su firma para los certificados', '']);
+    if (!p.length) return '<div class="alert alert-success py-2 small d-flex align-items-center gap-2"><i class="bi bi-check-circle-fill"></i>Ficha completa: no le falta ningún paso.</div>';
+    return `<div class="dw-card p-2 mb-3" style="border-left:4px solid var(--bs-warning)"><div class="small fw-semibold mb-1">Le falta (${p.length})</div>
+      ${p.map(([i, t, a]) => `<div class="d-flex align-items-center gap-2 small py-1"><i class="bi ${i} text-warning"></i><span class="flex-grow-1">${t}</span>${a && !RO_APP ? `<button type="button" class="btn btn-sm btn-light py-0" ${a}>Hacerlo</button>` : ''}</div>`).join('')}</div>`;
+  }
+
   async function ficha(s0) {
     const { el, m } = modal('<div class="modal-body p-4 text-center text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
     let d; try { d = await api(`/api/socios/socios/${s0.id}/ficha`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
@@ -56,6 +73,7 @@ DW.ready.then(async (me) => {
           <div class="d-flex flex-wrap gap-1 mt-1">${C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo))} <span class="badge rounded-pill text-bg-light">${esc(RO_.TIPO[s.tipo_membresia] || s.tipo_membresia)}</span>
           ${s.activado ? '<span class="badge rounded-pill text-bg-success"><i class="bi bi-patch-check me-1"></i>Activo en el club</span>' : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>'} ${s.myrotary_id || s.myrotary_at ? '<span class="badge rounded-pill text-bg-info"><i class="bi bi-globe2 me-1"></i>En My Rotary</span>' : '<span class="badge rounded-pill text-bg-light border">Sin My Rotary</span>'}</div></div></div>
         ${fechas(s)}
+        ${pasos(s, R0)}
         <div class="row g-2 mb-3">
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold">${d.asistencia.pct ?? '—'}${d.asistencia.pct != null ? '%' : ''}</div><div class="small text-body-secondary">Asistencia (${d.asistencia.presente}/${d.asistencia.total})</div></div></div>
           <div class="col-4"><div class="dw-card p-2 text-center"><div class="fs-4 fw-bold">${d.tareas.filter((t) => t.estado !== 'hecha').length}</div><div class="small text-body-secondary">Tareas abiertas</div></div></div>
@@ -75,6 +93,10 @@ DW.ready.then(async (me) => {
     on('[data-cert]', () => certificado(s));
     on('[data-firma]', async () => { m.hide(); if (await RO_.firmar(`/api/socios/socios/${s.id}/firma`, { titulo: `Firma de ${s.nombre}`, actual: R0.tiene_firma ? `/api/socios/firma/${s.id}?v=${Date.now()}` : null })) cargar(); });
     on('[data-act]', async () => { if (await activar(s)) { m.hide(); ficha(s); } });
+    // Botones «Hacerlo» de los pasos pendientes
+    el.querySelectorAll('[data-activar]').forEach((b) => b.addEventListener('click', async () => { if (await activar(s)) { m.hide(); ficha(s); } }));
+    el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () => { m.hide(); editar(rows.find((x) => x.id === s.id) || s); }));
+    el.querySelectorAll('[data-mr]').forEach((b) => b.addEventListener('click', async () => { m.hide(); await myRotary(rows.find((x) => x.id === s.id) || s); }));
     on('[data-edit]', () => { m.hide(); editar(rows.find((x) => x.id === s.id) || s); });
     on('[data-foto]', async () => { const f = await RO_.elegirArchivo('image/*'); if (!f) return; try { await RO_.subir(`/api/socios/socios/${s.id}/foto`, f); toast('Foto actualizada'); m.hide(); await cargar(); ficha(s); } catch (x) { toast(x.message, false); } });
     el.querySelector('[data-rol]')?.addEventListener('change', async (e) => {
@@ -101,19 +123,45 @@ DW.ready.then(async (me) => {
   // [tipo, título, nota, ícono]. La junta (con cargo) va aparte, arriba.
   const GRUPOS = [['socio', 'Socios', 'miembros del club', 'bi-person-check'], ['honorario', 'Honorarios', '', 'bi-star'], ['aspirante', 'Aspirantes', 'en proceso de ingreso', 'bi-hourglass-split'],
     ['socio_externo', 'Socios externos', 'entran a la app, pero no son socios del club', 'bi-box-arrow-in-right'], ['voluntario_invitado', 'Voluntarios invitados', 'apoyan sin ser socios', 'bi-hand-thumbs-up']];
+  // Filtros rápidos con conteo. Externos y voluntarios van plegados (no son socios del club) salvo que se filtre por ellos o se busque.
+  const grupo = (s) => (s.estado === 'aspirante' ? 'aspirante' : s.tipo_membresia || 'socio');
+  const vivo = (s) => ['activo', 'aspirante'].includes(s.estado);
+  const miembro = (s) => s.junta || ['socio', 'honorario'].includes(grupo(s));
+  const CHIPS = [['todos', 'Todos', (s) => vivo(s)], ['junta', 'Junta', (s) => vivo(s) && s.junta], ['socios', 'Socios', (s) => vivo(s) && !s.junta && ['socio', 'honorario'].includes(grupo(s))],
+    ['aspirantes', 'Aspirantes', (s) => vivo(s) && !s.junta && grupo(s) === 'aspirante'], ['externos', 'Externos', (s) => vivo(s) && !s.junta && grupo(s) === 'socio_externo'],
+    ['voluntarios', 'Voluntarios', (s) => vivo(s) && !s.junta && grupo(s) === 'voluntario_invitado'], ['sin_activar', 'Sin activar', (s) => s.estado === 'activo' && miembro(s) && !s.activado],
+    ['sin_acceso', 'Sin acceso', (s) => vivo(s) && miembro(s) && !s.acceso], ['inactivos', 'Inactivos', (s) => !vivo(s)]];
+  const PLEGADOS = new Set(['socio_externo', 'voluntario_invitado']);
   function pintarSocios() {
-    const q = filtro.toLowerCase(), f = rows.filter((s) => !q || `${s.nombre} ${s.cargo || ''} ${s.profesion || ''}`.toLowerCase().includes(q));
-    const vivos = f.filter((s) => ['activo', 'aspirante'].includes(s.estado));
+    const q = filtro.toLowerCase(), f0 = rows.filter((s) => !q || `${s.nombre} ${s.cargo || ''} ${s.profesion || ''}`.toLowerCase().includes(q));
+    const regla = (CHIPS.find((c) => c[0] === chip) || CHIPS[0])[2];
+    view.querySelector('[data-chips]').innerHTML = CHIPS.map(([k, l, fn]) => { const n = f0.filter(fn).length; return n || k === chip || k === 'todos'
+      ? `<button type="button" class="btn btn-sm rounded-pill ${k === chip ? 'btn-primary' : 'btn-light'}" data-chip="${k}">${l} <span class="badge rounded-pill ${k === chip ? 'text-bg-light' : 'text-bg-secondary'}">${n}</span></button>` : ''; }).join('')
+      + `<div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Vista"><button type="button" class="btn ${vista === 'tarjetas' ? 'btn-primary' : 'btn-light'}" data-vista="tarjetas" title="Tarjetas"><i class="bi bi-grid-3x2-gap"></i></button><button type="button" class="btn ${vista === 'tabla' ? 'btn-primary' : 'btn-light'}" data-vista="tabla" title="Tabla"><i class="bi bi-table"></i></button></div>`;
+    const f = chip === 'todos' ? f0 : f0.filter(regla);
+    const L = view.querySelector('[data-lista]');
+    if (!rows.length) { L.innerHTML = window.App.empty('bi-people', 'Aún no hay socios. Crea la junta y los socios del club.'); return; }
+    if (!f.length) { L.innerHTML = window.App.empty('bi-search', 'Nadie con ese filtro.'); return; }
+    if (vista === 'tabla') {
+      const orden = [...f].sort((a, b) => (a.junta ? a.orden_cargo : 99) - (b.junta ? b.orden_cargo : 99) || a.nombre.localeCompare(b.nombre));
+      L.innerHTML = `<div class="dw-card p-0 table-responsive"><table class="table dw-table align-middle mb-0"><thead><tr><th>Nombre</th><th>Cargo / tipo</th><th>Estado</th><th>Ingreso</th><th>Activación</th><th>My Rotary</th><th>Acceso</th></tr></thead><tbody>
+        ${orden.map((s) => `<tr data-id="${s.id}" style="cursor:pointer"><td><div class="d-flex align-items-center gap-2">${RO_.avatar(s, 30)}<b>${esc(s.nombre)}</b></div></td>
+          <td>${s.junta ? esc(s.cargo) : esc(RO_.TIPO[s.tipo_membresia] || '')}</td><td>${C.chip(...(RO_.ESTADO[s.estado] || RO_.ESTADO.activo))}</td>
+          <td data-order="${esc(s.fecha_ingreso || '')}">${s.fecha_ingreso ? C.day(s.fecha_ingreso) : '—'}</td><td data-order="${esc(s.activado_at || '')}">${s.activado ? C.day(s.activado_at) : miembro(s) ? '<span class="badge text-bg-warning">Sin activar</span>' : '—'}</td>
+          <td>${s.myrotary_id ? esc(s.myrotary_id) : '—'}</td><td>${accesoBadge(s)}</td></tr>`).join('')}</tbody></table></div>`;
+      return;
+    }
+    const vivos = f.filter(vivo);
     const junta = vivos.filter((s) => s.junta).sort((a, b) => a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
     const demas = vivos.filter((s) => !s.junta).sort((a, b) => a.nombre.localeCompare(b.nombre));
-    const otros = f.filter((s) => !['activo', 'aspirante'].includes(s.estado));
-    // Después de la junta, un grupo por tipo: los socios del club primero y los externos e invitados al final
-    const grupo = (s) => (s.estado === 'aspirante' ? 'aspirante' : s.tipo_membresia || 'socio');
-    const bloques = GRUPOS.map(([k, titulo, nota, ic]) => [titulo, nota, ic, demas.filter((s) => grupo(s) === k)]).filter(([, , , l]) => l.length);
-    view.querySelector('[data-lista]').innerHTML = (rows.length ? '' : window.App.empty('bi-people', 'Aún no hay socios. Crea la junta y los socios del club.'))
-      + (junta.length ? `<div class="ro-h mt-0"><i class="bi bi-award me-1"></i>Junta directiva</div><div class="ro-junta">${junta.map(tarjetaJunta).join('')}</div>` : '')
-      + bloques.map(([t, nota, ic, l]) => `<div class="ro-h"><i class="bi ${ic} me-1"></i>${t} (${l.length})${nota ? ` <span class="fw-normal" style="text-transform:none;letter-spacing:0">· ${nota}</span>` : ''}</div><div class="ro-socios">${l.map(tarjetaSocio).join('')}</div>`).join('')
-      + (otros.length ? `<details class="mt-3"><summary class="ro-h d-inline-block">Inactivos y retirados (${otros.length})</summary><div class="ro-socios mt-2">${otros.map(tarjetaSocio).join('')}</div></details>` : '');
+    const otros = f.filter((s) => !vivo(s));
+    // Después de la junta, un grupo por tipo: los socios del club primero y los externos e invitados al final (plegados)
+    const bloques = GRUPOS.map(([k, titulo, nota, ic]) => [k, titulo, nota, ic, demas.filter((s) => grupo(s) === k)]).filter(([, , , , l]) => l.length);
+    const abierto = (k) => !PLEGADOS.has(k) || q || chip !== 'todos';
+    const cab = (t, nota, ic, n) => `<i class="bi ${ic} me-1"></i>${t} (${n})${nota ? ` <span class="fw-normal" style="text-transform:none;letter-spacing:0">· ${nota}</span>` : ''}`;
+    L.innerHTML = (junta.length ? `<div class="ro-h mt-0"><i class="bi bi-award me-1"></i>Junta directiva (${junta.length})</div><div class="ro-junta">${junta.map(tarjetaJunta).join('')}</div>` : '')
+      + bloques.map(([k, t, nota, ic, l]) => `<details class="ro-grupo" ${abierto(k) ? 'open' : ''}><summary class="ro-h">${cab(t, nota, ic, l.length)}</summary><div class="ro-socios">${l.map(tarjetaSocio).join('')}</div></details>`).join('')
+      + (otros.length ? `<details class="mt-3" ${chip === 'inactivos' ? 'open' : ''}><summary class="ro-h d-inline-block">Inactivos y retirados (${otros.length})</summary><div class="ro-socios mt-2">${otros.map(tarjetaSocio).join('')}</div></details>` : '');
   }
 
   async function myRotary(s) {
@@ -182,6 +230,7 @@ DW.ready.then(async (me) => {
   function pintar() {
     document.querySelector('[data-h1]').textContent = tab === 'certificados' ? 'Certificados' : 'Socios';
     view.querySelector('[data-buscar]').hidden = tab !== 'socios';
+    view.querySelector('[data-chips]').hidden = tab !== 'socios';
     (tab === 'certificados' ? pintarCertificados : pintarSocios)();
   }
 
@@ -190,9 +239,13 @@ DW.ready.then(async (me) => {
     pintar();
   }
 
-  view.innerHTML = `<div class="mb-3" data-buscar><input class="form-control" placeholder="Buscar socio, cargo o profesión…" style="max-width:340px" aria-label="Buscar socio"></div><div data-lista></div>`;
+  view.innerHTML = `<style>.ro-grupo>summary{list-style:none;cursor:pointer}.ro-grupo>summary::-webkit-details-marker{display:none}.ro-grupo>summary::before{content:"\\F285";font-family:bootstrap-icons;display:inline-block;margin-right:6px;transition:transform .15s}.ro-grupo[open]>summary::before{transform:rotate(90deg)}</style>
+    <div class="mb-2" data-buscar><input class="form-control" placeholder="Buscar socio, cargo o profesión…" style="max-width:340px" aria-label="Buscar socio"></div>
+    <div class="d-flex flex-wrap gap-1 align-items-center mb-3" data-chips></div><div data-lista></div>`;
   view.querySelector('[data-buscar] input').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintarSocios(); });
   view.addEventListener('click', async (e) => {
+    const ch = e.target.closest('[data-chip]'); if (ch) { chip = ch.dataset.chip; return pintarSocios(); }
+    const vi = e.target.closest('[data-vista]'); if (vi) { vista = vi.dataset.vista; try { localStorage.setItem('ro_socios_vista', vista); } catch (_) {} return pintarSocios(); }
     const c = e.target.closest('[data-cert]'); if (c) return certificado({ id: c.dataset.cert });
     const a = e.target.closest('[data-activar]'); if (a) return activar(rows.find((s) => String(s.id) === a.dataset.activar));
     const mr = e.target.closest('[data-mr]'); if (mr) return myRotary(rows.find((s) => String(s.id) === mr.dataset.mr));

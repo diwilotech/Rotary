@@ -97,7 +97,15 @@ export function routes(r) {
     const caja = (k) => ({ id: k, nombre: CAJAS[k], saldo: s[k], ingresos_mes: delMes.find((x) => x.caja === k && x.tipo === 'ingreso')?.total || 0, egresos_mes: delMes.find((x) => x.caja === k && x.tipo === 'egreso')?.total || 0,
       categorias: cats.filter((x) => x.caja === k).map(({ categoria, total }) => ({ categoria, total })),
       meses: meses12.map((m) => { const x = meses.find((y) => y.caja === k && y.mes === m); return { mes: m, ingresos: x?.ingresos || 0, egresos: x?.egresos || 0 }; }) });
-    return json({ mes, anio, nombre_anio: `${anio}-${anio + 1}`, cajas: [caja('menor'), caja('mayor')], total: s.menor + s.mayor, valor: s.menor + s.mayor });
+    // Revisión de cada caja: total histórico de entradas y salidas, en qué se fue más plata (cuando queda en negativo) y
+    // cuántos egresos no tienen comprobante (para el cierre del mes).
+    const rev = await all(c.env, `SELECT caja, SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) entradas, SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) salidas,
+      SUM(tipo = 'egreso' AND comprobante_key IS NULL AND comprobante_url IS NULL AND traslado IS NULL) sin_comprobante, MIN(fecha) desde FROM ro_movimientos WHERE business_id = ? GROUP BY caja`, c.businessId);
+    const top = await all(c.env, `SELECT m.caja, COALESCE(p.nombre, m.categoria, 'Sin categoría') rubro, SUM(m.monto) total FROM ro_movimientos m LEFT JOIN ro_proyectos p ON p.id = m.proyecto_id AND p.business_id = m.business_id
+      WHERE m.business_id = ? AND m.tipo = 'egreso' GROUP BY m.caja, rubro ORDER BY total DESC`, c.businessId);
+    const revision = (k) => { const r = rev.find((x) => x.caja === k) || {}; return { entradas: r.entradas || 0, salidas: r.salidas || 0, sin_comprobante: r.sin_comprobante || 0, desde: r.desde || null, salidas_por: top.filter((x) => x.caja === k).slice(0, 4).map(({ rubro, total }) => ({ rubro, total })) }; };
+    const cajas = [caja('menor'), caja('mayor')].map((k) => ({ ...k, revision: revision(k.id) }));
+    return json({ mes, anio, nombre_anio: `${anio}-${anio + 1}`, cajas, total: s.menor + s.mayor, valor: s.menor + s.mayor });
   });
 
   r.get('/api/cajas/proyectado', `manager:${MOD}`, async (c) => {

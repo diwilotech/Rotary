@@ -67,6 +67,14 @@ DW.ready.then(async (me) => {
       <span class="ro-saldo ${k.saldo < 0 ? 'text-danger' : ''}">${C.money(k.saldo)}</span>
       <span class="small">Este mes: <span class="text-success">+${C.money(k.ingresos_mes)}</span> · <span class="text-danger">−${C.money(k.egresos_mes)}</span></span></button>`).join('');
     const k = res.cajas.find((x) => x.id === caja);
+    // Revisión de la caja: si quedó en negativo, de dónde sale (entradas vs. salidas y en qué se fue la plata);
+    // y cuántos egresos no tienen comprobante (para el cierre del mes).
+    const rv = k.revision || {};
+    view.querySelector('[data-revision]').innerHTML = (k.saldo < 0 ? `<div class="alert alert-danger d-flex gap-2 mb-2"><i class="bi bi-exclamation-octagon-fill fs-5"></i><div>
+        <b>${esc(k.nombre)} en negativo (${C.money(k.saldo)}).</b> Desde ${rv.desde ? C.day(rv.desde) : 'el inicio'} entraron <b>${C.money(rv.entradas)}</b> y salieron <b>${C.money(rv.salidas)}</b>.
+        ${rv.salidas_por?.length ? `<div class="small mt-1">Salió sobre todo en: ${rv.salidas_por.map((x) => `${esc(x.rubro)} (${C.money(x.total)})`).join(' · ')}.</div>` : ''}
+        <div class="small mt-1">Lo más común: falta registrar un ingreso (aporte de una alianza, traslado desde la otra caja o el saldo inicial). Regístralo con «Nuevo movimiento» o «Trasladar».</div></div></div>` : '')
+      + (rv.sin_comprobante ? `<div class="alert alert-warning py-2 small d-flex gap-2 align-items-center mb-2"><i class="bi bi-receipt"></i><span>${rv.sin_comprobante} egreso${rv.sin_comprobante > 1 ? 's' : ''} sin comprobante en esta caja. Súbelos antes del cierre del mes.</span></div>` : '');
     // Caja menor: los meses que vienen muestran lo proyectado (rayado): cuotas de socios esperadas y obligaciones que vencen
     const pm = caja === 'menor' && pro ? Object.fromEntries(pro.meses.map((m) => [m.mes, m])) : {};
     const filas = k.meses.map((x) => { const p = pm[x.mes]; return p?.proyectado && x.mes > res.mes ? { label: corto(x.mes), a: p.cuotas_proy, b: p.oblig_proy, projected: true } : { label: corto(x.mes), a: x.ingresos, b: x.egresos }; });
@@ -179,7 +187,7 @@ DW.ready.then(async (me) => {
     .ro-ob{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ro-ob>div{flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:rgba(var(--dw-p-rgb),.06)}.ro-ob>i{color:var(--bs-secondary-color)}
     .ro-ob span{display:block;font-size:.75rem;color:var(--bs-secondary-color)}.ro-ob b{font-size:1.25rem;font-variant-numeric:tabular-nums}
     .ro-ob .ok{background:rgba(25,135,84,.12)}.ro-ob .ok b{color:var(--bs-success)}.ro-ob .bad{background:rgba(220,53,69,.12)}.ro-ob .bad b{color:var(--bs-danger)}</style>
-    <div class="ro-cajas" data-cajas></div>
+    <div class="ro-cajas" data-cajas></div><div data-revision></div>
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
       <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>Inversión del club · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div><div data-cajita></div>`;

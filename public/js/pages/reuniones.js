@@ -269,17 +269,17 @@ DW.ready.then(async (me) => {
       const ev = rows.filter((x) => x.fecha === f).sort((p, q) => String(p.hora_ini || '').localeCompare(String(q.hora_ini || '')));
       return `<td class="${f === hoy ? 'hoy' : ''} ${f.startsWith(ym) ? '' : 'fuera'} ${f < hoy ? 'ro-pasado' : ''} ${ev.length ? '' : 'vacio'}" data-f="${f}" data-dia="${DIAS[new Date(`${f}T12:00:00Z`).getUTCDay()]} ${+f.slice(8)}">
         <div class="dw-mes-n">${+f.slice(8)}</div>${f === hoy ? '<span class="ro-aqui">Estás aquí</span>' : ''}
-        ${ev.slice(0, 2).map((x) => `<a class="ro-evc${x.estado === 'cancelada' ? ' ro-cancel' : ''}" href="#" data-ev="${x.id}" style="--ev:${COLOR[x.tipo] || COLOR.reunion}" title="${esc(x.titulo)}">
+        ${ev.slice(0, 2).map((x) => `<a class="ro-evc${x.estado === 'cancelada' ? ' ro-cancel' : ''}" href="#" data-ev="${x.id}" style="--ev:${COLOR[x.tipo] || COLOR.reunion}" title="${esc([x.titulo, x.hora_ini, x.proyecto, x.lugar].filter(Boolean).join(' · '))}">
           <span class="ro-evc-h"><i class="bi ${ICO[x.tipo] || ICO.reunion}"></i>${esc(x.hora_ini || ETQ[x.tipo] || '')}${x.mi_respuesta === 'si' ? '<i class="bi bi-check-circle-fill ms-auto" title="Vas"></i>' : ''}</span>
-          <span class="ro-evc-t">${esc(x.titulo)}</span>${x.proyecto ? `<span class="ro-evc-p"><i class="bi bi-globe-americas"></i> ${esc(x.proyecto)}</span>` : ''}</a>`).join('')}
+          <span class="ro-evc-t">${esc(x.titulo)}</span></a>`).join('')}
         ${ev.length > 2 ? `<a class="ro-evc-mas" href="#" data-ev="${ev[2].id}">+${ev.length - 2} más</a>` : ''}</td>`;
     };
     const prox = proximas[0];
     view.innerHTML = `<style>.ro-aqui{display:inline-block;margin:0 0 3px;font-size:.62rem;font-weight:700;color:#fff;background:var(--dw-p);border-radius:999px;padding:1px 7px;vertical-align:middle}
-        .ro-pasado .ro-evc{opacity:.62}.ro-cal .dw-mes td{height:138px;padding:5px}
+        .ro-pasado .ro-evc{opacity:.62}.ro-cal .dw-mes td{height:128px;padding:5px}
         .ro-evc{display:flex;flex-direction:column;gap:1px;margin-bottom:4px;padding:5px 7px;border-radius:9px;border-left:4px solid var(--ev);background:color-mix(in srgb,var(--ev) 13%,var(--bs-body-bg));color:inherit;text-decoration:none;line-height:1.2;overflow:hidden}
         .ro-evc:hover{background:color-mix(in srgb,var(--ev) 22%,var(--bs-body-bg));color:inherit}
-        .ro-evc-h{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;color:var(--ev)}.ro-evc-t{font-size:.78rem;font-weight:600;overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+        .ro-evc-h{display:flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700;color:var(--ev)}.ro-evc-t{font-size:.84rem;font-weight:600;overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .ro-evc-p{font-size:.66rem;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ro-evc-mas{font-size:.7rem;font-weight:600;text-decoration:none}
         @media (max-width:767.98px){.ro-cal .dw-mes td{height:auto}.ro-evc{padding:8px 10px}.ro-evc-t{font-size:.9rem}}.ro-cancel{text-decoration:line-through;opacity:.5}.ro-hoy-box{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
         .ro-hoy-dia{width:64px;height:64px;border-radius:16px;background:var(--dw-p);color:#fff;display:grid;place-items:center;line-height:1;text-align:center}.ro-hoy-dia b{font-size:1.6rem;display:block}.ro-hoy-dia span{font-size:.7rem;text-transform:uppercase}

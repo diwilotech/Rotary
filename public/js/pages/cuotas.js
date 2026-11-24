@@ -81,6 +81,11 @@ DW.ready.then(async (me) => {
     // Filtro por estado y tarjetas de color según cómo va cada socio (el nombre baja de línea, no se sale de la tarjeta)
     const ORD = { debe: 0, por_vencer: 1, al_dia: 2, adelantado: 3 };
     const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
+    // Recordatorio por WhatsApp: abre el chat con el mensaje listo (lo envía quien está en la junta, desde su WhatsApp)
+    const wa = (x) => { let t = String(x.telefono || '').replace(/\D/g, ''); if (!t) return ''; if (t.length === 10) t = `57${t}`;
+      const nom = x.nombre.split(' ')[0], txt = x.estado === 'debe' ? `Hola ${nom}, te escribimos de ${me.business.name}. Según la cartera del club tienes ${C.money(x.saldo)} pendientes en cuotas${x.vencido ? ` (${C.money(x.vencido)} vencidos)` : ''}. Puedes reportar tu pago con el comprobante en la app, en «Lo tuyo». ¡Gracias!`
+        : `Hola ${nom}, te recordamos de ${me.business.name} que tu cuota de ${C.money(x.saldo)} está por vencer. Puedes reportar el pago en la app, en «Lo tuyo». ¡Gracias!`;
+      return `https://wa.me/${t}?text=${encodeURIComponent(txt)}`; };
     const linea = (x) => x.estado === 'debe' ? `<b>Debe ${C.money(x.saldo)}</b>${x.vencido ? ` · ${C.money(x.vencido)} vencido` : ''}`
       : x.estado === 'por_vencer' ? `<b>Por vencer ${C.money(x.saldo)}</b>` : x.estado === 'adelantado' ? `<b>A favor ${C.money(x.a_favor)}</b>` : `<b>Al día</b> · pagado ${C.money(x.pagado)}`;
     view.querySelector('[data-cartera]').innerHTML = `<p class="small text-body-secondary mb-2"><i class="bi bi-info-circle me-1"></i>Pagan cuota: socios activos y junta${cfg.aspirantes ? ', aspirantes' : ''}${cfg.honorarios ? ', honorarios' : ''}. Cada uno desde el mes en que ingresó (o el primer periodo creado).</p>` + (cartera.length ? `<div class="d-flex flex-wrap gap-2 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
@@ -88,7 +93,7 @@ DW.ready.then(async (me) => {
       ${vis.length ? `<div class="ro-cart">${vis.map((x) => `<div class="ro-cc ro-cc-${x.estado}" data-s="${x.socio_id}" role="button" tabindex="0">
           <div class="d-flex align-items-start gap-2">${RO.avatar(x, 38)}<div class="min-w-0 flex-grow-1"><b class="ro-cc-n">${esc(x.nombre)}</b>${x.cargo ? `<div class="small text-body-secondary text-truncate">${esc(x.cargo)}</div>` : ''}</div></div>
           <div class="ro-cc-pie"><span class="ro-cc-e"><i class="bi ${ICO[x.estado]} me-1"></i>${(EST[x.estado] || EST.debe)[1]}</span><span class="text-end">${linea(x)}</span></div>
-          <div class="small text-body-secondary">${x.desde ? `Cobra desde <b class="text-capitalize">${C.monthName(x.desde)}</b>` : 'Sin meses por cobrar'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}${x.fecha_ingreso ? ` · ingresó ${C.day(x.fecha_ingreso)}` : ''}${['aspirante', 'honorario'].includes(x.tipo) ? ` · ${x.tipo === 'aspirante' ? 'aspirante' : 'honorario'}` : ''}<br>${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'}</div></div>`).join('')}</div>`
+          <div class="small text-body-secondary">${x.desde ? `Cobra desde <b class="text-capitalize">${C.monthName(x.desde)}</b>` : 'Sin meses por cobrar'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}${x.fecha_ingreso ? ` · ingresó ${C.day(x.fecha_ingreso)}` : ''}${['aspirante', 'honorario'].includes(x.tipo) ? ` · ${x.tipo === 'aspirante' ? 'aspirante' : 'honorario'}` : ''}<br>${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'}</div>${['debe', 'por_vencer'].includes(x.estado) && wa(x) ? `<a class="btn btn-sm btn-outline-success mt-1" href="${wa(x)}" target="_blank" rel="noopener" data-wa><i class="bi bi-whatsapp me-1"></i>Recordar</a>` : ''}</div>`).join('')}</div>`
         : '<p class="small text-body-secondary">Nadie en este estado.</p>'}`
       : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».'));
     view.querySelector('[data-pend]').innerHTML = pend.length ? `<div class="alert alert-warning d-flex align-items-center gap-2"><i class="bi bi-hourglass-split"></i><span class="flex-grow-1">${pend.length} pago${pend.length > 1 ? 's' : ''} reportado${pend.length > 1 ? 's' : ''} por los socios esperan verificación.</span></div>` : '';
@@ -147,6 +152,7 @@ DW.ready.then(async (me) => {
     const y = e.target.closest('[data-ay]'); if (y) return pintarAnio(Number(y.dataset.ay));
     const b = e.target.closest('[data-a]'); if (b) return accion(b.dataset.a, pagos.find((p) => String(p.id) === b.dataset.p));
     const fe = e.target.closest('[data-fe]'); if (fe) { fEst = fe.dataset.fe; return pintar(); }
+    if (e.target.closest('[data-wa]')) return;
     const s = e.target.closest('[data-s]'); if (s && W) registrar(s.dataset.s);
   });
   await cargar();

@@ -1,5 +1,6 @@
 // Inicio = el módulo Dashboard de Diwilo Modulos. Aquí se registra lo PROPIO del club: arriba el logo completo del club
-// (portada) y debajo, como principal, el calendario. Sin estadísticas: lo de cada socio ya está en «Lo tuyo».
+// (portada, compacta) y debajo, como principal, el calendario. Lo de cada socio está en «Lo tuyo»; la junta ve además
+// «Cómo va el club» (/api/club/resumen): indicadores y lo que pide atención (saldos negativos, tareas vencidas, cuotas…).
 window.DwSinFigura = true;    // sin «Así funciona tu negocio»
 window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
 (window.DwDashboard = window.DwDashboard || []).push({
@@ -24,15 +25,15 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
     const logos = tiene('marca') ? ((await api('/api/marca/logos').catch(() => null))?.logos || []) : [];
     const L = (t) => logos.find((x) => x.tipo === t && x.data_url)?.data_url;
     const oscuro = L('oscuro'), horiz = L('horizontal');
-    const portada = `<style>.ro-portada{position:relative;overflow:hidden;border-radius:22px;padding:clamp(28px,5vw,52px) clamp(20px,4vw,48px);display:grid;place-items:center;text-align:center;min-height:190px}
+    const portada = `<style>.ro-portada{position:relative;overflow:hidden;border-radius:22px;padding:clamp(16px,3vw,26px) clamp(20px,4vw,40px);display:grid;place-items:center;text-align:center;min-height:0}
       .ro-portada.color{background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--dw-p) 70%,#fff) 0%,var(--dw-p) 45%,color-mix(in srgb,var(--dw-p) 70%,#000) 100%);color:#fff;box-shadow:0 18px 40px -18px color-mix(in srgb,var(--dw-p) 70%,transparent)}
       .ro-portada.claro{background:linear-gradient(135deg,#fff,color-mix(in srgb,var(--dw-p) 7%,#fff));border:1px solid color-mix(in srgb,var(--dw-p) 18%,var(--bs-border-color))}
       .ro-portada::before,.ro-portada::after{content:"";position:absolute;border-radius:50%;pointer-events:none}
       .ro-portada::before{width:340px;height:340px;right:-110px;top:-150px;background:rgba(255,255,255,.12)}
       .ro-portada::after{width:220px;height:220px;left:-80px;bottom:-120px;background:rgba(255,255,255,.08)}
       .ro-portada.claro::before,.ro-portada.claro::after{background:color-mix(in srgb,var(--dw-p) 6%,transparent)}
-      .ro-portada img{position:relative;z-index:1;max-width:min(100%,560px);max-height:150px;object-fit:contain;filter:drop-shadow(0 4px 14px rgba(0,0,0,.12))}
-      .ro-portada .app{width:96px;height:96px;border-radius:24px;object-fit:cover;background:#fff;margin-bottom:12px}
+      .ro-portada img{position:relative;z-index:1;max-width:min(100%,420px);max-height:84px;object-fit:contain;filter:drop-shadow(0 4px 14px rgba(0,0,0,.12))}
+      .ro-portada .app{width:64px;height:64px;border-radius:24px;object-fit:cover;background:#fff;margin-bottom:12px}
       .ro-portada h2{position:relative;z-index:1;font-weight:700;margin:0;font-size:clamp(1.4rem,3.5vw,2.1rem)}
       .ro-portada .lema{position:relative;z-index:1;margin-top:10px;opacity:.85;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}</style>
       ${oscuro ? `<div class="ro-portada color"><img src="${esc(oscuro)}" alt="${esc(me.business.name)}"></div>`
@@ -41,10 +42,12 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
     // Club sin logos: tarjeta para crearlos con los archivos oficiales de Rotary (solo si la app ya los tiene)
     const logosCard = me.canManage && !me.business.readOnly && tiene('marca')
       ? await new Promise((ok) => { if (window.RoLogos) return ok(true); const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = () => ok(true); sc.onerror = () => ok(false); document.head.appendChild(sc); })
-        .then(async (ok) => ok && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema) || window.RoLogos.vieja(me)) && (await window.RoLogos.archivos()).logo) : false;
+        .then(async (ok) => ok && !localStorage.getItem(`ro_marca_luego_${me.business.id}`) && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema) || window.RoLogos.vieja(me)) && (await window.RoLogos.archivos()).logo) : false;
     host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>
         <div class="flex-grow-1"><b>Configura la marca de tu club</b><div class="small text-body-secondary">Con el logotipo oficial de Rotaract y el nombre «${esc(window.RoLogos.club(me.business.name))}»: los logos (app, horizontal, ícono, letras y fondo oscuro), los colores de Rotaract, la letra Open Sans y una descripción del club. Todo queda en Marca y se usa en los certificados.</div></div>
-        <button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div>` : ''}${portada}`;
+        <div class="d-flex gap-2"><button class="btn btn-light" data-luego>Más tarde</button><button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div></div>` : ''}${portada}<div data-comova></div>`;
+    host.querySelector('[data-luego]')?.addEventListener('click', (ev) => { localStorage.setItem(`ro_marca_luego_${me.business.id}`, '1'); ev.currentTarget.closest('.dw-card').remove(); });
+    if (me.canManage) comoVa(host.querySelector('[data-comova]'), me).catch(() => {});
     host.querySelector('[data-rologos]')?.addEventListener('click', async (ev) => {
       const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creando…';
       try { const n = await window.RoLogos.crear(me); window.App.toast('Listo: la marca del club quedó configurada'); setTimeout(() => (window.top || window).location.reload(), 1200); }
@@ -52,6 +55,23 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
     });
   },
 });
+
+// «Cómo va el club» (solo junta): una fila de indicadores y, debajo, lo que pide atención con enlace a donde se arregla.
+async function comoVa(el, me) {
+  const { api, esc } = window.App, C = window.App.Crud;
+  const r = await api('/api/club/resumen');
+  const k = [];
+  if (r.socios) k.push({ titulo: 'Socios activos', valor: C.num(r.socios.activos), detalle: r.socios.aspirantes ? `${r.socios.aspirantes} aspirantes` : 'del club', icono: 'bi-people-fill', ruta: '/staff/socios.html' });
+  if (r.cuotas) k.push({ titulo: 'Cuotas al día', valor: `${r.cuotas.pct}%`, detalle: r.cuotas.deben ? `${r.cuotas.deben} deben ${C.money(r.cuotas.vencido)}` : 'nadie debe', icono: 'bi-wallet2', ruta: '/staff/cuotas.html' });
+  if (r.cajas) k.push({ titulo: 'En cajas', valor: C.money(r.cajas.menor + r.cajas.mayor), detalle: `Menor ${C.money(r.cajas.menor)} · Mayor ${C.money(r.cajas.mayor)}`, icono: 'bi-cash-stack', ruta: '/staff/cajas.html' });
+  if (r.tareas) k.push({ titulo: 'Tareas vencidas', valor: C.num(r.tareas.vencidas), detalle: `de ${C.num(r.tareas.abiertas)} abiertas`, icono: 'bi-alarm', ruta: '/staff/tareas.html' });
+  if (r.impacto) k.push({ titulo: 'Proyectos vivos', valor: C.num(r.impacto.vivos), detalle: `${C.num(r.impacto.beneficiarios)} beneficiarios`, icono: 'bi-globe-americas', ruta: '/staff/impacto.html' });
+  if (!k.length) return;
+  const ic = { danger: 'bi-exclamation-octagon-fill text-danger', warning: 'bi-exclamation-triangle-fill text-warning', info: 'bi-info-circle-fill text-info' };
+  el.innerHTML = `<div class="small text-uppercase fw-semibold text-body-secondary mt-3 mb-2" style="letter-spacing:.06em">Cómo va el club</div>
+    <div class="dw-grid">${k.map((w) => window.App.kpi(w)).join('')}</div>
+    ${r.alertas.length ? `<div class="dw-card mt-2 p-0"><div class="list-group list-group-flush">${r.alertas.map((a) => `<a class="list-group-item list-group-item-action d-flex align-items-center gap-2 bg-transparent" href="${esc(a.ruta)}"><i class="bi ${ic[a.nivel] || ic.warning}"></i><span class="flex-grow-1">${esc(a.texto)}</span><i class="bi bi-chevron-right text-body-secondary"></i></a>`).join('')}</div></div>` : ''}`;
+}
 
 // Calendario del club: el mes con todo lo del club (reuniones, eventos, tareas que vencen, cumpleaños, proyectos y cuotas).
 (window.DwDashboard = window.DwDashboard || []).push({

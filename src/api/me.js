@@ -4,7 +4,7 @@ import { json } from '../lib/http.js';
 import { db } from '../lib/db.js';
 import { userBusinesses, isExpired } from '../lib/auth.js';
 import { APP, visibleModules } from '../lib/modules.js';
-import { distritoDe } from '../lib/rotaract.js';
+import { distritoDe, socioDeSesion } from '../lib/rotaract.js';
 
 export const TEMAS = ['azul', 'indigo', 'violeta', 'rosa', 'rojo', 'naranja', 'verde', 'turquesa', 'grafito', 'rotaract', 'rotary'];
 
@@ -17,9 +17,11 @@ export function routes(r) {
   r.get('/api/me', 'tenant', async (c) => {
     const s = c.session;
     const mods = await visibleModules(c.env, c.businessId, c.role, c.modulos);
+    // El nombre que se muestra (saludo del Inicio, menú) es el de la ficha de socio, no el usuario de la cuenta (p. ej. «yomar006»)
+    const socio = await socioDeSesion(c).catch(() => null);
     return json({
       app: APP,
-      user: { id: s.user_id, email: s.email, name: s.name },
+      user: { id: s.user_id, email: s.email, name: socio?.nombre || s.name, usuario: s.name },
       business: { id: c.businessId, name: s.business_name, slug: s.business_slug, paidUntil: s.paid_until, readOnly: isExpired(s.paid_until) },
       role: c.role,
       distrito: await distritoDe(c.env, c.businessId),   // { codigo, es_distrito }: el perfil del distrito ve /staff/distrito.html
