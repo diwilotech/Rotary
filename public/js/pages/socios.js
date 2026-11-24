@@ -1,5 +1,5 @@
 // Socios: arriba la Junta (con su cargo, en el orden oficial) y abajo los demás socios sin cargo. Ficha de cada socio con
-// botón «Activar» (genera el certificado de activación para descargar). Pestaña «Activación»: el certificado de cada socio.
+// botón «Activar» (genera el certificado de activación para descargar). Pestaña «Certificados»: todos (activación, junta y reconocimientos) y «Nueva activación».
 DW.ready.then(async (me) => {
   if (!me.pageAllowed) return;
   const { api, esc, toast, modal, confirm } = window.App;
@@ -8,7 +8,7 @@ DW.ready.then(async (me) => {
   const RO_ = window.RO, M = me.canManage, RO_APP = me.business.readOnly;
   const CARGOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club', 'Director/a de Servicio a la Comunidad',
     'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos', 'Presidente/a del Comité de la Fundación del club'];
-  let tab = ['activacion', 'certificados'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'socios', filtro = '', rows = [];
+  let tab = location.hash === '#certificados' || location.hash === '#activacion' ? 'certificados' : 'socios', filtro = '', rows = [];
   RO_.nav(tab, (k) => { tab = k; pintar(); });
 
   if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
@@ -116,18 +116,6 @@ DW.ready.then(async (me) => {
       + (otros.length ? `<details class="mt-3"><summary class="ro-h d-inline-block">Inactivos y retirados (${otros.length})</summary><div class="ro-socios mt-2">${otros.map(tarjetaSocio).join('')}</div></details>` : '');
   }
 
-  function pintarActivacion() {
-    const act = rows.filter((s) => ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia))).sort((a, b) => Number(a.activado) - Number(b.activado) || a.orden_cargo - b.orden_cargo || a.nombre.localeCompare(b.nombre));
-    view.querySelector('[data-lista]').innerHTML = ''
-      + (act.length ? window.App.table([
-        { label: 'Socio', main: true, html: (s) => `<span class="d-flex align-items-center gap-2">${RO_.avatar(s, 32)}<span>${esc(s.nombre)}${s.junta ? `<div class="small text-body-secondary fw-normal">${esc(s.cargo)}</div>` : ''}</span></span>` },
-        { label: 'Ingreso al club', html: (s) => (s.fecha_ingreso ? C.day(s.fecha_ingreso) : '—') },
-        { label: 'Activación en el club', html: (s) => (s.activado ? `<span class="text-success"><i class="bi bi-patch-check-fill me-1"></i>${C.day(s.activado_at)}</span>` : '<span class="badge rounded-pill text-bg-warning">Sin activar</span>') },
-        { label: 'My Rotary', html: (s) => (s.myrotary_id || s.myrotary_at ? `<span class="text-info-emphasis"><i class="bi bi-globe2 me-1"></i>${s.myrotary_at ? C.day(s.myrotary_at) : 'Sin fecha'}</span>${s.myrotary_id ? `<div class="small text-body-secondary">ID ${esc(s.myrotary_id)}</div>` : ''}` : '<span class="small text-body-secondary">No está</span>') },
-        { label: '', cls: 'text-end text-nowrap', html: (s) => `${s.activado ? `<button class="btn btn-sm btn-outline-primary" data-cert="${s.id}"><i class="bi bi-download me-1"></i>Certificado</button>` : M && !RO_APP ? `<button class="btn btn-sm btn-primary" data-activar="${s.id}"><i class="bi bi-patch-check me-1"></i>Activar</button>` : ''}${M && !RO_APP ? ` <button class="btn btn-sm btn-light" data-mr="${s.id}" title="Registrar My Rotary"><i class="bi bi-globe2"></i></button>` : ''}` },
-      ], act) : window.App.empty('bi-patch-check', 'No hay socios del club activos todavía (los externos y voluntarios no se activan).'));
-  }
-
   async function myRotary(s) {
     const out = await C.form({ title: `My Rotary · ${s.nombre}`, fields: [{ k: 'myrotary_id', label: 'ID de My Rotary', type: 'text' }, { k: 'myrotary_at', label: 'Fecha de activación en My Rotary', type: 'date' }],
       values: { myrotary_id: s.myrotary_id || '', myrotary_at: s.myrotary_at || '' }, okText: 'Guardar' });
@@ -141,19 +129,28 @@ DW.ready.then(async (me) => {
     const el = view.querySelector('[data-lista]'); el.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     let ks = []; try { ks = (await api('/api/socios/certificados')).rows; } catch (x) { el.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
     const hoy = C.todayCo(), anioR = +hoy.slice(5, 7) >= 7 ? +hoy.slice(0, 4) : +hoy.slice(0, 4) - 1;
-    const tipoTxt = (k) => (k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
+    // Las activaciones viven en cada socio: se suman a la lista para ver todos los certificados juntos
+    const acts = rows.filter((s) => s.activado).map((s) => ({ act: true, id: s.id, socio: s.nombre, tipo: 'activacion', fecha: s.activado_at }));
+    ks = [...acts, ...ks].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || a.socio.localeCompare(b.socio));
+    const porActivar = rows.filter((s) => !s.activado && ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia)));
+    const tipoTxt = (k) => (k.tipo === 'activacion' ? 'Activación en el club' : k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
     const PUEDE = M && !RO_APP;
-    // Sin tarjetas de estadísticas: solo las acciones y la lista
     el.innerHTML = `<div class="d-flex flex-wrap gap-2 mb-3">
+        ${PUEDE ? `<button class="btn btn-primary" data-cact><i class="bi bi-patch-check me-1"></i>Nueva activación</button>` : ''}
         <a class="btn btn-outline-primary" href="/api/socios/club/certificado" target="_blank" rel="noopener"><i class="bi bi-building-check me-1"></i>Certificado del club</a>
         ${PUEDE ? `<button class="btn btn-light" data-cclub><i class="bi bi-pencil me-1"></i>Datos del club</button>
         <button class="btn btn-outline-primary" data-cjunta><i class="bi bi-people-fill me-1"></i>Expedir a la junta ${anioR}-${anioR + 1}</button>
-        <button class="btn btn-primary" data-creco><i class="bi bi-award-fill me-1"></i>Nuevo reconocimiento</button>` : ''}</div>
-      ${ks.length ? window.App.table([{ label: 'Socio', main: true, html: (k) => esc(k.socio) }, { label: 'Certificado', html: (k) => esc(tipoTxt(k)) }, { label: 'Fecha', html: (k) => C.day(k.fecha) },
-        { label: '', cls: 'text-end text-nowrap', html: (k) => `<a class="btn btn-sm btn-outline-primary" href="/api/socios/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a>${PUEDE ? ` <button class="btn btn-sm btn-light" data-cborrar="${k.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}` }], ks)
-        : window.App.empty('bi-award', 'Aún no hay certificados de junta ni reconocimientos.')}`;
+        <button class="btn btn-outline-primary" data-creco><i class="bi bi-award-fill me-1"></i>Nuevo reconocimiento</button>` : ''}</div>
+      ${ks.length ? window.App.table([{ label: 'Socio', main: true, html: (k) => esc(k.socio) }, { label: 'Certificado', html: (k) => `<i class="bi ${k.act ? 'bi-patch-check text-success' : k.tipo === 'junta' ? 'bi-people-fill text-primary' : 'bi-award-fill text-warning'} me-1"></i>${esc(tipoTxt(k))}` }, { label: 'Fecha', html: (k) => C.day(k.fecha) },
+        { label: '', cls: 'text-end text-nowrap', html: (k) => k.act ? `<button class="btn btn-sm btn-outline-primary" data-cert="${k.id}"><i class="bi bi-download me-1"></i>Ver</button>` : `<a class="btn btn-sm btn-outline-primary" href="/api/socios/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a>${PUEDE ? ` <button class="btn btn-sm btn-light" data-cborrar="${k.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}` }], ks)
+        : window.App.empty('bi-award', 'Aún no hay certificados. Activa a un socio o expide los de la junta.')}`;
     el.onclick = async (e) => {
-      if (e.target.closest('[data-ir]')) { e.preventDefault(); tab = 'activacion'; history.replaceState(null, '', '#activacion'); document.querySelectorAll('nav.ro-club a').forEach((a) => a.classList.toggle('on', a.dataset.club === 'activacion')); return pintar(); }
+      if (e.target.closest('[data-cact]')) {
+        if (!porActivar.length) return toast('Todos los socios del club ya están activados');
+        const out = await C.form({ title: 'Nueva activación', fields: [{ k: 'socio_id', label: 'Socio', type: 'select', required: true, options: porActivar.map((s) => [s.id, s.nombre]) }], okText: 'Seguir' });
+        if (out) await activar(porActivar.find((s) => String(s.id) === String(out.socio_id)));   // activar recarga y repinta la lista
+        return;
+      }
       if (e.target.closest('[data-cclub]')) {
         const actual = await api('/api/socios/club').catch(() => ({}));
         const out = await C.form({ title: 'Datos del club', fields: [{ k: 'numero', label: 'Número del club (Rotary)', type: 'text' }, { k: 'fundado', label: 'Fecha de fundación', type: 'date' },
@@ -183,21 +180,17 @@ DW.ready.then(async (me) => {
   }
 
   function pintar() {
-    document.querySelector('[data-h1]').textContent = { activacion: 'Activación', certificados: 'Certificados' }[tab] || 'Socios';
+    document.querySelector('[data-h1]').textContent = tab === 'certificados' ? 'Certificados' : 'Socios';
     view.querySelector('[data-buscar]').hidden = tab !== 'socios';
-    ({ activacion: pintarActivacion, certificados: pintarCertificados }[tab] || pintarSocios)();
+    (tab === 'certificados' ? pintarCertificados : pintarSocios)();
   }
 
   async function cargar() {
     rows = await RO_.socios(true);
-    const activos = rows.filter((s) => s.estado === 'activo');
-    C.kpis(view.querySelector('[data-kpis]'), [['Socios activos', activos.length, '', 'bi-people'], ['En la junta', activos.filter((s) => s.junta).length, '', 'bi-award'],
-      ['Aspirantes', rows.filter((s) => s.estado === 'aspirante').length, '', 'bi-person-plus'], ['Sin activar', activos.filter((s) => !s.activado).length, 'certificado pendiente', 'bi-patch-exclamation']]);
     pintar();
   }
 
-  view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-kpis></div>
-    <div class="mb-3" data-buscar><input class="form-control" placeholder="Buscar socio, cargo o profesión…" style="max-width:340px" aria-label="Buscar socio"></div><div data-lista></div>`;
+  view.innerHTML = `<div class="mb-3" data-buscar><input class="form-control" placeholder="Buscar socio, cargo o profesión…" style="max-width:340px" aria-label="Buscar socio"></div><div data-lista></div>`;
   view.querySelector('[data-buscar] input').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintarSocios(); });
   view.addEventListener('click', async (e) => {
     const c = e.target.closest('[data-cert]'); if (c) return certificado({ id: c.dataset.cert });

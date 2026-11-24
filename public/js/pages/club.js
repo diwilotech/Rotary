@@ -4,7 +4,7 @@
   const cache = {};
   // [id, etiqueta, enlace, ícono, módulo que debe estar activo]
   const GRUPOS = [
-    [['socios', 'Socios', '/staff/socios.html', 'bi-people', 'socios'], ['activacion', 'Activación', '/staff/socios.html#activacion', 'bi-patch-check', 'socios'], ['certificados', 'Certificados', '/staff/socios.html#certificados', 'bi-award', 'socios'],
+    [['socios', 'Socios', '/staff/socios.html', 'bi-people', 'socios'], ['certificados', 'Certificados', '/staff/socios.html#certificados', 'bi-award', 'socios'],
       ['reuniones', 'Reuniones', '/staff/reuniones.html', 'bi-calendar-event', 'reuniones'], ['tareas', 'Tareas', '/staff/tareas.html', 'bi-kanban', 'tareas']],
     [['proyectos', 'Proyectos', '/staff/impacto.html', 'bi-globe-americas', 'impacto'], ['alianzas', 'Alianzas', '/staff/impacto.html#alianzas', 'bi-people', 'impacto'],
       ['comunidades', 'Comunidades', '/staff/impacto.html#comunidades', 'bi-house-heart', 'impacto']],
