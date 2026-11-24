@@ -161,6 +161,8 @@ export function routes(r) {
   r.get('/api/reuniones/reuniones/:id/acta', `tenant:${MOD}`, async (c) => {
     const x = await reunionOr404(c, c.params.id), a = await actaDe(c, x);
     const socios = await all(c.env, 'SELECT id, nombre FROM ro_socios WHERE business_id = ?', c.businessId);
+    const tareas = await all(c.env, `SELECT t.titulo, t.fecha_limite, t.estado, s.nombre socio, p.nombre proyecto FROM ro_tareas t LEFT JOIN ro_socios s ON s.id = t.socio_id AND s.business_id = t.business_id
+      LEFT JOIN ro_proyectos p ON p.id = t.proyecto_id AND p.business_id = t.business_id WHERE t.business_id = ? AND t.reunion_id = ? AND t.estado <> 'cancelada' ORDER BY t.id`, c.businessId, x.id);
     const [biz, pres, inv, junta] = await Promise.all([one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId),
       all(c.env, 'SELECT s.nombre, s.cargo FROM ro_asistencia a JOIN ro_socios s ON s.id = a.socio_id AND s.business_id = a.business_id WHERE a.business_id = ? AND a.reunion_id = ? AND a.presente = 1 ORDER BY s.nombre', c.businessId, x.id),
       all(c.env, 'SELECT nombre, procedencia, tipo FROM ro_reunion_invitados WHERE business_id = ? AND reunion_id = ? ORDER BY created_at', c.businessId, x.id),
@@ -184,6 +186,7 @@ ${inv.length ? `<h2>Invitados externos</h2><div class="cols">${inv.map((i) => `$
 ${a.inicio ? `<p class="det">Inicio ${e(a.inicio)}${a.fin ? ` · cierre ${e(a.fin)}` : ''}${a.acta_anterior === true ? ' · se aprobó el acta anterior' : ''}${a.recaudo ? ` · cajita de macería: $${Number(a.recaudo).toLocaleString('es-CO')}` : ''}</p>` : ''}
 <h2>Orden del día</h2><ol>${a.items.map((i) => { const rs = socios.find((x) => x.id === i.responsable_id); return `<li><b>${e(i.titulo)}</b>${rs ? ` <span class="det">· ${e(rs.nombre)}</span>` : ''}${i.notas ? `<div class="nota">${e(i.notas)}</div>` : i.detalle ? `<div class="det">${e(i.detalle)}</div>` : ''}</li>`; }).join('')}</ol>
 ${a.notas ? `<h2>Notas</h2><div>${e(a.notas)}</div>` : ''}${a.compromisos ? `<h2>Compromisos</h2><div>${e(a.compromisos)}</div>` : ''}
+${tareas.length ? `<h2>Tareas asignadas</h2><ol>${tareas.map((t) => `<li><b>${e(t.titulo)}</b> <span class="det">· ${e(t.socio || 'sin responsable')}${t.fecha_limite ? ` · para el ${e(t.fecha_limite)}` : ''} · ${t.proyecto ? `proyecto ${e(t.proyecto)}` : 'del club'}</span></li>`).join('')}</ol>` : ''}
 <div class="firmas"><div>${e(p?.nombre || '')}<br><span class="det">Presidencia del club</span></div><div>${e(sec?.nombre || '')}<br><span class="det">Secretaría del club</span></div></div></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   });

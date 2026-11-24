@@ -116,6 +116,18 @@ DW.ready.then(async (me) => {
     try { [d, asis, inv] = await Promise.all([api(`/api/reuniones/reuniones/${r.id}/acta-datos`), api(`/api/reuniones/reuniones/${r.id}/asistencia`), api(`/api/reuniones/reuniones/${r.id}/invitados`)]); }
     catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
     const a = d.acta, socios = asis.rows; let invitadosL = inv.rows, aprobada = d.estado === 'aprobada';
+    // Tareas que salen de la reunión (para un socio; del club o de un proyecto de Impacto)
+    const TAREAS = me.modules.some((x) => x.id === 'tareas');
+    let tareasL = TAREAS ? (await api(`/api/tareas/tareas?f_reunion_id=${r.id}&limit=200`).catch(() => ({ rows: [] }))).rows : [];
+    const listaTareas = () => `<div class="ro-h">Tareas para los socios (${tareasL.length})</div>
+      ${tareasL.map((t) => `<div class="d-flex align-items-center gap-2 py-1 border-bottom small"><i class="bi ${t.estado === 'hecha' ? 'bi-check-circle-fill text-success' : 'bi-circle'}"></i><span class="flex-grow-1"><b>${esc(t.titulo)}</b>
+        <span class="text-body-secondary"> · ${esc(socios.find((x) => x.socio_id === t.socio_id)?.nombre || 'sin responsable')}${t.fecha_limite ? ` · ${C.day(t.fecha_limite)}` : ''} · ${t.proyecto_id ? `<i class="bi bi-globe-americas"></i> ${esc(proys.find((x) => x.id === t.proyecto_id)?.nombre || 'proyecto')}` : 'del club'}</span></span>
+        <button type="button" class="btn btn-sm btn-light py-0" data-tq="${t.id}" aria-label="Quitar"><i class="bi bi-x-lg"></i></button></div>`).join('') || '<p class="small text-body-secondary mb-1">Aún no hay tareas de esta reunión.</p>'}
+      <form class="row g-2 mt-1" data-ftarea><div class="col-12"><input class="form-control form-control-sm" name="titulo" placeholder="¿Qué hay que hacer?" required></div>
+        <div class="col-sm-6"><select class="form-select form-select-sm" name="socio_id" required><option value="">¿Quién?</option>${socios.map((x) => `<option value="${x.socio_id}">${esc(x.nombre)}</option>`).join('')}</select></div>
+        <div class="col-sm-6"><input class="form-control form-control-sm" type="date" name="fecha_limite" aria-label="Para cuándo"></div>
+        <div class="col-sm-8"><select class="form-select form-select-sm" name="proyecto_id"><option value="">Del club</option>${proys.map((x) => `<option value="${x.id}" ${r.proyecto_id === x.id ? 'selected' : ''}>Proyecto: ${esc(x.nombre)}</option>`).join('')}</select></div>
+        <div class="col-sm-4"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Asignar</button></div></form>`;
     a.items = a.items.map((i) => ({ notas: '', responsable_id: null, minutos: null, ...i }));
     let paso = 1, cambios = false, asisCambio = false, editando = false;
     if (!a.inicio) { a.inicio = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16); cambios = true; }   // empieza al abrir
@@ -140,7 +152,8 @@ DW.ready.then(async (me) => {
           <span><i class="bi bi-check2-square me-1"></i>${a.items.filter((i) => i.notas).length} de ${N()} puntos con notas</span></div></div></div>
         <div class="col-md-7"><label class="form-label small fw-semibold">Compromisos</label><textarea class="form-control mb-2" rows="3" data-comp placeholder="Quién hace qué y para cuándo">${esc(a.compromisos || '')}</textarea>
           <label class="form-label small fw-semibold">Notas generales</label><textarea class="form-control mb-2" rows="2" data-notas>${esc(a.notas || '')}</textarea>
-          <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${aprobada ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div></div>`;
+          <label class="form-check"><input class="form-check-input" type="checkbox" data-aprob ${aprobada ? 'checked' : ''}> <span class="form-check-label">Acta aprobada</span></label></div>
+        ${TAREAS ? `<div class="col-12"><div class="dw-card" data-tareasbox>${listaTareas()}</div></div>` : ''}</div>`;
       const i = a.items[paso - 1], sp = paso === 1 ? 'lista' : especial(i.titulo);
       return `<div class="row g-3"><div class="${sp ? 'col-lg-6' : 'col-12'}"><div class="d-flex align-items-center gap-2 mb-1"><span class="ro-oi-n">${paso}</span><h3 class="h5 m-0 flex-grow-1">${esc(i.titulo)}</h3></div>
           ${i.detalle ? `<p class="small text-body-secondary mb-1">${esc(i.detalle)}</p>` : ''}
@@ -189,6 +202,12 @@ DW.ready.then(async (me) => {
       else if (t.matches('[data-aprob]')) { aprobada = t.checked; cambios = true; }
     });
     el.addEventListener('submit', async (e) => {
+      if (e.target.matches('[data-ftarea]')) {
+        e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+        try { await api('/api/tareas/tareas', { method: 'POST', body: { titulo: f.titulo, socio_id: Number(f.socio_id), fecha_limite: f.fecha_limite || null, proyecto_id: Number(f.proyecto_id) || null, reunion_id: r.id, estado: 'pendiente' } });
+          tareasL = (await api(`/api/tareas/tareas?f_reunion_id=${r.id}&limit=200`)).rows; el.querySelector('[data-tareasbox]').innerHTML = listaTareas(); toast('Tarea asignada'); } catch (x) { toast(x.message, false); }
+        return;
+      }
       if (!e.target.matches('[data-finv]')) return; e.preventDefault();
       try { await api(`/api/reuniones/reuniones/${r.id}/invitados`, { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); invitadosL = (await api(`/api/reuniones/reuniones/${r.id}/invitados`)).rows; pintar(); } catch (x) { toast(x.message, false); }
     });
@@ -203,6 +222,7 @@ DW.ready.then(async (me) => {
         it.notas = ta ? ta.value : (it.notas || it.preparado || ''); it.hecho = true; editando = false; cambios = true;
         return ir(paso + 1);
       }
+      if (b.dataset.tq) { try { await api(`/api/tareas/tareas/${b.dataset.tq}`, { method: 'DELETE' }); tareasL = tareasL.filter((t) => String(t.id) !== b.dataset.tq); el.querySelector('[data-tareasbox]').innerHTML = listaTareas(); } catch (x) { toast(x.message, false); } return; }
       if (b.dataset.aa !== undefined) { a.acta_anterior = b.dataset.aa === '1'; cambios = true; return pintar(); }
       const n = Number(b.dataset.oup ?? b.dataset.odn ?? b.dataset.orm ?? -1);
       if (b.dataset.oup !== undefined && n > 0) [a.items[n - 1], a.items[n]] = [a.items[n], a.items[n - 1]];
