@@ -37,7 +37,7 @@ DW.ready.then(async (me) => {
         <div class="col-lg-6"><div class="dw-card h-100"><div class="ro-h mt-0">Ingresos y egresos de los clubes</div><div data-g1></div><div class="small text-body-secondary mt-1">Año: +${C.money(sum('ingresos'))} · −${C.money(sum('egresos'))}</div></div></div>
         <div class="col-lg-6"><div class="dw-card h-100"><div class="ro-h mt-0">Cuotas de socios recaudadas y cuota distrital pagada</div><div data-g2></div></div></div>
         <div class="col-lg-6"><div class="dw-card h-100"><div class="ro-h mt-0">Reuniones y eventos</div><div data-g3></div></div></div>
-        <div class="col-lg-6"><div class="dw-card h-100"><div class="ro-h mt-0">¿En qué se gasta? · todos los clubes</div><div data-g4></div></div></div>
+        <div class="col-lg-6"><div class="dw-card h-100"><div class="ro-h mt-0">Inversión de los clubes</div><div data-g4></div></div></div>
         <div class="col-12"><div class="dw-card p-0 p-md-2"><div class="table-responsive"><table class="table table-sm mb-0" style="font-variant-numeric:tabular-nums;font-size:.85rem"><thead><tr><th>Mes</th><th class="text-end">Ingresos</th><th class="text-end">Egresos</th><th class="text-end">Cuotas socios</th><th class="text-end">Cuota distrital</th><th class="text-end">Reuniones</th><th class="text-end">Eventos</th></tr></thead>
           <tbody>${t.meses.map((m) => `<tr><td class="text-capitalize">${C.monthName(m.mes)}</td><td class="text-end">${C.money(m.ingresos)}</td><td class="text-end">${C.money(m.egresos)}</td><td class="text-end">${C.money(m.cuotas)}</td><td class="text-end">${C.money(m.distrital)}</td><td class="text-end">${m.reuniones}</td><td class="text-end">${m.eventos}</td></tr>`).join('')}</tbody></table></div></div></div>
       </div>`;
@@ -45,7 +45,7 @@ DW.ready.then(async (me) => {
     C.bars(view.querySelector('[data-g2]'), t.meses.map((m) => ({ label: corto(m.mes), a: m.cuotas, b: m.distrital })), { la: 'Cuotas de socios', lb: 'Cuota distrital', separate: true });
     C.bars(view.querySelector('[data-g3]'), t.meses.map((m) => ({ label: corto(m.mes), a: m.reuniones, b: m.eventos })), { la: 'Reuniones', lb: 'Eventos', fmt: C.num });
     C.rank(view.querySelector('[data-g4]'), t.categorias.map((x) => ({ k: x.categoria, n: x.total })), C.money);
-    if (!t.categorias.length) view.querySelector('[data-g4]').innerHTML = '<p class="small text-body-secondary mb-0">Sin gastos registrados este año.</p>';
+    if (!t.categorias.length) view.querySelector('[data-g4]').innerHTML = '<p class="small text-body-secondary mb-0">Sin inversiones registrados este año.</p>';
   }
 
   async function pintarCuotas() {

@@ -46,7 +46,7 @@ DW.ready.then(async (me) => {
     C.bars(view.querySelector('[data-flujo]'), filas, { la: 'Ingresos', lb: 'Egresos' });
     view.querySelector('[data-tot]').innerHTML = `${caja === 'menor' && pro ? '<i class="bi bi-info-circle me-1"></i>Rayado = proyectado: cuotas que deben pagar los socios y obligaciones que vencen. ' : ''}Año: <span class="text-success">+${C.money(k.meses.reduce((t, x) => t + x.ingresos, 0))}</span> · <span class="text-danger">−${C.money(k.meses.reduce((t, x) => t + x.egresos, 0))}</span>`;
     C.rank(view.querySelector('[data-cats]'), k.categorias.slice(0, caja === 'menor' && pro ? 5 : 8).map((x) => ({ k: x.categoria, n: x.total })), C.money);
-    if (!k.categorias.length) view.querySelector('[data-cats]').innerHTML = '<p class="small text-body-secondary mb-0">Sin gastos en este año rotario.</p>';
+    if (!k.categorias.length) view.querySelector('[data-cats]').innerHTML = '<p class="small text-body-secondary mb-0">Sin inversiones en este año rotario.</p>';
     view.querySelector('[data-tit]').innerHTML = `Movimientos · ${esc(k.nombre)}`;
   }
 
@@ -65,10 +65,10 @@ DW.ready.then(async (me) => {
       ${C.meter(p.pagado, p.total_obligaciones || 1)}
       <div class="small mt-1">Por pagar <b>${C.money(p.por_pagar)}</b> · en caja ${C.money(p.saldo)} · ${p.falta ? `<b class="text-danger">faltan ${C.money(p.falta)}</b>` : '<b class="text-success">alcanza</b>'}</div>
       ${p.cuota_mes ? `<div class="small text-body-secondary">Cuotas de socios proyectadas: ${C.money(p.cuota_mes)} al mes${p.meses_para_cubrir ? ` · cubren lo que falta en ${p.meses_para_cubrir} ${p.meses_para_cubrir === 1 ? 'mes' : 'meses'}` : ''}</div>` : ''}
-      <div class="ro-h">¿En qué se gasta?</div>`;
+      <div class="ro-h">Inversión del club</div>`;
     lista.innerHTML = `<div class="ro-rubros">${p.rubros.map((r) => `<div class="ro-rubro">
         <div class="d-flex align-items-center gap-2"><b class="flex-grow-1 text-truncate small" title="${esc(r.categoria)}">${esc(r.categoria)}</b>${C.chip(...OEST[r.estado])}</div>
-        <div class="d-flex justify-content-between small"><span>${C.money(r.pagado)}${r.valor ? ` de ${C.money(r.valor)}` : ' gastado'}</span>${r.valor_distrito ? `<span class="text-body-secondary" title="Cuota distrital">incl. distrito ${C.money(r.valor_distrito)}</span>` : ''}</div>
+        <div class="d-flex justify-content-between small"><span>${C.money(r.pagado)}${r.valor ? ` de ${C.money(r.valor)}` : ' invertido'}</span>${r.valor_distrito ? `<span class="text-body-secondary" title="Cuota distrital">incl. distrito ${C.money(r.valor_distrito)}</span>` : ''}</div>
         ${r.valor ? C.meter(r.pagado, r.valor) : ''}
         ${W ? `<div class="d-flex gap-1 mt-1"><button class="btn btn-sm btn-primary py-0" data-rpagar="${esc(r.categoria)}"><i class="bi bi-cash me-1"></i>Pagar</button>
           <button class="btn btn-sm btn-light py-0" data-reditar="${esc(r.categoria)}"><i class="bi bi-pencil me-1"></i>Editar valor</button></div>` : ''}</div>`).join('')}</div>
@@ -152,7 +152,7 @@ DW.ready.then(async (me) => {
     .ro-ob .ok{background:rgba(25,135,84,.12)}.ro-ob .ok b{color:var(--bs-success)}.ro-ob .bad{background:rgba(220,53,69,.12)}.ro-ob .bad b{color:var(--bs-danger)}</style>
     <div class="ro-cajas" data-cajas></div>
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
-      <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>¿En qué se gasta? · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
+      <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>Inversión del club · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div>`;
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return resumen(); }

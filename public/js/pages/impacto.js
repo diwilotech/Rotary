@@ -72,7 +72,7 @@ DW.ready.then(async (me) => {
         <div data-caja><label class="form-label small mb-1">¿De qué caja sale?</label><select class="form-select" name="caja"><option value="mayor" ${v.caja !== 'menor' ? 'selected' : ''}>Caja mayor (Obras)</option><option value="menor" ${v.caja === 'menor' ? 'selected' : ''}>Caja menor (Club)</option></select></div>
         <div class="row g-2"><div class="col-sm-6" data-tipo><label class="form-label small mb-1">Tipo de aporte</label><select class="form-select" name="tipo_aporte">${Object.entries(APORTE).map(([k, [, l]]) => `<option value="${k}" ${v.tipo_aporte === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <div class="col-sm-6"><label class="form-label small mb-1">¿En cuánto nos va a ayudar?</label><input class="form-control" name="monto" type="number" min="0" step="1" inputmode="numeric" value="${v.monto ?? ''}" placeholder="$"></div>
-</div><div class="form-text mt-n2">Lo recibido o gastado se lleva con los soportes (recibos, cuentas de cobro…) en Financiadores.</div>
+</div><div class="form-text mt-n2">Lo recibido o invertido se lleva con los soportes (recibos, cuentas de cobro…) en Financiadores.</div>
         <div><label class="form-label small mb-1">Notas</label><textarea class="form-control" name="notas" rows="2" placeholder="qué cubre, condiciones, fechas…">${esc(v.notas || '')}</textarea></div>
       </div><div class="modal-footer justify-content-between"><span>${a ? '<button type="button" class="btn btn-outline-danger btn-sm" data-del><i class="bi bi-trash me-1"></i>Quitar</button>' : ''}</span>
         <span><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button> <button class="btn btn-primary">Guardar aporte</button></span></div></form>`);
@@ -82,7 +82,7 @@ DW.ready.then(async (me) => {
       const club = f.origen.value === 'club';
       el.querySelector('[data-ali]').hidden = club; el.querySelector('[data-caja]').hidden = !club; el.querySelector('[data-tipo]').hidden = club;
       if (club) f.tipo_aporte.value = 'financiera';
-      el.querySelector('[data-ayuda]').textContent = club ? 'Cada gasto que registres sale de esa caja y aparece en Finanzas con el nombre del proyecto.' : 'Una entidad aliada que ayuda al proyecto.';
+      el.querySelector('[data-ayuda]').textContent = club ? 'Cada inversión que registres sale de esa caja y aparece en Finanzas con el nombre del proyecto.' : 'Una entidad aliada que ayuda al proyecto.';
     };
     pintarSel(v.alianza_id); toggle();
     f.querySelectorAll('[name=origen]').forEach((x) => x.addEventListener('change', toggle));
@@ -112,7 +112,7 @@ DW.ready.then(async (me) => {
         <div class="ro-pstats"><span><b>${C.num(p.beneficiados_total)}</b>beneficiados</span><span><b>${p.tareas_hechas}/${p.tareas}</b>tareas</span><span><b>${p.alianzas}</b>alianzas</span></div>
         ${p.tareas ? C.meter(p.tareas_hechas, p.tareas) : ''}
         <div>${finBadge(p)}</div>
-        <div class="small text-body-secondary">${p.monto_caja_mayor ? `Club: <b>${C.money(p.monto_caja_mayor)}</b>${p.gastado_caja_mayor ? ` · gastado ${C.money(p.gastado_caja_mayor)}` : ''}` : ''}${p.monto_caja_mayor && p.monto_externo ? '<br>' : ''}${p.monto_externo ? `Alianzas: <b>${C.money(p.monto_externo)}</b>${p.financiador ? ` · ${esc(p.financiador)}` : ''}` : ''}</div>
+        <div class="small text-body-secondary">${p.monto_caja_mayor ? `Club: <b>${C.money(p.monto_caja_mayor)}</b>${p.gastado_caja_mayor ? ` · invertido ${C.money(p.gastado_caja_mayor)}` : ''}` : ''}${p.monto_caja_mayor && p.monto_externo ? '<br>' : ''}${p.monto_externo ? `Alianzas: <b>${C.money(p.monto_externo)}</b>${p.financiador ? ` · ${esc(p.financiador)}` : ''}` : ''}</div>
       </div></button>`;
   const barra = (titulo, v, meta, color, sub = '', extra = '') => `<div class="mb-2"><div class="d-flex justify-content-between gap-2 small"><span class="min-w-0"><b>${titulo}</b>${sub ? ` <span class="text-body-secondary">${sub}</span>` : ''}${extra}</span><span class="text-nowrap">${C.money(v)} <span class="text-body-secondary">de ${C.money(meta)}</span></span></div>
     <div class="progress" style="height:10px"><div class="progress-bar" style="width:${meta ? Math.min(100, Math.round((v / meta) * 100)) : 0}%;background:${color}"></div></div></div>`;
@@ -207,7 +207,7 @@ DW.ready.then(async (me) => {
     const club = a.origen === 'club', caja = a.caja === 'menor' ? 'menor' : 'mayor', lista = d.soportes.filter((x) => x.aporte_id === aporteId);
     const { el, m } = modal(`<div class="modal-header"><h2 class="modal-title h5">Comprobantes · ${club ? `Club (${caja === 'menor' ? 'Caja menor' : 'Caja mayor'})` : esc(a.nombre || 'Alianza')}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body">
-        ${barra(club ? 'Gastado' : 'Recibido', a.recibido, a.monto, club ? 'var(--dw-p)' : '#16a34a')}
+        ${barra(club ? 'Inversión del club' : 'Recibido', a.recibido, a.monto, club ? 'var(--dw-p)' : '#16a34a')}
         ${M ? '<div class="text-end mb-2"><button class="btn btn-sm btn-primary" data-snuevo><i class="bi bi-plus-lg me-1"></i>Nuevo comprobante</button></div>' : ''}
         ${lista.length ? `<div class="ro-docs">${lista.map((x) => `<div class="ro-doc align-items-start"><i class="bi ${x.archivo ? 'bi-file-earmark-check text-success' : 'bi-file-earmark text-body-secondary'}"></i>
             <span class="flex-grow-1 min-w-0"><b class="small d-block">${FORMAS[x.forma] || x.forma} · ${C.money(x.monto)}</b><span class="small text-body-secondary">${C.day(x.fecha)}${x.notas ? ` · ${esc(x.notas)}` : ''}${x.movimiento_id ? ' · en Finanzas' : ''}</span>${itemsHtml(x)}</span>
@@ -264,7 +264,7 @@ DW.ready.then(async (me) => {
         <div class="col-lg-5"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2"><span class="ro-h m-0 flex-grow-1">Financiadores</span>${M ? '<button class="btn btn-sm btn-primary" data-apnuevo><i class="bi bi-plus-lg me-1"></i>Financiador</button>' : ''}</div>
           ${financiadores.length ? `${financiadores.map((a) => { const n = d.soportes.filter((x) => x.aporte_id === a.id).length; return `<div class="ro-fz">
               <div class="d-flex align-items-center gap-2"><i class="bi ${a.origen === 'club' ? 'bi-safe2' : 'bi-building'} fs-5" style="color:var(--dw-p)"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${a.origen === 'club' ? `Club · ${a.caja === 'menor' ? 'Caja menor' : 'Caja mayor'}` : esc(a.nombre || 'Alianza')}</b></span><b class="text-nowrap">${C.money(a.monto)}</b>${lapiz(a)}</div>
-              ${barra(a.origen === 'club' ? 'Gastado' : 'Recibido', a.recibido, a.monto, a.origen === 'club' ? 'var(--dw-p)' : '#16a34a')}
+              ${barra(a.origen === 'club' ? 'Inversión del club' : 'Recibido', a.recibido, a.monto, a.origen === 'club' ? 'var(--dw-p)' : '#16a34a')}
               <button class="btn btn-sm btn-light w-100" data-sop="${a.id}"><i class="bi bi-receipt me-1"></i>Comprobantes (${n})</button></div>`; }).join('')}
             <div class="d-flex justify-content-between small pt-2"><span>Total financiado</span><b>${C.money(financiadores.reduce((s, a) => s + a.monto, 0))}</b></div>`
             : `<p class="small text-body-secondary mb-0">Aún no hay quién financie con dinero. ${M ? 'Usa «Financiador»: del club (Caja mayor o menor) o de una alianza, y cuánto aporta.' : ''}</p>`}</div></div></div>`,
@@ -289,7 +289,7 @@ DW.ready.then(async (me) => {
               <span class="ro-av" style="width:40px;height:40px;font-size:17px"><i class="bi ${g.club ? 'bi-safe2' : 'bi-building'}"></i></span>
               <div class="flex-grow-1 min-w-0"><b class="d-block">${esc(g.nombre)}</b><span class="small text-body-secondary">${g.club ? 'Fondo del club' : 'Alianza'} · ${g.movs.length} ${g.movs.length === 1 ? 'movimiento' : 'movimientos'}</span></div>
               ${M && g.a ? `<button class="btn btn-sm btn-primary" data-fnuevo="${g.a.id}"><i class="bi bi-plus-lg me-1"></i>Registrar</button>` : ''}</div>
-            ${g.a?.monto ? barra(g.club ? 'Gastado' : 'Recibido', mov, g.a.monto, g.club ? 'var(--dw-p)' : '#16a34a') : `<div class="small mb-2">${g.club ? 'Gastado' : 'Recibido'}: <b>${C.money(mov)}</b></div>`}
+            ${g.a?.monto ? barra(g.club ? 'Inversión del club' : 'Recibido', mov, g.a.monto, g.club ? 'var(--dw-p)' : '#16a34a') : `<div class="small mb-2">${g.club ? 'Gastado' : 'Recibido'}: <b>${C.money(mov)}</b></div>`}
             ${g.movs.length ? `<div class="table-responsive-md"><table class="table dw-table align-middle mb-0"><thead><tr><th>Fecha</th><th>Comprobante</th><th>Concepto</th><th class="text-end">Valor</th><th></th></tr></thead><tbody>${g.movs.map(fila).join('')}</tbody></table></div>`
               : '<p class="small text-body-secondary mb-0">Aún no tiene movimientos.</p>'}</div>`;
         };
