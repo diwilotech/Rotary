@@ -89,6 +89,17 @@ DW.ready.then(async (me) => {
           ${salas.recientes.length ? salas.recientes.map((s) => `<div class="small py-1 border-bottom">${deCat(s.juego).emoji} ${esc(deCat(s.juego).nombre)}${s.ganador ? ` · ganó <b>${esc(s.ganador)}</b>` : ''}</div>`).join('') : '<p class="small text-body-secondary mb-0">Nada todavía.</p>'}</div></div></div>`;
   }
 
+  /* ---------- Preguntas, palabras, frases o casillas de un juego (en la página, no en una ventana) ---------- */
+  // Desde la tarjeta del juego vuelve a la sala de juegos; desde la sala de espera vuelve a esa sala.
+  function banco(juego, desdeSala = null) {
+    clearInterval(timer); red(true);
+    const g = deCat(juego);
+    h1.textContent = `${g.emoji} ${g.nombre}`; acciones.innerHTML = '';
+    history.replaceState(null, '', `#banco=${juego}`);
+    window.RoContenido.montar(view, { base: '/api/juegos/contenido', juego, titulo: g.contenido?.nombre || 'Contenido', volver: () => (desdeSala ? abrir(desdeSala) : lobby()) });
+    window.scrollTo({ top: 0 });
+  }
+
   /* ---------- Una partida ---------- */
   const ctx = (s) => {
     const J = s.jugadores, por = Object.fromEntries(J.map((p) => [p.id, p]));
@@ -110,6 +121,7 @@ DW.ready.then(async (me) => {
         <div class="dw-card mb-3"><div class="ro-h mt-0">En la sala (${n} de ${g.min === g.max ? g.min : `${g.min} a ${g.max}`})</div>${jug}</div>
         <div class="text-center mb-3">${anf ? `<button class="btn btn-primary btn-lg" data-iniciar ${ok ? '' : 'disabled'}><i class="bi bi-play-fill me-1"></i>Empezar</button>${ok ? '' : `<div class="small text-body-secondary mt-1">Se necesitan ${g.min === g.max ? g.min : `de ${g.min} a ${g.max}`} jugadores</div>`}` : '<div class="text-body-secondary">Esperando a que empiece quien creó la sala…</div>'}</div>
         ${s.sala.juego === 'bingo' ? `<div class="text-center small mb-2">Modo: <b>${s.sala.opciones?.modo === 'palabras' ? 'Bingo rotario (palabras)' : 'Números del 1 al 75'}</b></div>` : ''}${s.sala.reto ? `<div class="alert alert-warning small py-2 text-center"><i class="bi bi-trophy me-1"></i>Partida del reto del distrito «${esc(s.sala.reto.nombre)}»: los puntos suman al ranking entre clubes.</div>` : ''}
+        ${g.contenido && !s.sala.reto ? `<div class="text-center mb-3"><button class="btn btn-outline-primary btn-sm" data-banco="${s.sala.juego}"><i class="bi bi-plus-circle me-1"></i>Añadir ${esc(g.contenido.nombre.toLowerCase())} antes de empezar</button></div>` : ''}
         <details class="dw-card small"><summary class="fw-semibold">Cómo se juega</summary><p class="mb-0 mt-2">${esc(g.como || '')}</p></details>`;
     } else if (s.fin || s.sala.estado === 'terminada') {
       const orden = [...s.jugadores].filter((p) => p.rol === 'jugador').sort((a, b) => puntos(b.id) - puntos(a.id));
@@ -172,7 +184,7 @@ DW.ready.then(async (me) => {
     if (t.dataset.act) return jugar(t.dataset.act, JSON.parse(t.dataset.d || '{}'));
     if (t.dataset.sel) { const s = JSON.parse(t.dataset.sel); sel = JSON.stringify(sel) === JSON.stringify(s) ? null : s; return pintarSala(); }
     if (t.dataset.crear) return crear(t.dataset.crear, t.dataset.reto ? Number(t.dataset.reto) : null);
-    if (t.dataset.banco) { const g = deCat(t.dataset.banco); return window.RoContenido.abrir({ base: '/api/juegos/contenido', juego: g.id, titulo: `${g.emoji} ${g.nombre}` }); }
+    if (t.dataset.banco) return banco(t.dataset.banco, sala ? sala.sala.id : null);
     if (t.dataset.volvera) return abrir(Number(t.dataset.volvera));
     if (t.dataset.entrar) return unirse(t.dataset.entrar);
     if (t.dataset.como) { const g = deCat(t.dataset.como); modal(`<div class="modal-header"><h2 class="modal-title h5">${g.emoji} ${esc(g.nombre)}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div><div class="modal-body"><p>${esc(g.como)}</p><div class="small text-body-secondary">${g.min === g.max ? g.min : `De ${g.min} a ${g.max}`} jugadores · ${esc(g.duracion)}${g.espectadores ? ' · se puede ver como espectador' : ''}</div></div>`); return; }
@@ -191,6 +203,8 @@ DW.ready.then(async (me) => {
   // Al volver a la app o a la pestaña: consultar de una vez (el celular pausa los relojes en segundo plano)
   document.addEventListener('visibilitychange', () => { if (!document.hidden && sala) { espera = 0; consultar(); } });
   window.addEventListener('online', () => { if (sala) { espera = 0; consultar(); } });
+  const bq = /^#banco=([a-z]+)$/.exec(location.hash);
+  if (bq) { catalogo = (await api('/api/juegos/catalogo')).rows; return banco(bq[1]); }
   const ini = /^#sala=(\d+)$/.exec(location.hash), cod = new URLSearchParams(location.search).get('codigo');
   if (cod) { history.replaceState(null, '', location.pathname); return unirse(cod.trim().toUpperCase().slice(0, 4)); }
   if (ini) return abrir(Number(ini[1]));
