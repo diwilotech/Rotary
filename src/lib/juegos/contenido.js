@@ -65,3 +65,9 @@ export const FRASES = [
   '¿Quién es más probable que mande audios de 5 minutos?', '¿Quién es más probable que recuerde el cumpleaños de todos?', '¿Quién es más probable que proponga hacer un asado?',
   '¿Quién es más probable que haga el mejor discurso?', '¿Quién es más probable que sea el alma de la fiesta?', '¿Quién es más probable que lidere la próxima campaña de donación?',
 ];
+
+// Bingo rotario (modo palabras): casillas del cartón. En modo números se usan las 75 balotas clásicas.
+export const BINGO = ['Paul Harris', 'Polio', 'Rueda', 'Campana', 'Macero', 'Acta', 'Junta', 'Distrito', 'Gobernador', 'Convención', 'Fundación Rotaria',
+  'Prueba Cuádruple', 'Interact', 'Rotaract', 'Voluntariado', 'Obra social', 'Compañerismo', 'Liderazgo', 'Servicio', 'Paz', 'Agua', 'Educación', 'Medio ambiente',
+  'Salud', 'Comunidad', 'Donación', 'Proyecto', 'Asamblea', 'Cuota', 'Pin', 'My Rotary', 'Padrino', 'Aspirante', 'Rotarios', 'Reunión', 'Tesorería', 'Secretaría',
+  'Presidencia', 'Hermanamiento', 'Intercambio', 'Capacitación', 'Imagen pública', 'Redes sociales', 'Alianza', 'Beneficiarios', 'Jornada', 'Foto grupal', 'Refrigerio'];

@@ -1,5 +1,7 @@
 // Distrito: tablero de todos los clubes del distrito (solo lectura), los 12 meses del año rotario sumados, el detalle de cada
 // club y la cuota distrital (valor por socio activo) que a cada club le llega como obligación en Finanzas → Proyectado.
+// Pestaña Juegos: retos del distrito (un juego en unas fechas), ranking entre clubes y las preguntas/palabras del distrito,
+// que llegan a todos sus clubes (cada presidencia puede apagarlas en su club).
 DW.ready.then(async (me) => {
   if (!me.pageAllowed) return;
   const { api, esc, toast, modal } = window.App;
@@ -9,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'cuotas', 'orden'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
+  let tab = ['anio', 'cuotas', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['cuotas', 'Cuota distrital', '#cuotas', 'bi-bank'], ['orden', 'Orden del día', '#orden', 'bi-list-ol']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['cuotas', 'Cuota distrital', '#cuotas', 'bi-bank'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -116,11 +118,52 @@ DW.ready.then(async (me) => {
     };
   }
 
+  /* ---------- Juegos: retos, ranking entre clubes y contenido del distrito ---------- */
+  let rkReto = '';
+  async function pintarJuegos() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    const [rt, rk] = await Promise.all([api('/api/distrito/juegos/retos'), api(`/api/distrito/juegos/ranking${rkReto ? `?reto=${rkReto}` : ''}`)]);
+    const J = Object.fromEntries(rt.juegos.map((j) => [j.id, j])), hoy = C.todayCo();
+    const estado = (r) => (!r.activo ? ['free', 'Desactivado'] : r.desde > hoy ? ['soon', 'Próximo'] : r.hasta < hoy ? ['free', 'Terminado'] : ['ok', 'Abierto']);
+    acciones.innerHTML = M ? '<button class="btn btn-primary" data-rnuevo><i class="bi bi-plus-lg me-1"></i>Nuevo reto</button>' : '';
+    acciones.querySelector('[data-rnuevo]')?.addEventListener('click', () => editarReto(null, rt.juegos));
+    const CONT = [['trivia', 'Preguntas de Trivia'], ['impostor', 'Palabras del Impostor'], ['probable', 'Frases de ¿Quién es más probable?'], ['bingo', 'Casillas del Bingo rotario']];
+    view.innerHTML = `<div class="row g-3">
+      <div class="col-lg-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2"><span class="ro-h m-0 flex-grow-1"><i class="bi bi-trophy me-1"></i>Ranking entre clubes · ${esc(rk.nombre)}</span>
+          <select class="form-select form-select-sm" style="max-width:220px" data-rkreto aria-label="Reto"><option value="">Todos los retos del año</option>${rt.rows.map((r) => `<option value="${r.id}" ${String(r.id) === String(rkReto) ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}</select></div>
+        ${rk.rows.length ? window.App.table([{ label: '#', html: (x) => ['🥇', '🥈', '🥉'][x.puesto - 1] || x.puesto }, { label: 'Club', main: true, html: (x) => esc(x.club) }, { label: 'Puntos', cls: 'text-end', html: (x) => `<b>${x.puntos}</b>` },
+            { label: 'Partidas', cls: 'text-end', html: (x) => x.partidas }, { label: 'Socios', cls: 'text-end', html: (x) => x.socios }, { label: 'Promedio', cls: 'text-end', html: (x) => x.promedio }], rk.rows)
+          : window.App.empty('bi-trophy', 'Aún ningún club ha terminado una partida de un reto. Crea un reto y los clubes lo verán en Juegos.')}
+        <div class="small text-body-secondary mt-2">Suman las partidas terminadas «del reto» en cada club. Promedio = puntos por socio que jugó (para comparar clubes grandes y pequeños).</div></div></div>
+      <div class="col-lg-5"><div class="dw-card h-100"><div class="ro-h mt-0">Preguntas y palabras del distrito</div><p class="small text-body-secondary">Lo que añadas aquí llega a todos los clubes del distrito y es lo que se usa en los retos (junto con el banco de la app). Cada presidencia puede apagarlo en su club, pero no en los retos.</p>
+        <div class="d-grid gap-2">${CONT.map(([k, l]) => `<button class="btn btn-outline-primary text-start" data-cont="${k}">${J[k]?.emoji || '🎮'} ${l}</button>`).join('')}</div></div></div>
+      <div class="col-12"><div class="dw-card"><div class="ro-h mt-0">Retos del distrito</div>
+        ${rt.rows.length ? window.App.table([{ label: 'Reto', main: true, html: (r) => `${J[r.juego]?.emoji || ''} <b>${esc(r.nombre)}</b><div class="small text-body-secondary fw-normal">${esc(J[r.juego]?.nombre || r.juego)}${r.descripcion ? ` · ${esc(r.descripcion)}` : ''}</div>` },
+            { label: 'Fechas', html: (r) => `${C.day(r.desde)} → ${C.day(r.hasta)}` }, { label: 'Estado', html: (r) => C.chip(...estado(r)) }, { label: 'Partidas', cls: 'text-end', html: (r) => r.partidas },
+            { label: '', cls: 'text-end text-nowrap', html: (r) => (M ? `<button class="btn btn-sm btn-light" data-reditar="${r.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-light" data-ronoff="${r.id}">${r.activo ? 'Desactivar' : 'Activar'}</button>${r.partidas ? '' : ` <button class="btn btn-sm btn-light" data-rborrar="${r.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>`}` : '') }], rt.rows)
+          : window.App.empty('bi-calendar-event', 'Aún no hay retos. Un reto es un juego en unas fechas: los clubes lo juegan y suman puntos al ranking.')}</div></div></div>`;
+    view.onclick = async (e) => {
+      const c = e.target.closest('[data-cont]'); if (c) return window.RoContenido.abrir({ base: '/api/distrito/juegos/contenido', juego: c.dataset.cont, titulo: `Distrito ${me.distrito.codigo}` });
+      const ed = e.target.closest('[data-reditar]'); if (ed) return editarReto(rt.rows.find((r) => String(r.id) === ed.dataset.reditar), rt.juegos);
+      const on = e.target.closest('[data-ronoff]'); if (on) { const r = rt.rows.find((x) => String(x.id) === on.dataset.ronoff); try { await api(`/api/distrito/juegos/retos/${r.id}`, { method: 'PATCH', body: { activo: !r.activo } }); pintarJuegos(); } catch (x) { toast(x.message, false); } return; }
+      const bo = e.target.closest('[data-rborrar]'); if (bo) { if (!(await window.App.confirm({ title: '¿Borrar este reto?', text: 'Se borra para siempre.', ok: 'Borrar' }))) return; try { await api(`/api/distrito/juegos/retos/${bo.dataset.rborrar}`, { method: 'DELETE' }); pintarJuegos(); } catch (x) { toast(x.message, false); } }
+    };
+    view.querySelector('[data-rkreto]').onchange = (e) => { rkReto = e.target.value; pintarJuegos(); };
+  }
+  async function editarReto(r, juegos) {
+    const out = await C.form({ title: r ? 'Editar reto' : 'Nuevo reto del distrito', fields: [{ k: 'nombre', label: 'Nombre del reto', type: 'text', required: true, full: true, placeholder: 'Trivia distrital de diciembre' },
+      { k: 'juego', label: 'Juego', type: 'select', options: juegos.map((j) => [j.id, `${j.emoji} ${j.nombre}`]), required: true }, { k: 'desde', label: 'Desde', type: 'date', required: true }, { k: 'hasta', label: 'Hasta', type: 'date', required: true },
+      { k: 'descripcion', label: 'Indicaciones para los clubes', type: 'long' }], values: r || { juego: 'trivia', desde: C.todayCo() }, okText: r ? 'Guardar' : 'Crear reto' });
+    if (!out) return;
+    try { await api(r ? `/api/distrito/juegos/retos/${r.id}` : '/api/distrito/juegos/retos', { method: r ? 'PATCH' : 'POST', body: out }); toast(r ? 'Reto guardado' : 'Reto creado: ya lo ven los clubes en Juegos'); pintarJuegos(); } catch (x) { toast(x.message, false); }
+  }
+
   function pintar() {
     acciones.innerHTML = tab === 'cuotas' && M ? '<button class="btn btn-primary" data-nueva><i class="bi bi-plus-lg me-1"></i>Nueva cuota distrital</button>' : '';
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => editar(null));
     view.onclick = null;
     if (tab === 'orden') return pintarOrden();
+    if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();
     return tab === 'anio' ? pintarAnio() : pintarClubes();
   }

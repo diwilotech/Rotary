@@ -264,7 +264,7 @@ export default async function ({ check, newBusiness, newMember }) {
   const sj = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'tictactoe' } })).data;
   const un = await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sj.sala.codigo } });
   const unB = await B.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sj.sala.codigo } });
-  check('Juegos: 8 juegos; sala con código; se une otro socio; otro club no entra', cat.length === 8 && sj.sala.codigo.length === 4 && un.status === 200 && un.data.rol === 'jugador' && unB.status === 404, `${un.status} ${unB.status}`);
+  check('Juegos: 9 juegos; sala con código; se une otro socio; otro club no entra', cat.length === 9 && sj.sala.codigo.length === 4 && un.status === 200 && un.data.rol === 'jugador' && unB.status === 404, `${un.status} ${unB.status}`);
   check('Juegos: solo quien creó la sala la empieza', (await staff.app(`/api/juegos/salas/${sj.sala.id}/iniciar`, { method: 'POST', body: {} })).status === 403);
   const ini = (await A.app(`/api/juegos/salas/${sj.sala.id}/iniciar`, { method: 'POST', body: {} })).data;
   const turno = ini.juego.turno, yoA = ini.yo, otroCli = turno === yoA ? staff : A, mioCli = turno === yoA ? A : staff;
@@ -329,4 +329,69 @@ export default async function ({ check, newBusiness, newMember }) {
   const mov = await A.app('/api/cajas/resumen');
   check('Finanzas: cada caja trae su revisión (entradas, salidas, sin comprobante)', mov.data.cajas.every((k) => k.revision && typeof k.revision.sin_comprobante === 'number'));
   check('Inicio: el distrito ve las fechas de sus cuotas', ((await D.app(`/api/club/calendario?desde=${hoy}&hasta=${vence}`)).data.rows || []).some((x) => x.tipo === 'distrital'));
+
+  /* Juegos: contenido propio (todos añaden, la presidencia gestiona sin ver autor), contenido del distrito, Bingo, retos y ranking entre clubes */
+  const q1 = await staff.app('/api/juegos/contenido', { method: 'POST', body: { juego: 'trivia', datos: { p: '¿Prueba de pregunta del club', o: ['Correcta', 'Mala 1', 'Mala 2', 'Mala 3'] } } });
+  const qMal = await staff.app('/api/juegos/contenido', { method: 'POST', body: { juego: 'trivia', datos: { p: '¿Otra pregunta?', o: ['A', 'B', 'C'] } } });
+  const verS = (await staff.app('/api/juegos/contenido?juego=trivia')).data, verA = (await A.app('/api/juegos/contenido?juego=trivia')).data;
+  const miQ = verA.items?.find((x) => x.id === q1.data.id);
+  check('Juegos: cualquier socio añade preguntas; una mal hecha se rechaza', q1.status === 201 && qMal.status === 400 && verS.gestiona === false && verS.mias.some((x) => x.id === q1.data.id) && !verS.items, `${q1.status} ${qMal.status}`);
+  check('Juegos: la presidencia ve todo (del club y de la app) sin saber quién lo añadió', verA.gestiona && miQ?.origen === 'club' && !('socio_id' in miQ) && verA.items.some((x) => x.origen === 'app'));
+  const apagaS = await staff.app(`/api/juegos/contenido/${q1.data.id}`, { method: 'PATCH', body: { activo: false } });
+  const apagaA = await A.app(`/api/juegos/contenido/${q1.data.id}`, { method: 'PATCH', body: { activo: false } });
+  const base1 = verA.items.find((x) => x.origen === 'app');
+  await A.app('/api/juegos/contenido/ocultos', { method: 'PUT', body: { juego: 'trivia', clave: base1.clave, activo: false } });
+  const verA2 = (await A.app('/api/juegos/contenido?juego=trivia')).data;
+  check('Juegos: solo la presidencia apaga (también lo del banco de la app)', apagaS.status === 403 && apagaA.status === 200 && verA2.items.find((x) => x.id === q1.data.id)?.activo === false && verA2.items.find((x) => x.clave === base1.clave)?.activo === false && verA2.activas === verA.activas - 2);
+  await A.app('/api/juegos/contenido/ocultos', { method: 'PUT', body: { juego: 'trivia', clave: base1.clave, activo: true } });
+  const cdis = await D.app('/api/distrito/juegos/contenido', { method: 'POST', body: { juego: 'bingo', datos: { texto: `Casilla distrital ${vs}` } } });
+  check('Juegos: el distrito añade contenido y llega a sus clubes; un club no escribe en el del distrito', cdis.status === 201 && (await A.app('/api/juegos/contenido?juego=bingo')).data.items.some((x) => x.origen === 'distrito' && x.texto.includes(String(vs)))
+    && (await A.app('/api/distrito/juegos/contenido', { method: 'POST', body: { juego: 'bingo', datos: { texto: 'x club' } } })).status === 403);
+
+  // Bingo: cartón propio, solo el anfitrión canta, canto falso resta, línea y bingo validados por el servidor
+  const juegaBingo = async (salaId) => {
+    let a = (await A.app(`/api/juegos/salas/${salaId}`)).data;
+    for (let k = 0; k < 80 && a.juego?.fase === 'jugando'; k++) {
+      const s2 = (await staff.app(`/api/juegos/salas/${salaId}`)).data;
+      for (const [cli, v] of [[A, a], [staff, s2]]) {
+        if (v.juego.tengo_bingo) { await cli.app(`/api/juegos/salas/${salaId}/accion`, { method: 'POST', body: { tipo: 'bingo' } }); return (await A.app(`/api/juegos/salas/${salaId}`)).data; }
+        if (v.juego.tengo_linea && !v.juego.linea) await cli.app(`/api/juegos/salas/${salaId}/accion`, { method: 'POST', body: { tipo: 'linea' } });
+      }
+      a = (await A.app(`/api/juegos/salas/${salaId}/accion`, { method: 'POST', body: { tipo: 'cantar' } })).data;
+    }
+    return a;
+  };
+  const sb = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'bingo', modo: 'numeros' } })).data;
+  await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sb.sala.codigo } });
+  const bA = (await A.app(`/api/juegos/salas/${sb.sala.id}/iniciar`, { method: 'POST', body: {} })).data, bS = (await staff.app(`/api/juegos/salas/${sb.sala.id}`)).data;
+  const cantaS = await staff.app(`/api/juegos/salas/${sb.sala.id}/accion`, { method: 'POST', body: { tipo: 'cantar' } });
+  const falsa = (await staff.app(`/api/juegos/salas/${sb.sala.id}/accion`, { method: 'POST', body: { tipo: 'bingo' } })).data;
+  check('Bingo: cada quien su cartón (centro libre); solo el anfitrión canta; cantar bingo sin tenerlo resta', bA.juego.carton.length === 25 && bA.juego.carton[12] === null && JSON.stringify(bA.juego.carton) !== JSON.stringify(bS.juego.carton)
+    && !('cartones' in bA.juego) && !('bolsa' in bA.juego) && cantaS.status === 400 && falsa.puntos[falsa.yo] === -2, `${cantaS.status}`);
+  const finB = await juegaBingo(sb.sala.id);
+  check('Bingo: la partida termina con ¡Bingo! validado por el servidor y suma puntos', finB.sala.estado === 'terminada' && finB.fin?.ganador && (finB.puntos[finB.fin.ganador] || 0) >= 25, JSON.stringify(finB.fin));
+
+  // Retos del distrito y ranking entre clubes
+  const retoMal = await A.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: 'x', desde: hoy, hasta: hoy } });
+  const reto = await D.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: `Bingo distrital ${vs}`, desde: hoy, hasta: vence } });
+  const retosA = (await A.app('/api/juegos/retos')).data, retosB = (await B.app('/api/juegos/retos')).data;
+  check('Retos: solo el distrito los crea; los ven sus clubes y no los de otro distrito', retoMal.status === 403 && reto.status === 201 && retosA.rows.some((r) => r.id === reto.data.id && r.abierto) && !retosB.rows.some((r) => r.id === reto.data.id));
+  const otroJuego = await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'trivia', reto_id: reto.data.id } });
+  const sr = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'bingo', reto_id: reto.data.id } })).data;
+  await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sr.sala.codigo } });
+  await A.app(`/api/juegos/salas/${sr.sala.id}/iniciar`, { method: 'POST', body: {} });
+  const finR = await juegaBingo(sr.sala.id);
+  const rkD = (await D.app(`/api/distrito/juegos/ranking?reto=${reto.data.id}`)).data, rkA = (await A.app(`/api/juegos/ranking-clubes?reto=${reto.data.id}`)).data;
+  const filaA = rkD.rows?.find((x) => x.id === A.id);
+  check('Retos: las partidas del reto suman al ranking entre clubes (lo ven el distrito y el club)', otroJuego.status === 400 && sr.sala.reto?.id === reto.data.id && finR.sala.estado === 'terminada' && filaA?.partidas === 1 && filaA.puntos === Object.values(finR.puntos).reduce((t, n) => t + n, 0) && rkA.rows.some((x) => x.id === A.id) && rkA.mio === A.id, JSON.stringify(rkD.rows));
+  check('Retos: un reto con partidas no se borra (se desactiva)', (await D.app(`/api/distrito/juegos/retos/${reto.data.id}`, { method: 'DELETE' })).status === 409 && (await D.app(`/api/distrito/juegos/retos/${reto.data.id}`, { method: 'PATCH', body: { activo: false } })).status === 200);
+
+  // Conexión: si quien creó la sala se desconecta, la sala pasa a un jugador conectado; al volver, sigue en su sala
+  const sx = (await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'probable' } })).data;
+  await staff.app('/api/juegos/unirse', { method: 'POST', body: { codigo: sx.sala.codigo } });
+  sql(`UPDATE ro_juego_jugadores SET visto_at = ${Date.now() - 120000}, entro_at = ${Date.now() - 120000} WHERE sala_id = ${sx.sala.id} AND socio_id = ${sx.yo}`);
+  const vx = (await staff.app(`/api/juegos/salas/${sx.sala.id}`)).data;
+  const miaA = (await A.app('/api/juegos/salas')).data.mia;
+  check('Conexión: relevo del anfitrión desconectado y «volver a la partida»', vx.sala.anfitrion_id === vx.yo && vx.jugadores.find((p) => p.id === sx.yo)?.conectado === false && miaA?.id === sx.sala.id, JSON.stringify(vx.sala));
+  await staff.app(`/api/juegos/salas/${sx.sala.id}/cerrar`, { method: 'POST', body: {} });
 }

@@ -10,9 +10,9 @@ export const impostor = {
   id: 'impostor', nombre: 'El Impostor', emoji: '🕵️', min: 3, max: 12, duracion: '10-15 min', espectadores: false,
   resumen: 'Todos reciben la misma palabra secreta… menos uno.',
   como: 'Cada quien mira su palabra en su propio celular. Por turnos, cada persona dice EN VOZ ALTA una pista de una sola palabra: tiene que probar que la sabe, sin decirla. El impostor no la sabe y tiene que improvisar. Al final todos votan a quién creen que es el impostor.',
-  iniciar(ctx) { const st = base(ctx, { rondas: 3, ronda: 0 }); impostor._ronda(st); return st; },
+  iniciar(ctx) { const st = base(ctx, { rondas: 3, ronda: 0, banco: ctx.opciones?.palabras || null }); impostor._ronda(st); return st; },
   _ronda(st) {
-    const cats = Object.keys(PALABRAS), cat = cats[azar(cats.length)], lista = PALABRAS[cat];
+    const P = st.banco && Object.keys(st.banco).length ? st.banco : PALABRAS, cats = Object.keys(P).filter((k) => P[k].length), cat = cats[azar(cats.length)], lista = P[cat];
     st.ronda += 1; st.fase = 'pistas'; st.categoria = cat; st.palabra = lista[azar(lista.length)];
     st.impostor = st.jugadores[azar(st.jugadores.length)].id; st.empieza = st.jugadores[azar(st.jugadores.length)].id; st.votos = {}; st.resultado = null;
   },
@@ -47,8 +47,8 @@ export const trivia = {
   resumen: 'Preguntas de Rotary, de Rotaract y de nuestro propio club.',
   como: 'Sale una pregunta con cuatro opciones y todos responden desde su celular. Cuando todos contestan se revela la correcta y se suman los puntos: acertar vale 10, y el primero en acertar se lleva 5 de bonificación.',
   iniciar(ctx) {
-    const extra = (ctx.opciones?.preguntas_club || []).map((q) => ({ p: q.p, o: q.o, c: 0 }));
-    const qs = barajar([...extra, ...TRIVIA]).slice(0, 10).map((q) => { const orden = barajar([0, 1, 2, 3]); return { p: q.p, o: orden.map((i) => q.o[i]), c: orden.indexOf(q.c) }; });
+    const banco = ctx.opciones?.preguntas?.length >= 3 ? ctx.opciones.preguntas : TRIVIA;
+    const qs = barajar(banco).slice(0, 10).map((q) => { const orden = barajar([0, 1, 2, 3]); return { p: q.p, o: orden.map((i) => q.o[i]), c: orden.indexOf(q.c) }; });
     return { ...base(ctx), preguntas: qs, i: 0, fase: 'pregunta', resp: {}, t0: Date.now() };
   },
   _revelar(st) {
@@ -82,7 +82,7 @@ export const probable = {
   id: 'probable', nombre: '¿Quién es más probable?', emoji: '🤔', min: 3, max: 20, duracion: '10 min', espectadores: false,
   resumen: 'Sale una frase y todos votan a quién del grupo le queda mejor.',
   como: 'Aparece una frase («¿quién es más probable que llegue tarde a la reunión?») y cada quien vota a alguien de la sala — vale votarse uno mismo. Se revelan los votos todos juntos y se ve quién se lo llevó. No hay respuesta correcta: la gracia es el argumento de después.',
-  iniciar(ctx) { return { ...base(ctx), frases: barajar(FRASES).slice(0, 8), i: 0, fase: 'votar', votos: {} }; },
+  iniciar(ctx) { const F = ctx.opciones?.frases?.length >= 3 ? ctx.opciones.frases : FRASES; return { ...base(ctx), frases: barajar(F).slice(0, 8), i: 0, fase: 'votar', votos: {} }; },
   accion(st, j, tipo, d, { anfitrion }) {
     if (tipo === 'votar') {
       exigir(st.fase === 'votar', 'Ya se revelaron los votos'); exigir(st.jugadores.some((p) => p.id === d.a), 'Vota por alguien de la sala');

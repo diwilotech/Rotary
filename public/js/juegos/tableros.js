@@ -162,5 +162,23 @@
       <div class="small text-center text-body-secondary">${esc(v.log || '')}</div>${fin}<div class="text-center my-2">${ctrl}</div>${mano}
       <details class="small mt-2"><summary>Poderes del club</summary>${Object.values(P).map(([e, n, t]) => `<div>${e} <b>${esc(n)}</b>: ${esc(t)}</div>`).join('')}<div>🏅 <b>Paul Harris</b> (legendaria): eliges color y te llevas hasta tres cartas más.</div></details>`;
   };
+  /* Bingo: cartón propio, última balota grande, historial y botones de Línea / Bingo */
+  const LET = 'BINGO';
+  const balota = (v, modo) => (modo === 'numeros' ? `${LET[Math.min(4, Math.floor((v - 1) / 15))]}-${v}` : v);
+  T.bingo = (v, k) => {
+    const salio = new Set(v.cantadas.map(String)), marcas = new Set(v.marcas);
+    const ult = v.ultima != null ? balota(v.ultima, v.modo) : null;
+    const cab = `<div class="jg-bola-w"><div class="jg-bola ${ult ? '' : 'vacia'}">${ult ? esc(String(ult)) : '?'}</div>
+      <div class="small text-body-secondary">${v.cantadas.length} de ${v.total} · quedan ${v.quedan}</div>
+      ${v.aviso ? `<div class="jg-aviso">${esc(v.aviso)}</div>` : v.linea ? `<div class="small mt-1">Línea: <b>${esc(quien(k, v.linea.id))}</b> · ahora va por el cartón lleno</div>` : '<div class="small mt-1">Primero: ¡Línea! (fila, columna o diagonal)</div>'}
+      ${solo(k, btn('cantar', {}, `<i class="bi bi-megaphone me-1"></i>${v.cantadas.length ? 'Cantar la siguiente' : 'Cantar la primera'}`, 'btn-primary btn-lg mt-2', v.quedan ? '' : 'disabled'))}</div>`;
+    const carton = v.carton ? `<div class="jg-carton ${v.modo}">${v.modo === 'numeros' ? [...LET].map((l) => `<div class="jg-cab">${l}</div>`).join('') : ''}
+        ${v.carton.map((x, i) => { const libre = x === null, ok = libre || salio.has(String(x)), m = libre || marcas.has(i);
+          return `<button type="button" class="jg-cas ${libre ? 'libre' : ''} ${m ? 'm' : ok ? 'sale' : ''}" ${!libre && ok ? `data-act="marcar" data-d="${D({ i })}"` : 'disabled'}>${libre ? '⭐' : esc(String(x))}</button>`; }).join('')}</div>
+      <div class="d-flex gap-2 justify-content-center mt-3">${btn('linea', {}, '¡Línea!', `btn-lg ${v.tengo_linea && !v.linea ? 'btn-warning jg-brilla' : 'btn-outline-warning'}`, v.linea ? 'disabled' : '')}${btn('bingo', {}, '¡BINGO!', `btn-lg ${v.tengo_bingo ? 'btn-success jg-brilla' : 'btn-outline-success'}`)}</div>
+      <div class="small text-body-secondary text-center mt-1">Las casillas que ya salieron se iluminan: tócalas para marcarlas.</div>` : '';
+    const hist = v.cantadas.length > 1 ? `<details class="mt-3"><summary class="small">Todas las que han salido (${v.cantadas.length})</summary><div class="jg-hist">${[...v.cantadas].reverse().map((x) => `<span>${esc(String(balota(x, v.modo)))}</span>`).join('')}</div></details>` : '';
+    return cab + carton + hist;
+  };
   window.RoJuegos = T;
 })();
