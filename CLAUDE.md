@@ -4,7 +4,7 @@ Responde en español. Modo económico: sin capturas salvo que se pidan; de las p
 
 ## Qué es
 App `cdrotaract` = «CD Rotary» (rotary.diwilo.com; cdrotaract.diwilo.com sigue) para clubes Rotary, Rotaract e Interact. Cloudflare Workers + D1 `control-de-rotaract-db` + R2 `cdrotaract-files`, JS sin framework, Bootstrap.
-Partió de CD Academia (misma base: shell, login, panel con marco, contrato con Diwilo). Repo previsto: diwilotech/cdrotaract.
+Partió de CD Academia (misma base: shell, login, panel con marco, contrato con Diwilo). Repo: github.com/diwilotech/Rotary (`main`; el sistema anterior quedó en las ramas `sistema-anterior` y `master`).
 
 ## Mapa
 - `src/index.js` rutas; `src/api/platform.js` + `src/lib/platform-rpc.js` = contrato con Diwilo (NO tocar). Roles: owner = Presidencia, admin = Junta, staff = Socio.
