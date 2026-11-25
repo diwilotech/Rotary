@@ -66,8 +66,8 @@ export function routes(r) {
     const yo = await socioDeSesionOError(c), b = await readJson(c.req), m = motor(b.juego), t = ahora();
     let reto = null;
     if (b.reto_id) {
-      const { codigo } = await distritoDe(c.env, c.businessId), hoy = today();
-      reto = await one(c.env, 'SELECT * FROM ro_juego_retos WHERE id = ? AND distrito = ? AND activo = 1', Number(b.reto_id) || 0, codigo);
+      const { clave } = await distritoDe(c.env, c.businessId), hoy = today();
+      reto = await one(c.env, 'SELECT * FROM ro_juego_retos WHERE id = ? AND distrito = ? AND activo = 1', Number(b.reto_id) || 0, clave);
       if (!reto) throw new HttpError(404, 'Ese reto del distrito no existe');
       if (reto.desde > hoy || reto.hasta < hoy) throw new HttpError(409, 'Ese reto no está abierto hoy');
       if (reto.juego !== m.id) throw new HttpError(400, 'Ese reto es de otro juego');
@@ -245,14 +245,14 @@ function rutasContenido(r) {
 // El distrito crea retos (un juego en unas fechas). Los clubes juegan salas «del reto» con el banco de la app + el del
 // distrito. Al terminar, los puntos de esas partidas suman al club. Ranking: puntos totales, y también partidas, socios
 // que jugaron y promedio por socio (para comparar clubes grandes y pequeños). Lee las salas de todos los clubes del distrito.
-async function rankingClubes(c, codigo, anio, retoId) {
+async function rankingClubes(c, d, anio, retoId) {
   const desde = `${anio}-07-01`, hasta = `${anio + 1}-07-01`;
   const filtro = retoId ? 'AND r.id = ?' : '';
   const rows = await all(c.env, `SELECT s.business_id id, b.name club, COUNT(DISTINCT s.id) partidas, COUNT(DISTINCT j.socio_id) socios, COALESCE(SUM(j.puntos), 0) puntos
     FROM ro_juego_salas s JOIN ro_juego_retos r ON r.id = s.reto_id AND r.distrito = ? JOIN ro_juego_jugadores j ON j.sala_id = s.id AND j.rol = 'jugador'
     JOIN businesses b ON b.id = s.business_id
     WHERE s.estado = 'terminada' AND s.datos IS NOT NULL AND r.desde >= ? AND r.desde < ? ${filtro} AND s.${EN_DISTRITO}
-    GROUP BY s.business_id ORDER BY puntos DESC, partidas DESC`, codigo, desde, hasta, ...(retoId ? [retoId] : []), ...enDistrito(c.env, codigo));
+    GROUP BY s.business_id ORDER BY puntos DESC, partidas DESC`, d.clave, desde, hasta, ...(retoId ? [retoId] : []), ...enDistrito(c.env, d.codigo, d.programa));
   return rows.map((x, i) => ({ ...x, puesto: i + 1, promedio: x.socios ? Math.round((x.puntos / x.socios) * 10) / 10 : 0 }));
 }
 function rutasRetos(r) {
@@ -260,21 +260,21 @@ function rutasRetos(r) {
   const FECHA = /^\d{4}-\d{2}-\d{2}$/;
   // Club: los retos de su distrito (abiertos, próximos y del año) y el ranking entre clubes
   r.get('/api/juegos/retos', `tenant:${MOD}`, async (c) => {
-    const { codigo } = await distritoDe(c.env, c.businessId), anio = anioRotarioDe(hoyStr());
-    const rows = await all(c.env, 'SELECT id, juego, nombre, descripcion, desde, hasta FROM ro_juego_retos WHERE distrito = ? AND activo = 1 AND hasta >= ? ORDER BY desde', codigo, `${anio}-07-01`);
+    const { codigo, clave } = await distritoDe(c.env, c.businessId), anio = anioRotarioDe(hoyStr());
+    const rows = await all(c.env, 'SELECT id, juego, nombre, descripcion, desde, hasta FROM ro_juego_retos WHERE distrito = ? AND activo = 1 AND hasta >= ? ORDER BY desde', clave, `${anio}-07-01`);
     const h = hoyStr();
     return json({ distrito: codigo, rows: rows.map((x) => ({ ...x, abierto: x.desde <= h && x.hasta >= h })) });
   });
   r.get('/api/juegos/ranking-clubes', `tenant:${MOD}`, async (c) => {
-    const { codigo } = await distritoDe(c.env, c.businessId), anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
-    const rows = await rankingClubes(c, codigo, anio, Number(c.url.searchParams.get('reto')) || null);
+    const dd = await distritoDe(c.env, c.businessId), codigo = dd.codigo, anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
+    const rows = await rankingClubes(c, dd, anio, Number(c.url.searchParams.get('reto')) || null);
     return json({ anio, nombre: `${anio}-${anio + 1}`, distrito: codigo, mio: c.businessId, rows });
   });
   // Distrito: crea, cambia y quita retos; ve el ranking de sus clubes
   r.get('/api/distrito/juegos/retos', 'tenant', async (c) => {
     const d = await esDistritoOError(c);
     const rows = await all(c.env, `SELECT r.*, (SELECT COUNT(*) FROM ro_juego_salas s WHERE s.reto_id = r.id AND s.estado = 'terminada' AND s.datos IS NOT NULL) partidas
-      FROM ro_juego_retos r WHERE r.distrito = ? ORDER BY r.desde DESC`, d.codigo);
+      FROM ro_juego_retos r WHERE r.distrito = ? ORDER BY r.desde DESC`, d.clave);
     return json({ distrito: d.codigo, juegos: Object.values(JUEGOS).map((j) => ({ id: j.id, nombre: j.nombre, emoji: j.emoji })), rows });
   });
   const datosReto = (b) => {
@@ -287,7 +287,7 @@ function rutasRetos(r) {
   r.post('/api/distrito/juegos/retos', 'manager', async (c) => {
     const d = await esDistritoOError(c), x = datosReto(await readJson(c.req)), t = ahora();
     const q = await c.env.DB.prepare('INSERT INTO ro_juego_retos (business_id, distrito, juego, nombre, descripcion, desde, hasta, activo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
-      .bind(c.businessId, d.codigo, x.juego, x.nombre, x.descripcion, x.desde, x.hasta, t, t).run();
+      .bind(c.businessId, d.clave, x.juego, x.nombre, x.descripcion, x.desde, x.hasta, t, t).run();
     return json({ id: q.meta.last_row_id }, 201);
   });
   const retoMio = async (c) => { await esDistritoOError(c); const x = await one(c.env, 'SELECT * FROM ro_juego_retos WHERE id = ? AND business_id = ?', Number(c.params.id) || 0, c.businessId); if (!x) throw new HttpError(404, 'Reto no encontrado'); return x; };
@@ -307,7 +307,7 @@ function rutasRetos(r) {
   });
   r.get('/api/distrito/juegos/ranking', 'tenant', async (c) => {
     const d = await esDistritoOError(c), anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
-    return json({ anio, nombre: `${anio}-${anio + 1}`, distrito: d.codigo, rows: await rankingClubes(c, d.codigo, anio, Number(c.url.searchParams.get('reto')) || null) });
+    return json({ anio, nombre: `${anio}-${anio + 1}`, distrito: d.codigo, rows: await rankingClubes(c, d, anio, Number(c.url.searchParams.get('reto')) || null) });
   });
 }
 

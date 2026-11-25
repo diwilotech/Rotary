@@ -122,21 +122,26 @@ export async function programaDe(env, businessId) {
 
 /* ---------------- Distrito ---------------- */
 // Código de distrito del negocio (lo pone Diwilo; por defecto DISTRITO_DEFECTO) y si el negocio ES el distrito.
+// Hay tres distritos por código, uno por programa (Distrito Rotary 4271, Distrito Rotaract 4271, Distrito Interact 4271): cada
+// uno ve solo los clubes de su programa. `clave` identifica al distrito en las tablas (cuotas, bonos, retos, metas, solicitudes):
+// Rotaract = el código solo (así quedaron los datos de antes); los demás = «programa:código».
+export const claveDistrito = (codigo, prog) => (prog === 'rotaract' ? codigo : `${prog}:${codigo}`);
 export async function distritoDe(env, businessId) {
   const r = await one(env, 'SELECT distrito, es_distrito, programa FROM ro_club_config WHERE business_id = ?', businessId);
-  return { codigo: r?.distrito || env.DISTRITO_DEFECTO || '4271', es_distrito: !!r?.es_distrito, programa: programa(r?.programa).id };
+  const codigo = r?.distrito || env.DISTRITO_DEFECTO || '4271', prog = programa(r?.programa).id;
+  return { codigo, es_distrito: !!r?.es_distrito, programa: prog, clave: claveDistrito(codigo, prog) };
 }
-// Clubes del distrito: los negocios activos con ese código que no son distritos.
-export async function clubesDelDistrito(env, codigo) {
+// Clubes del distrito: los negocios activos con ese código y ese programa que no son distritos.
+export async function clubesDelDistrito(env, codigo, prog = 'rotaract') {
   const def = env.DISTRITO_DEFECTO || '4271';
   return all(env, `SELECT b.id, b.name, b.slug, COALESCE(k.programa, 'rotaract') programa FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
-    WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? ORDER BY b.name`, def, codigo);
+    WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ? ORDER BY b.name`, def, codigo, prog);
 }
-// Condición SQL «business_id es un club de este distrito» (2 parámetros: defecto y código). Sin listas IN de ids:
+// Condición SQL «business_id es un club de este distrito» (3 parámetros: defecto, código y programa). Sin listas IN de ids:
 // D1 acepta máximo 100 parámetros por consulta y un distrito puede tener más clubes.
 export const EN_DISTRITO = `business_id IN (SELECT b.id FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
-  WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ?)`;
-export const enDistrito = (env, codigo) => [env.DISTRITO_DEFECTO || '4271', codigo];
+  WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ?)`;
+export const enDistrito = (env, codigo, prog = 'rotaract') => [env.DISTRITO_DEFECTO || '4271', codigo, prog];
 // Orden del día sugerido de una reunión ordinaria. El distrito lo puede cambiar para sus clubes (ro_club_config.orden_dia).
 export const ORDEN_DIA = [
   { titulo: 'Toque de campana', detalle: 'La presidencia da apertura oficial a la sesión.' },
@@ -150,9 +155,9 @@ export const ORDEN_DIA = [
 ];
 // El orden del día que usa un club: el de su distrito (si el distrito lo editó) o el sugerido
 export async function ordenDelDia(env, bid) {
-  const { codigo, es_distrito } = await distritoDe(env, bid);
+  const { codigo, es_distrito, programa: prog } = await distritoDe(env, bid);
   const r = await one(env, es_distrito ? 'SELECT orden_dia FROM ro_club_config WHERE business_id = ?' : `SELECT k.orden_dia FROM ro_club_config k JOIN businesses b ON b.id = k.business_id
-    WHERE k.es_distrito = 1 AND COALESCE(k.distrito, ?) = ? AND k.orden_dia IS NOT NULL AND b.archived_at IS NULL ORDER BY k.updated_at DESC LIMIT 1`, ...(es_distrito ? [bid] : [env.DISTRITO_DEFECTO || '4271', codigo]));
+    WHERE k.es_distrito = 1 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ? AND k.orden_dia IS NOT NULL AND b.archived_at IS NULL ORDER BY k.updated_at DESC LIMIT 1`, ...(es_distrito ? [bid] : [env.DISTRITO_DEFECTO || '4271', codigo, prog]));
   try { const l = JSON.parse(r?.orden_dia || 'null'); if (Array.isArray(l) && l.length) return { items: l, origen: 'distrito', codigo }; } catch (_) { /* el sugerido */ }
   return { items: ORDEN_DIA, origen: 'sugerido', codigo };
 }
@@ -161,7 +166,7 @@ export async function ordenDelDia(env, bid) {
 export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid))?.n || 0;
 // Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.
 export async function obligacionesClub(env, bid, { anio = null } = {}) {
-  const { codigo } = await distritoDe(env, bid);
+  const { clave: codigo } = await distritoDe(env, bid);
   const [cuotas, n, pagos] = await Promise.all([
     all(env, `SELECT id, nombre, tipo, valor_socio, vence, anio, notas FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
     sociosQueCuentan(env, bid),

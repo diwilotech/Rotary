@@ -18,7 +18,7 @@ export async function distritoOError(c) {
 
 export async function clubDelDistrito(c, id) {
   const d = await distritoOError(c);
-  const club = (await clubesDelDistrito(c.env, d.codigo)).find((x) => x.id === id);
+  const club = (await clubesDelDistrito(c.env, d.codigo, d.programa)).find((x) => x.id === id);
   if (!club) throw new HttpError(404, 'Club no encontrado en este distrito');
   return { d, club };
 }
@@ -29,7 +29,7 @@ export function routes(r) {
   r.get('/api/distrito/tablero', 'tenant', async (c) => {
     const d = await distritoOError(c);
     const anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today()), meses = mesesDelAnio(anio), rango = [`${meses[0]}-01`, `${anio + 1}-07-01`];
-    const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id), P = enDistrito(c.env, d.codigo);
+    const clubes = await clubesDelDistrito(c.env, d.codigo, d.programa), ids = clubes.map((x) => x.id), P = enDistrito(c.env, d.codigo, d.programa);
     const [soc, asis, proy, movs, cats, reus] = ids.length ? await Promise.all([
       all(c.env, `SELECT business_id, SUM(estado = 'activo' AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activos, SUM(estado = 'activo' AND activado_at IS NOT NULL AND (tipo_membresia IN ('socio', 'honorario') OR (cargo IS NOT NULL AND cargo <> ''))) activados, SUM(estado = 'aspirante') aspirantes FROM ro_socios WHERE ${EN_DISTRITO} GROUP BY business_id`, ...P),
       all(c.env, `SELECT a.business_id, SUM(a.presente = 1) presentes, COUNT(*) marcas FROM ro_asistencia a JOIN ro_reuniones r ON r.id = a.reunion_id AND r.business_id = a.business_id
@@ -60,7 +60,7 @@ export function routes(r) {
         distrital_total: obl.reduce((t, o) => t + o.total, 0), distrital_pagado: obl.reduce((t, o) => t + Math.min(o.pagado, o.total), 0) });
     }
     const suma = (k) => filas.reduce((t, x) => t + (x[k] || 0), 0);
-    return json({ codigo: d.codigo, anio, nombre_anio: `${anio}-${anio + 1}`, clubes: filas,
+    return json({ codigo: d.codigo, programa: d.programa, anio, nombre_anio: `${anio}-${anio + 1}`, clubes: filas,
       totales: { clubes: filas.length, socios: suma('socios'), activados: suma('activados'), beneficiados: suma('beneficiados'), horas: suma('horas'), proyectos: suma('en_curso'),
         distrital_total: suma('distrital_total'), distrital_pagado: suma('distrital_pagado'),
         asistencia: (() => { const v = filas.filter((x) => x.asistencia != null); return v.length ? Math.round(v.reduce((t, x) => t + x.asistencia, 0) / v.length) : null; })() },
@@ -105,11 +105,11 @@ export function routes(r) {
   };
   r.get('/api/distrito/cuotas', 'tenant', async (c) => {
     const d = await distritoOError(c);
-    const cuotas = await all(c.env, 'SELECT * FROM ro_cuota_distrital WHERE distrito = ? ORDER BY vence DESC', d.codigo);
-    const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id);
+    const cuotas = await all(c.env, 'SELECT * FROM ro_cuota_distrital WHERE distrito = ? ORDER BY vence DESC', d.clave);
+    const clubes = await clubesDelDistrito(c.env, d.codigo, d.programa), ids = clubes.map((x) => x.id);
     const [pag, soc] = ids.length ? await Promise.all([
-      all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...enDistrito(c.env, d.codigo)),
-      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...enDistrito(c.env, d.codigo)),
+      all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...enDistrito(c.env, d.codigo, d.programa)),
+      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...enDistrito(c.env, d.codigo, d.programa)),
     ]) : [[], []];
     return json({ codigo: d.codigo, rows: cuotas.map((q) => {
       const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = q.tipo === 'por_club' ? q.valor_socio : n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;
@@ -120,13 +120,13 @@ export function routes(r) {
   r.post('/api/distrito/cuotas', 'manager', async (c) => {
     const d = await distritoOError(c), o = campos(await readJson(c.req)), t = Date.now();
     const x = await c.env.DB.prepare('INSERT INTO ro_cuota_distrital (business_id, distrito, nombre, tipo, valor_socio, vence, anio, notas, creado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, d.codigo, o.nombre, o.tipo, o.valor_socio, o.vence, o.anio, o.notas || null, c.session.user_id, t, t).run();
+      .bind(c.businessId, d.clave, o.nombre, o.tipo, o.valor_socio, o.vence, o.anio, o.notas || null, c.session.user_id, t, t).run();
     await audit(c, `Creó la cuota distrital «${o.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...o }, 201);
   });
   r.patch('/api/distrito/cuotas/:id', 'manager', async (c) => {
     const d = await distritoOError(c), o = campos(await readJson(c.req), true);
-    const q = await one(c.env, 'SELECT id FROM ro_cuota_distrital WHERE id = ? AND distrito = ? AND business_id = ?', Number(c.params.id), d.codigo, c.businessId);
+    const q = await one(c.env, 'SELECT id FROM ro_cuota_distrital WHERE id = ? AND distrito = ? AND business_id = ?', Number(c.params.id), d.clave, c.businessId);
     if (!q) throw new HttpError(404, 'Cuota no encontrada');
     const ks = Object.keys(o);
     if (ks.length) await c.env.DB.prepare(`UPDATE ro_cuota_distrital SET ${ks.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).bind(...ks.map((k) => o[k]), Date.now(), q.id).run();
@@ -134,7 +134,7 @@ export function routes(r) {
   });
   r.delete('/api/distrito/cuotas/:id', 'manager', async (c) => {
     const d = await distritoOError(c);
-    const q = await one(c.env, 'SELECT id, nombre FROM ro_cuota_distrital WHERE id = ? AND distrito = ? AND business_id = ?', Number(c.params.id), d.codigo, c.businessId);
+    const q = await one(c.env, 'SELECT id, nombre FROM ro_cuota_distrital WHERE id = ? AND distrito = ? AND business_id = ?', Number(c.params.id), d.clave, c.businessId);
     if (!q) throw new HttpError(404, 'Cuota no encontrada');
     if (await one(c.env, 'SELECT 1 FROM ro_movimientos WHERE distrital_id = ? LIMIT 1', q.id)) throw new HttpError(409, 'Algún club ya pagó esta cuota: no se puede borrar');
     await c.env.DB.prepare('DELETE FROM ro_cuota_distrital WHERE id = ?').bind(q.id).run();

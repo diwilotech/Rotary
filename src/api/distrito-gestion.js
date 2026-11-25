@@ -16,13 +16,13 @@ const DIWILO_WA = '573053840193';
 export const INDICADORES = ['clubes', 'socios', 'activados', 'proyectos', 'beneficiados', 'horas', 'asistencia', 'distrital'];
 const ESTADOS_SOL = ['pendiente', 'creado', 'descartado'];
 
-const mensajeSolicitud = (d, s) => [`Solicitud de club nuevo · Distrito ${d.codigo}`, `Club: ${s.nombre}`, `Programa: ${PROGRAMAS[s.programa]?.nombre || s.programa}`,
+const mensajeSolicitud = (d, s) => [`Solicitud de club nuevo · Distrito ${PROGRAMAS[d.programa]?.nombre || ''} ${d.codigo}`, `Club: ${s.nombre}`, `Programa: ${PROGRAMAS[s.programa]?.nombre || s.programa}`,
   s.ciudad ? `Ciudad: ${s.ciudad}` : '', s.presidente ? `Presidencia: ${s.presidente}` : '', s.correo ? `Correo: ${s.correo}` : '', s.telefono ? `Teléfono: ${s.telefono}` : '',
   s.notas ? `Notas: ${s.notas}` : ''].filter(Boolean).join('\n');
 const waDe = (d, s) => `https://wa.me/${DIWILO_WA}?text=${encodeURIComponent(mensajeSolicitud(d, s))}`;
 
 async function bonoOr404(c, d, id) {
-  const b = await one(c.env, 'SELECT * FROM ro_bonos WHERE id = ? AND distrito = ? AND business_id = ?', Number(id), d.codigo, c.businessId);
+  const b = await one(c.env, 'SELECT * FROM ro_bonos WHERE id = ? AND distrito = ? AND business_id = ?', Number(id), d.clave, c.businessId);
   if (!b) throw new HttpError(404, 'Bono no encontrado');
   return b;
 }
@@ -31,7 +31,7 @@ export function routes(r) {
   /* ---------- Clubes nuevos y quitar clubes ---------- */
   r.get('/api/distrito/solicitudes', 'tenant', async (c) => {
     const d = await distritoOError(c);
-    const rows = await all(c.env, 'SELECT * FROM ro_distrito_solicitudes WHERE distrito = ? AND business_id = ? ORDER BY created_at DESC LIMIT 100', d.codigo, c.businessId);
+    const rows = await all(c.env, 'SELECT * FROM ro_distrito_solicitudes WHERE distrito = ? AND business_id = ? ORDER BY created_at DESC LIMIT 100', d.clave, c.businessId);
     return json({ rows: rows.map((s) => ({ ...s, whatsapp: waDe(d, s) })) });
   });
   r.post('/api/distrito/solicitudes', 'manager', async (c) => {
@@ -40,14 +40,14 @@ export function routes(r) {
       presidente: cast('presidente', 'text', b.presidente), correo: b.correo ? cast('correo', 'email', b.correo) : null, telefono: cast('telefono', 'text', b.telefono), notas: cast('notas', 'long', b.notas) };
     if (!s.nombre) throw new HttpError(400, 'Escribe el nombre del club');
     const x = await c.env.DB.prepare(`INSERT INTO ro_distrito_solicitudes (business_id, distrito, nombre, programa, ciudad, presidente, correo, telefono, notas, creado_por, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(c.businessId, d.codigo, s.nombre, s.programa, s.ciudad, s.presidente, s.correo, s.telefono, s.notas, c.session.user_id, t, t).run();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(c.businessId, d.clave, s.nombre, s.programa, s.ciudad, s.presidente, s.correo, s.telefono, s.notas, c.session.user_id, t, t).run();
     await audit(c, `Solicitó el club nuevo «${s.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...s, estado: 'pendiente', whatsapp: waDe(d, s) }, 201);
   });
   r.patch('/api/distrito/solicitudes/:id', 'manager', async (c) => {
     const d = await distritoOError(c), b = await readJson(c.req), estado = cast('estado', ESTADOS_SOL, b.estado);
     const x = await c.env.DB.prepare('UPDATE ro_distrito_solicitudes SET estado = ?, updated_at = ? WHERE id = ? AND distrito = ? AND business_id = ?')
-      .bind(estado, Date.now(), Number(c.params.id), d.codigo, c.businessId).run();
+      .bind(estado, Date.now(), Number(c.params.id), d.clave, c.businessId).run();
     if (!x.meta.changes) throw new HttpError(404, 'Solicitud no encontrada');
     return json({ ok: true });
   });
@@ -70,8 +70,8 @@ export function routes(r) {
   };
   r.get('/api/distrito/bonos', 'tenant', async (c) => {
     const d = await distritoOError(c);
-    const [bonos, clubes] = await Promise.all([all(c.env, 'SELECT * FROM ro_bonos WHERE distrito = ? AND business_id = ? ORDER BY created_at DESC', d.codigo, c.businessId), clubesDelDistrito(c.env, d.codigo)]);
-    const asig = bonos.length ? await all(c.env, `SELECT * FROM ro_bonos_clubes WHERE bono_id IN (SELECT id FROM ro_bonos WHERE distrito = ? AND business_id = ?)`, d.codigo, c.businessId) : [];
+    const [bonos, clubes] = await Promise.all([all(c.env, 'SELECT * FROM ro_bonos WHERE distrito = ? AND business_id = ? ORDER BY created_at DESC', d.clave, c.businessId), clubesDelDistrito(c.env, d.codigo, d.programa)]);
+    const asig = bonos.length ? await all(c.env, `SELECT * FROM ro_bonos_clubes WHERE bono_id IN (SELECT id FROM ro_bonos WHERE distrito = ? AND business_id = ?)`, d.clave, c.businessId) : [];
     return json({ rows: bonos.map((b) => {
       const por = clubes.map((k) => { const a = asig.find((x) => x.bono_id === b.id && x.club_id === k.id) || {}; const asignados = a.asignados || 0, total = asignados * b.valor;
         return { club_id: k.id, club: k.name, asignados, vendidos: a.vendidos || 0, pagado: a.pagado || 0, total, saldo: Math.max(0, total - (a.pagado || 0)) }; });
@@ -82,7 +82,7 @@ export function routes(r) {
   r.post('/api/distrito/bonos', 'manager', async (c) => {
     const d = await distritoOError(c), o = camposBono(await readJson(c.req)), t = Date.now();
     const x = await c.env.DB.prepare('INSERT INTO ro_bonos (business_id, distrito, nombre, valor, vence, notas, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, d.codigo, o.nombre, o.valor, o.vence || null, o.notas || null, t, t).run();
+      .bind(c.businessId, d.clave, o.nombre, o.valor, o.vence || null, o.notas || null, t, t).run();
     await audit(c, `Creó el bono «${o.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...o }, 201);
   });
@@ -110,7 +110,7 @@ export function routes(r) {
   });
   // Lado del club: sus bonos (solo lectura; los registra el distrito)
   r.get('/api/club/bonos', 'tenant', async (c) => {
-    const { codigo } = await distritoDe(c.env, c.businessId);
+    const { clave: codigo } = await distritoDe(c.env, c.businessId);
     const rows = await all(c.env, `SELECT b.id, b.nombre, b.valor, b.vence, b.notas, x.asignados, x.vendidos, x.pagado FROM ro_bonos_clubes x JOIN ro_bonos b ON b.id = x.bono_id
       WHERE x.club_id = ? AND b.distrito = ? AND x.asignados > 0 ORDER BY b.created_at DESC`, c.businessId, codigo);
     return json({ rows: rows.map((b) => ({ ...b, total: b.asignados * b.valor, saldo: Math.max(0, b.asignados * b.valor - b.pagado) })) });
@@ -119,7 +119,7 @@ export function routes(r) {
   /* ---------- Metas del año rotario ---------- */
   r.get('/api/distrito/metas', 'tenant', async (c) => {
     const d = await distritoOError(c), anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
-    const rows = await all(c.env, 'SELECT indicador, meta FROM ro_distrito_metas WHERE distrito = ? AND anio = ?', d.codigo, anio);
+    const rows = await all(c.env, 'SELECT indicador, meta FROM ro_distrito_metas WHERE distrito = ? AND anio = ?', d.clave, anio);
     return json({ anio, metas: Object.fromEntries(rows.map((x) => [x.indicador, x.meta])) });
   });
   r.put('/api/distrito/metas', 'manager', async (c) => {
@@ -129,8 +129,8 @@ export function routes(r) {
     for (const k of INDICADORES) {
       if (!(k in (b.metas || {}))) continue;
       const v = b.metas[k] === '' || b.metas[k] == null ? null : cast(k, 'money', b.metas[k]);
-      st.push(v ? c.env.DB.prepare('INSERT INTO ro_distrito_metas (distrito, anio, indicador, meta, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(distrito, anio, indicador) DO UPDATE SET meta = excluded.meta, updated_at = excluded.updated_at').bind(d.codigo, anio, k, v, Date.now())
-        : c.env.DB.prepare('DELETE FROM ro_distrito_metas WHERE distrito = ? AND anio = ? AND indicador = ?').bind(d.codigo, anio, k));
+      st.push(v ? c.env.DB.prepare('INSERT INTO ro_distrito_metas (distrito, anio, indicador, meta, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(distrito, anio, indicador) DO UPDATE SET meta = excluded.meta, updated_at = excluded.updated_at').bind(d.clave, anio, k, v, Date.now())
+        : c.env.DB.prepare('DELETE FROM ro_distrito_metas WHERE distrito = ? AND anio = ? AND indicador = ?').bind(d.clave, anio, k));
     }
     if (st.length) await c.env.DB.batch(st);
     await audit(c, `Cambió las metas del distrito ${anio}-${anio + 1}`, { modulo: 'distrito' });

@@ -12,7 +12,7 @@ DW.ready.then(async (me) => {
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
   let tab = ['anio', 'metas', 'cuotas', 'bonos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
-  document.querySelector('[data-h1]').textContent = `Distrito ${me.distrito.codigo}`;
+  document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
   RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
@@ -53,7 +53,7 @@ DW.ready.then(async (me) => {
     const out = await C.form({ title: 'Solicitar club nuevo', fields: [{ k: 'nombre', label: 'Nombre del club', type: 'text', required: true, full: true, placeholder: 'Rotaract Club de Envigado' },
       { k: 'programa', label: 'Programa', type: 'select', options: [['rotary', 'Rotary'], ['rotaract', 'Rotaract'], ['interact', 'Interact']] }, { k: 'ciudad', label: 'Ciudad', type: 'text' },
       { k: 'presidente', label: 'Presidencia (quien lo administrará)', type: 'text' }, { k: 'correo', label: 'Correo de la presidencia', type: 'email' }, { k: 'telefono', label: 'Teléfono', type: 'text' },
-      { k: 'notas', label: 'Notas', type: 'long' }], values: { programa: 'rotaract' }, okText: 'Solicitar' });
+      { k: 'notas', label: 'Notas', type: 'long' }], values: { programa: me.distrito.programa || 'rotaract' }, okText: 'Solicitar' });
     if (!out) return;
     try { const r = await api('/api/distrito/solicitudes', { method: 'POST', body: out }); window.open(r.whatsapp, '_blank', 'noopener'); toast('Solicitud guardada: envíala por WhatsApp a Diwilo'); pintarClubes(); } catch (x) { toast(x.message, false); }
   }

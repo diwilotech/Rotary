@@ -51,7 +51,7 @@ export function routes(r) {
       for (const m of malos) alerta(`«${m.nombre}» está finalizado pero tiene tareas abiertas`, `/staff/impacto.html#p=${m.id}`);
     }
     // Bonos que el distrito le asignó al club y aún no paga completos
-    const { codigo } = await distritoDe(c.env, bid);
+    const { clave: codigo } = await distritoDe(c.env, bid);
     const bn = await one(c.env, `SELECT SUM(x.asignados * b.valor - x.pagado) saldo, COUNT(*) n FROM ro_bonos_clubes x JOIN ro_bonos b ON b.id = x.bono_id
       WHERE x.club_id = ? AND b.distrito = ? AND x.asignados * b.valor > x.pagado`, bid, codigo);
     if (bn?.n) alerta(`Bonos del distrito: ${bn.n} por pagar ($${Number(bn.saldo).toLocaleString('es-CO')})`, '#bonos', 'info');
@@ -68,12 +68,12 @@ export function routes(r) {
     const add = (tipo, fecha, titulo, extra = {}) => items.push({ tipo, fecha, titulo, ...extra });
 
     if (d.es_distrito) {
-      const clubes = await clubesDelDistrito(c.env, d.codigo), ids = clubes.map((x) => x.id);
+      const clubes = await clubesDelDistrito(c.env, d.codigo, d.programa), ids = clubes.map((x) => x.id);
       if (ids.length) {
-        const ev = await all(c.env, `SELECT business_id, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE ${EN_DISTRITO} AND tipo = 'evento' AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?`, ...enDistrito(c.env, d.codigo), desde, hasta);
+        const ev = await all(c.env, `SELECT business_id, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE ${EN_DISTRITO} AND tipo = 'evento' AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?`, ...enDistrito(c.env, d.codigo, d.programa), desde, hasta);
         for (const e of ev) add('evento', e.fecha, e.titulo, { hora: e.hora_ini, lugar: e.lugar, club: clubes.find((k) => k.id === e.business_id)?.name, ruta: '/staff/distrito.html' });
       }
-      for (const q of await all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.codigo, desde, hasta)) add('distrital', q.vence, `Vence: ${q.nombre}`, { ruta: '/staff/distrito.html#cuotas' });
+      for (const q of await all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.clave, desde, hasta)) add('distrital', q.vence, `Vence: ${q.nombre}`, { ruta: '/staff/distrito.html#cuotas' });
       return json({ desde, hasta, distrito: d.codigo, rows: items.sort((a, b) => a.fecha.localeCompare(b.fecha)) });
     }
 
@@ -99,7 +99,7 @@ export function routes(r) {
       })));
     if (mods.has('cuotas')) q.push(all(c.env, 'SELECT nombre, vence FROM ro_periodos WHERE business_id = ? AND vence BETWEEN ? AND ?', bid, desde, hasta)
       .then((rs) => rs.forEach((x) => add('cuota', x.vence, `Vence la cuota de ${x.nombre}`, { ruta: '/staff/cuotas.html' }))));
-    if (mods.has('cajas')) q.push(all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.codigo, desde, hasta)
+    if (mods.has('cajas')) q.push(all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.clave, desde, hasta)
       .then((rs) => rs.forEach((x) => add('distrital', x.vence, `Cuota distrital: ${x.nombre}`, { ruta: '/staff/cajas.html#menor' }))));
     await Promise.all(q);
     return json({ desde, hasta, rows: items.sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.hora || '').localeCompare(String(b.hora || ''))) });

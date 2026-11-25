@@ -3,7 +3,7 @@
 Responde en español. Modo económico: sin capturas salvo que se pidan; de las pruebas mostrar solo el resumen. Ver también `AGENTS.md`.
 
 ## Qué es
-App `cdrotaract` (cdrotaract.diwilo.com) para clubes Rotaract. Cloudflare Workers + D1 `control-de-rotaract-db` + R2 `cdrotaract-files`, JS sin framework, Bootstrap.
+App `cdrotaract` = «CD Rotary» (rotary.diwilo.com; cdrotaract.diwilo.com sigue) para clubes Rotary, Rotaract e Interact. Cloudflare Workers + D1 `control-de-rotaract-db` + R2 `cdrotaract-files`, JS sin framework, Bootstrap.
 Partió de CD Academia (misma base: shell, login, panel con marco, contrato con Diwilo). Repo previsto: diwilotech/cdrotaract.
 
 ## Mapa
@@ -36,6 +36,7 @@ Partió de CD Academia (misma base: shell, login, panel con marco, contrato con 
 
 - **Programa del club** (migración 0026, `ro_club_config.programa`: rotary | rotaract | interact, los viejos = rotaract): `PROGRAMAS`/`programaDe` en rotaract.js. Cambia textos, certificado de organización y logo oficial (solo Rotaract tiene archivos en `img/marca/`; los demás usan el nombre). Se elige en Socios → Certificados → «Datos del club» (con ID de Rotary, país, distrito y zona; el distrito va en `ro_club_config.distrito`). `/api/me` → `distrito.programa`. Nombre visible de la app: «CD Rotary» (el slug sigue `cdrotaract`).
 - Gestión del distrito (migración 0027, `src/api/distrito-gestion.js`): **solicitar club nuevo** (`ro_distrito_solicitudes`; lo crea Diwilo en su admin, la solicitud sale por WhatsApp a Diwilo), **quitar del distrito** (`ro_club_config.distrito = '0'`; el club vuelve escribiendo el código en Datos del club), **cuota de representación** (`ro_cuota_distrital.tipo = 'por_club'`: valor fijo por club; `por_socio` = la de siempre), **bonos** (`ro_bonos` + `ro_bonos_clubes`: asignados/vendidos/pagado por club, los registra el distrito; el club los ve en Inicio y recibe aviso) y **metas** del año rotario (`ro_distrito_metas`, avance con los totales del tablero).
+- **Tres distritos por código, uno por programa** (Distrito Rotary/Rotaract/Interact 4271): el negocio del distrito lleva `es_distrito = 1` + `programa`, y solo ve los clubes de su programa (`clubesDelDistrito(env, codigo, programa)`, `EN_DISTRITO` con 3 parámetros). En las tablas el distrito se identifica con `clave` (`claveDistrito`: Rotaract = el código solo, como los datos viejos; los demás `programa:código`).
 - Distrito → Clubes: filtro por programa y semáforo de avance por club (`avance` 0-100 + `falta`: activación, cuotas, cuota distrital, asistencia 90 días, proyectos en curso).
 
 ## Comandos

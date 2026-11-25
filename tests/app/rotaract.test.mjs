@@ -309,10 +309,12 @@ export default async function ({ check, newBusiness, newMember }) {
   const obr = (await A.app('/api/cajas/proyectado')).data.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito')?.cuotas_distritales.find((o) => o.id === qr.data.id);
   check('Distrito: la cuota de representación es un valor fijo por club', qr.status === 201 && obr?.total === vr, JSON.stringify(obr));
   const dc = await A.app('/api/socios/club', { method: 'PUT', body: { numero: '12237', pais: 'Colombia', distrito: '4271', zona: '25', programa: 'rotary' } });
-  const tab2 = (await D.app('/api/distrito/tablero')).data, ka = tab2.clubes.find((k) => k.id === A.id);
-  check('Datos del club: ID de Rotary, zona y programa; el distrito ve el programa y el avance', dc.status === 200 && dc.data.numero === '12237' && dc.data.zona === '25' && dc.data.programa === 'rotary' && ka?.programa === 'rotary' && ka.avance >= 0 && ka.avance <= 100 && Array.isArray(ka.falta), JSON.stringify(ka));
+  check('Datos del club: ID de Rotary, zona y programa; si pasa a Rotary sale del Distrito Rotaract', dc.status === 200 && dc.data.numero === '12237' && dc.data.zona === '25' && dc.data.programa === 'rotary'
+    && !(await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === A.id));
   check('Datos del club: programa inventado se rechaza (400)', (await A.app('/api/socios/club', { method: 'PUT', body: { programa: 'otro' } })).status === 400);
   await A.app('/api/socios/club', { method: 'PUT', body: { programa: 'rotaract' } });
+  const tab2 = (await D.app('/api/distrito/tablero')).data, ka = tab2.clubes.find((k) => k.id === A.id);
+  check('Distrito: avance del club (semáforo) y lo que le falta', ka?.programa === 'rotaract' && ka.avance >= 0 && ka.avance <= 100 && Array.isArray(ka.falta), JSON.stringify(ka));
   const so = await D.app('/api/distrito/solicitudes', { method: 'POST', body: { nombre: 'Interact Club Prueba', programa: 'interact', presidente: 'Ana' } });
   check('Distrito: solicita un club nuevo (sale por WhatsApp a Diwilo) y un club no puede', so.status === 201 && so.data.whatsapp.startsWith('https://wa.me/') && (await D.app('/api/distrito/solicitudes')).data.rows.some((x) => x.id === so.data.id)
     && (await A.app('/api/distrito/solicitudes', { method: 'POST', body: { nombre: 'x' } })).status === 403);
@@ -328,6 +330,18 @@ export default async function ({ check, newBusiness, newMember }) {
   const mt = await D.app('/api/distrito/metas', { method: 'PUT', body: { anio: tab2.anio, metas: { socios: 500, clubes: 40, horas: '' } } });
   const mg = (await D.app(`/api/distrito/metas?anio=${tab2.anio}`)).data.metas;
   check('Distrito: metas del año rotario', mt.status === 200 && mg.socios === 500 && mg.clubes === 40 && !('horas' in mg), JSON.stringify(mg));
+  // Tres distritos por código, uno por programa: el Distrito Rotary 4271 no ve los clubes Rotaract ni les cobra
+  const DR = await newBusiness('Distrito Rotary 4271', { login: true });
+  sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, es_distrito, programa) VALUES ('${DR.id}', '4271', 1, 'rotary')`);
+  const R1 = await newBusiness('Club Rotario Prueba', { login: true });
+  sql(`INSERT OR REPLACE INTO ro_club_config (business_id, distrito, programa) VALUES ('${R1.id}', '4271', 'rotary')`);
+  const tR = (await DR.app('/api/distrito/tablero')).data, tA = (await D.app('/api/distrito/tablero')).data;
+  check('Distrito por programa: el Rotary ve sus clubes rotarios y no los Rotaract; el Rotaract no ve los rotarios', tR.clubes.some((k) => k.id === R1.id) && !tR.clubes.some((k) => k.id === A.id) && tA.clubes.some((k) => k.id === A.id) && !tA.clubes.some((k) => k.id === R1.id), JSON.stringify(tR.clubes?.map((k) => k.nombre)));
+  const qR = await DR.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota Rotary prueba', tipo: 'por_club', valor_socio: 77000, vence } });
+  const oblA = (await A.app('/api/cajas/proyectado')).data.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito')?.cuotas_distritales || [];
+  check('Distrito por programa: la cuota del Distrito Rotary no le llega a un club Rotaract ni el Rotaract la ve', qR.status === 201 && !oblA.some((o) => o.id === qR.data.id) && !(await D.app('/api/distrito/cuotas')).data.rows.some((q) => q.id === qR.data.id)
+    && (await DR.app('/api/distrito/cuotas')).data.rows.some((q) => q.id === qR.data.id));
+  check('Distrito por programa: el Rotary no entra al detalle de un club Rotaract (404)', (await DR.app(`/api/distrito/clubes/${A.id}`)).status === 404);
   const E = await newBusiness('Club para quitar', { login: true });
   check('Distrito: el club nuevo aparece en su lista', (await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id));
   const qe = await D.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' });
@@ -400,7 +414,7 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Bingo: cada quien su cartón (centro libre); solo el anfitrión canta; cantar bingo sin tenerlo resta', bA.juego.carton.length === 25 && bA.juego.carton[12] === null && JSON.stringify(bA.juego.carton) !== JSON.stringify(bS.juego.carton)
     && !('cartones' in bA.juego) && !('bolsa' in bA.juego) && cantaS.status === 400 && falsa.puntos[falsa.yo] === -2, `${cantaS.status}`);
   const finB = await juegaBingo(sb.sala.id);
-  check('Bingo: la partida termina con ¡Bingo! validado por el servidor y suma puntos', finB.sala.estado === 'terminada' && finB.fin?.ganador && (finB.puntos[finB.fin.ganador] || 0) >= 25, JSON.stringify(finB.fin));
+  check('Bingo: la partida termina con ¡Bingo! validado por el servidor y suma puntos', finB.sala.estado === 'terminada' && finB.fin?.ganador && (finB.puntos[finB.fin.ganador] || 0) >= 23, JSON.stringify(finB.fin));   // +25 del bingo; si el ganador es quien cantó el falso, −2
 
   // Retos del distrito y ranking entre clubes
   const retoMal = await A.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: 'x', desde: hoy, hasta: hoy } });

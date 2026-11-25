@@ -58,7 +58,7 @@ const claveBase = (juego, d) => `b:${plano(TIPOS[juego].texto(d))}`;
 export async function negocioDistrito(env, bid) {
   const d = await distritoDe(env, bid);
   if (d.es_distrito) return { id: bid, codigo: d.codigo, soyDistrito: true };
-  const x = await one(env, "SELECT k.business_id id FROM ro_club_config k JOIN businesses b ON b.id = k.business_id WHERE k.es_distrito = 1 AND k.distrito = ? AND b.archived_at IS NULL ORDER BY k.rowid DESC LIMIT 1", d.codigo);
+  const x = await one(env, "SELECT k.business_id id FROM ro_club_config k JOIN businesses b ON b.id = k.business_id WHERE k.es_distrito = 1 AND k.distrito = ? AND COALESCE(k.programa, 'rotaract') = ? AND b.archived_at IS NULL ORDER BY k.rowid DESC LIMIT 1", d.codigo, d.programa);
   return { id: x?.id || null, codigo: d.codigo, soyDistrito: false };
 }
 

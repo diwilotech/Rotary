@@ -170,7 +170,7 @@ export function routes(r) {
 
   r.post('/api/cajas/distrital/:id/pagar', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req);
-    const { codigo } = await distritoDe(c.env, c.businessId);
+    const { clave: codigo } = await distritoDe(c.env, c.businessId);
     const q = await one(c.env, 'SELECT id, nombre FROM ro_cuota_distrital WHERE id = ? AND distrito = ?', Number(c.params.id), codigo);
     if (!q) throw new HttpError(404, 'Cuota distrital no encontrada');
     const monto = cast('monto', 'money', b.monto), fecha = cast('fecha', 'date', b.fecha || today());

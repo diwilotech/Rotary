@@ -1,4 +1,4 @@
-// CD Rotaract (cdrotaract.diwilo.com). Partió de CD Rotaract (Plantilla App Diwilo).
+// CD Rotary (rotary.diwilo.com; también cdrotaract.diwilo.com). Partió de CD Rotaract (Plantilla App Diwilo).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cdrotaract",
@@ -10,7 +10,7 @@
   // Solo se publica en su dominio. Diwilo Web la administra por service binding (RPC), sin pasar por internet.
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "cdrotaract.diwilo.com", "custom_domain": true }],
+  "routes": [{ "pattern": "rotary.diwilo.com", "custom_domain": true }, { "pattern": "cdrotaract.diwilo.com", "custom_domain": true }],   // rotary = principal; cdrotaract sigue para enlaces viejos
 
   // Conserva las variables cargadas en el dashboard en cada deploy.
   "keep_vars": true,
