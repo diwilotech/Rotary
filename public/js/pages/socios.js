@@ -201,7 +201,8 @@ DW.ready.then(async (me) => {
       }
       if (e.target.closest('[data-cclub]')) {
         const actual = await api('/api/socios/club').catch(() => ({}));
-        const out = await C.form({ title: 'Datos del club', fields: [{ k: 'numero', label: 'Número del club (Rotary)', type: 'text' }, { k: 'fundado', label: 'Fecha de fundación', type: 'date' },
+        const out = await C.form({ title: 'Datos del club', fields: [{ k: 'numero', label: 'ID del club en Rotary', type: 'text', placeholder: '12237' }, { k: 'fundado', label: 'Fecha de fundación', type: 'date' },
+          { k: 'pais', label: 'País', type: 'text' }, { k: 'distrito', label: 'Distrito', type: 'text', placeholder: '4271' }, { k: 'zona', label: 'Zona', type: 'text', placeholder: '25' },
           { k: 'patrocinador', label: 'Club rotario patrocinador', type: 'text', full: true, placeholder: 'Club Rotario de Medellín' }, { k: 'presidente_patrocinador', label: 'Presidencia del club patrocinador', type: 'text', full: true }], values: actual, okText: 'Guardar' });
         if (!out) return;
         try { await api('/api/socios/club', { method: 'PUT', body: out }); toast('Datos del club guardados'); window.open('/api/socios/club/certificado', '_blank', 'noopener'); } catch (x) { toast(x.message, false); }

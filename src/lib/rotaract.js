@@ -346,7 +346,7 @@ export async function certificadoClubHtml(c, k) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId), club = biz?.name || 'Club Rotaract';
   const [pres] = await firmasJunta(c, k.fundado || null);
   return hojaCertificado(c, { titulo: 'Certificado de organización', otorga: 'Se certifica que', nombre: club,
-    detalle: [k.numero ? `Club No. ${k.numero}` : '', k.fundado ? `Fundado el ${fechaLarga(k.fundado)}` : ''].filter(Boolean).join(' · '),
+    detalle: [k.numero ? `Club No. ${k.numero}` : '', k.distrito ? `Distrito ${k.distrito}` : '', k.fundado ? `Fundado el ${fechaLarga(k.fundado)}` : ''].filter(Boolean).join(' · '),
     cuerpo: `El club ha sido debidamente organizado y se compromete, mediante sus funcionarios y socios, a cumplir con los Estatutos y el Reglamento del programa Rotaract de Rotary International.${k.patrocinador ? `<br><br>Patrocinado por<br><span style="font:500 15pt 'Cormorant Garamond',Georgia,serif;color:#1d2433">${esc(k.patrocinador)}</span>` : ''}`,
     firmas: [{ nombre: k.presidente_patrocinador || '', rol: 'Presidencia del club rotario patrocinador', fecha: k.fundado || null }, { ...pres, fecha: k.fundado || null }] });
 }

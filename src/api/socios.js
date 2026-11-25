@@ -142,15 +142,20 @@ export function routes(r) {
     return x.meta.last_row_id;
   };
   // Datos del club para su certificado de organización (número, fundación, club rotario patrocinador): en ro_club_config.kit
-  const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit FROM ro_club_config WHERE business_id = ?', c.businessId); try { return JSON.parse(r?.kit || '{}').club || {}; } catch (_) { return {}; } };
+  // El distrito vive en su columna (con él el distrito agrupa a sus clubes); país y zona van con los demás datos en kit.club
+  const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit, distrito FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}').club || {}; } catch (_) { k = {}; }
+    return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito || c.env.DISTRITO_DEFECTO || '4271' }; };
   r.get('/api/socios/club', `manager:${MOD}`, async (c) => json(await datosClub(c)));
   r.put('/api/socios/club', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req), d = { numero: cast('numero', 'text', b.numero), fundado: b.fundado ? cast('fundado', 'date', b.fundado) : null,
-      patrocinador: cast('patrocinador', 'text', b.patrocinador), presidente_patrocinador: cast('presidente_patrocinador', 'text', b.presidente_patrocinador) };
+      patrocinador: cast('patrocinador', 'text', b.patrocinador), presidente_patrocinador: cast('presidente_patrocinador', 'text', b.presidente_patrocinador),
+      pais: cast('pais', 'text', b.pais), zona: cast('zona', 'text', b.zona) };
+    const distrito = String(b.distrito ?? '').trim();
+    if (distrito && !/^\d{3,5}$/.test(distrito)) throw new HttpError(400, 'El distrito es un número (por ejemplo 4271)');
     const r = await one(c.env, 'SELECT kit FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}'); } catch (_) { k = {}; }
-    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, kit, updated_at) VALUES (?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET kit = excluded.kit, updated_at = excluded.updated_at')
-      .bind(c.businessId, JSON.stringify({ ...k, club: d }), Date.now()).run();
-    return json(d);
+    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, kit, distrito, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET kit = excluded.kit, distrito = COALESCE(excluded.distrito, ro_club_config.distrito), updated_at = excluded.updated_at')
+      .bind(c.businessId, JSON.stringify({ ...k, club: d }), distrito || null, Date.now()).run();
+    return json(await datosClub(c));
   });
   r.get('/api/socios/club/certificado', `manager:${MOD}`, async (c) => html(await certificadoClubHtml(c, await datosClub(c))));
   r.get('/api/socios/certificados', `manager:${MOD}`, async (c) => json({ rows: await all(c.env, `SELECT k.id, k.socio_id, k.tipo, k.titulo, k.cargo, k.anio, k.fecha, k.texto, s.nombre socio FROM ro_certificados k
