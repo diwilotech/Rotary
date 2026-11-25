@@ -45,9 +45,8 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
         .then(async (ok) => ok && !localStorage.getItem(`ro_marca_luego_${me.business.id}`) && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema) || window.RoLogos.vieja(me)) && (await window.RoLogos.archivos()).logo) : false;
     host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>
         <div class="flex-grow-1"><b>Configura la marca de tu club</b><div class="small text-body-secondary">Con el logotipo oficial de Rotaract y el nombre «${esc(window.RoLogos.club(me.business.name))}»: los logos (app, horizontal, ícono, letras y fondo oscuro), los colores de Rotaract, la letra Open Sans y una descripción del club. Todo queda en Marca y se usa en los certificados.</div></div>
-        <div class="d-flex gap-2"><button class="btn btn-light" data-luego>Más tarde</button><button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div></div>` : ''}${portada}<div data-comova></div>`;
+        <div class="d-flex gap-2"><button class="btn btn-light" data-luego>Más tarde</button><button class="btn btn-primary" data-rologos><i class="bi bi-stars me-1"></i>Configurar la marca</button></div></div>` : ''}${portada}`;
     host.querySelector('[data-luego]')?.addEventListener('click', (ev) => { localStorage.setItem(`ro_marca_luego_${me.business.id}`, '1'); ev.currentTarget.closest('.dw-card').remove(); });
-    if (me.canManage) comoVa(host.querySelector('[data-comova]'), me).catch(() => {});
     host.querySelector('[data-rologos]')?.addEventListener('click', async (ev) => {
       const b = ev.currentTarget; b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creando…';
       try { const n = await window.RoLogos.crear(me); window.App.toast('Listo: la marca del club quedó configurada'); setTimeout(() => (window.top || window).location.reload(), 1200); }
@@ -68,7 +67,7 @@ async function comoVa(el, me) {
   if (r.impacto) k.push({ titulo: 'Proyectos vivos', valor: C.num(r.impacto.vivos), detalle: `${C.num(r.impacto.beneficiarios)} beneficiarios`, icono: 'bi-globe-americas', ruta: '/staff/impacto.html' });
   if (!k.length) return;
   const ic = { danger: 'bi-exclamation-octagon-fill text-danger', warning: 'bi-exclamation-triangle-fill text-warning', info: 'bi-info-circle-fill text-info' };
-  el.innerHTML = `<div class="small text-uppercase fw-semibold text-body-secondary mt-3 mb-2" style="letter-spacing:.06em">Cómo va el club</div>
+  el.innerHTML = `<div class="small text-uppercase fw-semibold text-body-secondary mb-2" style="letter-spacing:.06em">Cómo va el club</div>
     <div class="dw-grid">${k.map((w) => window.App.kpi(w)).join('')}</div>
     ${r.alertas.length ? `<div class="dw-card mt-2 p-0"><div class="list-group list-group-flush">${r.alertas.map((a) => `<a class="list-group-item list-group-item-action d-flex align-items-center gap-2 bg-transparent" href="${esc(a.ruta)}"><i class="bi ${ic[a.nivel] || ic.warning}"></i><span class="flex-grow-1">${esc(a.texto)}</span><i class="bi bi-chevron-right text-body-secondary"></i></a>`).join('')}</div></div>` : ''}`;
 }
@@ -125,5 +124,15 @@ async function comoVa(el, me) {
       const d = e.target.closest('[data-f]'); if (d) { sel = d.dataset.f; if (!sel.startsWith(ym)) { ym = sel.slice(0, 7); return cargar(); } pintar(); }
     });
     await cargar();
+  },
+});
+
+// «Cómo va el club» va después del calendario (solo junta)
+(window.DwDashboard = window.DwDashboard || []).push({
+  id: 'comova',
+  titulo: '',
+  async mount(host, { me }) {
+    if (!me.canManage || me.distrito?.es_distrito) { host.innerHTML = ''; return; }
+    await comoVa(host, me).catch(() => { host.innerHTML = ''; });
   },
 });
