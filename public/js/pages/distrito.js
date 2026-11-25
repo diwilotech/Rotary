@@ -20,14 +20,19 @@ DW.ready.then(async (me) => {
   const kpis = (el) => { const x = t.totales; C.kpis(el, [['Clubes', x.clubes, `Distrito ${esc(t.codigo)}`, 'bi-diagram-3'], ['Socios activos', C.num(x.socios), `${C.num(x.activados)} activados`, 'bi-people-fill'],
     ['Beneficiados', C.num(x.beneficiados), `${C.num(x.horas)} horas de servicio`, 'bi-globe-americas'], ['Cuota distrital', C.money(x.distrital_pagado), `de ${C.money(x.distrital_total)} · ${t.nombre_anio}`, 'bi-bank']]); };
 
+  const PROG = { rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' };
+  let prog = '';   // filtro por programa ('' = todos)
+  const semaforo = (n) => (n >= 75 ? ['#198754', 'Va bien'] : n >= 50 ? ['#e0a800', 'Atención'] : ['#dc3545', 'Necesita apoyo']);
   function pintarClubes() {
-    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div>${t.clubes.length ? `<div class="ro-dclubs">${t.clubes.map((k) => `<button type="button" class="ro-dclub" data-club="${esc(k.id)}">
-        <div class="d-flex align-items-center gap-2"><span class="ro-av" style="width:40px;height:40px;font-size:15px">${esc(RO.initials(k.nombre))}</span><b class="flex-grow-1 text-truncate">${esc(k.nombre)}</b><i class="bi bi-chevron-right"></i></div>
+    const hay = [...new Set(t.clubes.map((k) => k.programa))], lista = t.clubes.filter((k) => !prog || k.programa === prog).sort((a, b) => a.avance - b.avance);
+    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div>${hay.length > 1 ? `<div class="d-flex flex-wrap gap-2 mb-3">${[['', 'Todos'], ...hay.map((p) => [p, PROG[p] || p])].map(([p, l]) => `<button type="button" class="btn btn-sm rounded-pill ${p === prog ? 'btn-primary' : 'btn-outline-secondary'}" data-prog="${p}">${esc(l)} <span class="opacity-75">${p ? t.clubes.filter((k) => k.programa === p).length : t.clubes.length}</span></button>`).join('')}</div>` : ''}${lista.length ? `<div class="ro-dclubs">${lista.map((k) => { const [col, txt] = semaforo(k.avance); return `<button type="button" class="ro-dclub" data-club="${esc(k.id)}" style="border-top:4px solid ${col}">
+        <div class="d-flex align-items-center gap-2"><span class="ro-av" style="width:40px;height:40px;font-size:15px">${esc(RO.initials(k.nombre))}</span><span class="flex-grow-1 text-truncate"><b>${esc(k.nombre)}</b><span class="d-block small text-body-secondary">${esc(PROG[k.programa] || '')}</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="d-flex align-items-center gap-2 mt-2"><span class="small fw-semibold" style="color:${col}">${txt} · ${k.avance}%</span></div>${C.meter(k.avance, 100)}${k.falta.length ? `<div class="small text-body-secondary mt-1">Le falta: ${esc(k.falta.join(' · '))}</div>` : ''}
         <div class="ro-pstats mt-2"><span><b>${k.socios}</b>socios</span><span><b>${k.asistencia == null ? '—' : `${k.asistencia}%`}</b>asistencia</span><span><b>${C.num(k.beneficiados)}</b>beneficiados</span></div>
         <div class="small mt-2 d-flex justify-content-between"><span>Activados</span><b>${k.activados}/${k.socios}</b></div>${C.meter(k.activados, k.socios)}
         <div class="small mt-1 d-flex justify-content-between"><span>Cuotas al día</span><b>${k.cuotas_al_dia}/${k.cuotas_socios}</b></div>${C.meter(k.cuotas_al_dia, k.cuotas_socios)}
         <div class="small mt-1 d-flex justify-content-between"><span>Cuota distrital</span><b>${C.money(k.distrital_pagado)} / ${C.money(k.distrital_total)}</b></div>${C.meter(k.distrital_pagado, k.distrital_total)}
-        <div class="small text-body-secondary mt-2">Caja menor ${C.money(k.caja_menor)} · Caja mayor ${C.money(k.caja_mayor)} · ${k.en_curso} proyectos en curso</div></button>`).join('')}</div>`
+        <div class="small text-body-secondary mt-2">Caja menor ${C.money(k.caja_menor)} · Caja mayor ${C.money(k.caja_mayor)} · ${k.en_curso} proyectos en curso</div></button>`; }).join('')}</div>`
       : window.App.empty('bi-diagram-3', `Aún no hay clubes en el distrito ${esc(t.codigo)}.`)}`;
     kpis(view.querySelector('[data-k]'));
   }
@@ -174,6 +179,7 @@ DW.ready.then(async (me) => {
     .ro-pstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}.ro-pstats span{display:flex;flex-direction:column;font-size:.72rem;color:var(--bs-secondary-color);background:rgba(var(--dw-p-rgb),.05);border-radius:10px;padding:6px 2px}.ro-pstats b{font-size:1.05rem;color:var(--bs-body-color)}</style>`);
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return cargar(); }
+    const pg = e.target.closest('[data-prog]'); if (pg) { prog = pg.dataset.prog; pintarClubes(); return; }
     const k = e.target.closest('[data-club]'); if (k) detalle(k.dataset.club);
   });
   await cargar();

@@ -13,7 +13,7 @@ import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, borrarArchivo, servirArchivo } from '../lib/archivos.js';
-import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, certificadoClubHtml, socioDeSesion, anioRotarioDe } from '../lib/rotaract.js';
+import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, certificadoClubHtml, socioDeSesion, anioRotarioDe, PROGRAMAS, programa } from '../lib/rotaract.js';
 
 const MOD = 'socios';
 export const TIPOS = ['socio', 'socio_externo', 'voluntario_invitado', 'aspirante', 'honorario'];
@@ -143,18 +143,20 @@ export function routes(r) {
   };
   // Datos del club para su certificado de organización (número, fundación, club rotario patrocinador): en ro_club_config.kit
   // El distrito vive en su columna (con él el distrito agrupa a sus clubes); país y zona van con los demás datos en kit.club
-  const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit, distrito FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}').club || {}; } catch (_) { k = {}; }
-    return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito || c.env.DISTRITO_DEFECTO || '4271' }; };
+  const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit, distrito, programa FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}').club || {}; } catch (_) { k = {}; }
+    return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito || c.env.DISTRITO_DEFECTO || '4271', programa: programa(r?.programa).id }; };
   r.get('/api/socios/club', `manager:${MOD}`, async (c) => json(await datosClub(c)));
   r.put('/api/socios/club', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req), d = { numero: cast('numero', 'text', b.numero), fundado: b.fundado ? cast('fundado', 'date', b.fundado) : null,
       patrocinador: cast('patrocinador', 'text', b.patrocinador), presidente_patrocinador: cast('presidente_patrocinador', 'text', b.presidente_patrocinador),
       pais: cast('pais', 'text', b.pais), zona: cast('zona', 'text', b.zona) };
     const distrito = String(b.distrito ?? '').trim();
+    const prog = b.programa == null ? null : String(b.programa);
+    if (prog && !PROGRAMAS[prog]) throw new HttpError(400, 'Programa no válido (Rotary, Rotaract o Interact)');
     if (distrito && !/^\d{3,5}$/.test(distrito)) throw new HttpError(400, 'El distrito es un número (por ejemplo 4271)');
     const r = await one(c.env, 'SELECT kit FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}'); } catch (_) { k = {}; }
-    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, kit, distrito, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET kit = excluded.kit, distrito = COALESCE(excluded.distrito, ro_club_config.distrito), updated_at = excluded.updated_at')
-      .bind(c.businessId, JSON.stringify({ ...k, club: d }), distrito || null, Date.now()).run();
+    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, kit, distrito, programa, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(business_id) DO UPDATE SET kit = excluded.kit, distrito = COALESCE(excluded.distrito, ro_club_config.distrito), programa = COALESCE(?, ro_club_config.programa), updated_at = excluded.updated_at')
+      .bind(c.businessId, JSON.stringify({ ...k, club: d }), distrito || null, prog || 'rotaract', Date.now(), prog).run();
     return json(await datosClub(c));
   });
   r.get('/api/socios/club/certificado', `manager:${MOD}`, async (c) => html(await certificadoClubHtml(c, await datosClub(c))));

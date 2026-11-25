@@ -45,7 +45,16 @@ export function routes(r) {
     for (const k of clubes) {
       const s = soc.find((x) => x.business_id === k.id) || {}, a = asis.find((x) => x.business_id === k.id), p = proy.find((x) => x.business_id === k.id) || {};
       const [sal, car, obl] = await Promise.all([saldos(c.env, k.id), cartera({ env: c.env, businessId: k.id }), obligacionesClub(c.env, k.id, { anio })]);
-      filas.push({ id: k.id, nombre: k.name, socios: s.activos || 0, activados: s.activados || 0, aspirantes: s.aspirantes || 0,
+      // Avance del club (semáforo): cuánto cumple de lo básico; `falta` dice qué le falta
+      const cum = [], falta = [], mide = (ok, total, txt) => { if (!total) return; cum.push(ok / total); if (ok < total) falta.push(txt(total - ok)); };
+      mide(s.activados || 0, s.activos || 0, (n) => `${n} socio${n > 1 ? 's' : ''} sin activar`);
+      mide(car.filter((x) => x.estado !== 'debe').length, car.length, (n) => `${n} con cuotas vencidas`);
+      const dt = obl.reduce((t, o) => t + o.total, 0), dp = obl.reduce((t, o) => t + Math.min(o.pagado, o.total), 0);
+      mide(dp, dt, () => 'cuota distrital pendiente');
+      if (a?.marcas) { cum.push(a.presentes / a.marcas); if (a.presentes / a.marcas < 0.6) falta.push('asistencia baja'); } else falta.push('sin asistencia en 90 días');
+      cum.push(p.en_curso ? 1 : 0); if (!p.en_curso) falta.push('sin proyectos en curso');
+      const avance = Math.round((cum.reduce((t, x) => t + x, 0) / cum.length) * 100);
+      filas.push({ id: k.id, nombre: k.name, programa: k.programa, avance, falta, socios: s.activos || 0, activados: s.activados || 0, aspirantes: s.aspirantes || 0,
         asistencia: a?.marcas ? Math.round((a.presentes / a.marcas) * 100) : null, proyectos: p.proyectos || 0, en_curso: p.en_curso || 0, beneficiados: p.beneficiados || 0, horas: p.horas || 0,
         caja_menor: sal.menor, caja_mayor: sal.mayor, cuotas_al_dia: car.filter((x) => x.estado !== 'debe').length, cuotas_socios: car.length,
         distrital_total: obl.reduce((t, o) => t + o.total, 0), distrital_pagado: obl.reduce((t, o) => t + Math.min(o.pagado, o.total), 0) });

@@ -1,7 +1,7 @@
 {
-  "name": "CD Rotaract",
-  "short_name": "Rotaract",
-  "description": "Gestión de clubes Rotaract: socios, reuniones, tareas, impacto, cuotas y finanzas.",
+  "name": "CD Rotary",
+  "short_name": "Rotary",
+  "description": "Gestión de clubes Rotary, Rotaract e Interact: socios, reuniones, tareas, impacto, cuotas y finanzas.",
   "lang": "es-CO",
   "start_url": "/",
   "scope": "/",

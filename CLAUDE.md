@@ -34,6 +34,9 @@ Partió de CD Academia (misma base: shell, login, panel con marco, contrato con 
 - Centrales: marketing, whatsapp, marca, ai, dashboard (sin finanzas ni nómina). IA propia: `src/ia/control.js`, pendientes en `src/ia/pendientes.js`.
 - Importación del sistema anterior: `scripts/importar-rotaract.mjs` (genera SQL idempotente por `origen_id`).
 
+- **Programa del club** (migración 0026, `ro_club_config.programa`: rotary | rotaract | interact, los viejos = rotaract): `PROGRAMAS`/`programaDe` en rotaract.js. Cambia textos, certificado de organización y logo oficial (solo Rotaract tiene archivos en `img/marca/`; los demás usan el nombre). Se elige en Socios → Certificados → «Datos del club» (con ID de Rotary, país, distrito y zona; el distrito va en `ro_club_config.distrito`). `/api/me` → `distrito.programa`. Nombre visible de la app: «CD Rotary» (el slug sigue `cdrotaract`).
+- Distrito → Clubes: filtro por programa y semáforo de avance por club (`avance` 0-100 + `falta`: activación, cuotas, cuota distrital, asistencia 90 días, proyectos en curso).
+
 ## Comandos
 - `npm run db:migrate:local && npm test` → "Todo bien". Las pruebas levantan Diwilo Modulos con `scripts/modulos-local/wrangler.jsonc` (sin IA ni correo, no pide credenciales).
 

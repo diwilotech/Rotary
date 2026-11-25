@@ -40,7 +40,7 @@ window.DwSinComoVa = true;    // sin «Cómo va» (indicadores centrales)
         : horiz ? `<div class="ro-portada claro"><img src="${esc(horiz)}" alt="${esc(me.business.name)}"></div>`
         : `<div class="ro-portada color"><div>${me.settings.logo ? `<img class="app" src="${esc(me.settings.logo)}" alt="">` : ''}<h2>${esc(me.business.name)}</h2></div></div>`}`;
     // Club sin logos: tarjeta para crearlos con los archivos oficiales de Rotary (solo si la app ya los tiene)
-    const logosCard = me.canManage && !me.business.readOnly && tiene('marca')
+    const logosCard = me.canManage && !me.business.readOnly && tiene('marca') && (me.distrito?.programa || 'rotaract') === 'rotaract'
       ? await new Promise((ok) => { if (window.RoLogos) return ok(true); const sc = document.createElement('script'); sc.src = '/js/pages/marca-club.js'; sc.onload = () => ok(true); sc.onerror = () => ok(false); document.head.appendChild(sc); })
         .then(async (ok) => ok && !localStorage.getItem(`ro_marca_luego_${me.business.id}`) && (!me.settings.logo || !['rotaract', 'rotary'].includes(me.settings.tema) || window.RoLogos.vieja(me)) && (await window.RoLogos.archivos()).logo) : false;
     host.innerHTML = `${logosCard ? `<div class="dw-card mb-3 d-flex align-items-center gap-3 flex-wrap" style="border-left:4px solid #D41367"><i class="bi bi-award fs-3" style="color:#D41367"></i>

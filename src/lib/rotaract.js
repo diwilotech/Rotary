@@ -107,16 +107,29 @@ export async function anioRotario(c, anio, socioId = null) {
   return { anio, nombre: `${anio}-${anio + 1}`, actual: anioRotarioDe(hoy), anios, meses: totales, rows };
 }
 
+/* ---------------- Programa del club ---------------- */
+// La app sirve a clubes Rotary, Rotaract e Interact (ro_club_config.programa; los de antes quedan Rotaract).
+// Solo Rotaract tiene hoy los archivos oficiales del logotipo en public/img/marca/; los demás usan el nombre del club.
+export const PROGRAMAS = {
+  rotaract: { id: 'rotaract', nombre: 'Rotaract', club: 'Club Rotaract', socio: 'rotaractiano', logo: true },
+  rotary: { id: 'rotary', nombre: 'Rotary', club: 'Club Rotario', socio: 'rotario', logo: false },
+  interact: { id: 'interact', nombre: 'Interact', club: 'Club Interact', socio: 'interactiano', logo: false },
+};
+export const programa = (id) => PROGRAMAS[id] || PROGRAMAS.rotaract;
+export async function programaDe(env, businessId) {
+  return programa((await one(env, 'SELECT programa FROM ro_club_config WHERE business_id = ?', businessId))?.programa);
+}
+
 /* ---------------- Distrito ---------------- */
 // Código de distrito del negocio (lo pone Diwilo; por defecto DISTRITO_DEFECTO) y si el negocio ES el distrito.
 export async function distritoDe(env, businessId) {
-  const r = await one(env, 'SELECT distrito, es_distrito FROM ro_club_config WHERE business_id = ?', businessId);
-  return { codigo: r?.distrito || env.DISTRITO_DEFECTO || '4271', es_distrito: !!r?.es_distrito };
+  const r = await one(env, 'SELECT distrito, es_distrito, programa FROM ro_club_config WHERE business_id = ?', businessId);
+  return { codigo: r?.distrito || env.DISTRITO_DEFECTO || '4271', es_distrito: !!r?.es_distrito, programa: programa(r?.programa).id };
 }
 // Clubes del distrito: los negocios activos con ese código que no son distritos.
 export async function clubesDelDistrito(env, codigo) {
   const def = env.DISTRITO_DEFECTO || '4271';
-  return all(env, `SELECT b.id, b.name, b.slug FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
+  return all(env, `SELECT b.id, b.name, b.slug, COALESCE(k.programa, 'rotaract') programa FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
     WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? ORDER BY b.name`, def, codigo);
 }
 // Condición SQL «business_id es un club de este distrito» (2 parámetros: defecto y código). Sin listas IN de ids:
@@ -127,7 +140,7 @@ export const enDistrito = (env, codigo) => [env.DISTRITO_DEFECTO || '4271', codi
 // Orden del día sugerido de una reunión ordinaria. El distrito lo puede cambiar para sus clubes (ro_club_config.orden_dia).
 export const ORDEN_DIA = [
   { titulo: 'Toque de campana', detalle: 'La presidencia da apertura oficial a la sesión.' },
-  { titulo: 'Saludo a los símbolos y lectura de valores', detalle: 'Invocación Rotaract, La Prueba Cuádruple y el Objetivo de Rotary.' },
+  { titulo: 'Saludo a los símbolos y lectura de valores', detalle: 'Invocación del club, La Prueba Cuádruple y el Objetivo de Rotary.' },
   { titulo: 'Presentación de invitados', detalle: 'El macero da la bienvenida a socios visitantes, rotarios o invitados especiales.' },
   { titulo: 'Lectura y aprobación del acta anterior', detalle: 'A cargo de la secretaría del club.' },
   { titulo: 'Informes de directiva y comités', detalle: 'Avances de proyectos de servicio, tesorería y actividades próximas.' },
@@ -240,6 +253,7 @@ const FONDO = false;
 // «Rotaract» en Open Sans Light, igual que el archivo del Brand Center (mismas medidas que public/js/pages/marca-club.js).
 export const nombreDelClub = (n) => String(n || '').replace(/^\s*rotaract\s+/i, '').replace(/^club\s+(de|del|of)?\s*/i, '').trim() || String(n || 'Club');
 export async function logoOficial(c, club) {
+  if (!(await programaDe(c.env, c.businessId)).logo) return `<span class="club">${esc(club)}</span>`;
   let arte = '';
   try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rotaract.svg', c.url.origin))); arte = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0]; } catch (_) { arte = ''; }
   if (!arte) return `<span class="club">${esc(club)}</span>`;
@@ -256,7 +270,7 @@ export async function logoOficial(c, club) {
 // d = { titulo, nombre, detalle, cuerpo (HTML ya escapado; {club} = nombre del club), firmas: [{ nombre, rol, fecha, img }], codigo }
 async function hojaCertificado(c, d) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
-  const club = biz?.name || 'Club Rotaract', logo = await logoOficial(c, club);
+  const club = biz?.name || (await programaDe(c.env, c.businessId)).club, logo = await logoOficial(c, club);
   // Franja izquierda moderna: degradado azul Rotary, la rueda oficial grande en blanco muy suave, arcos arándano y oro y una trama de puntos
   let rueda = '';
   try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rueda.svg', c.url.origin))); rueda = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0].replace(/fill="#D41367"/g, 'fill="#FFFFFF"'); } catch (_) { rueda = ''; }
@@ -343,10 +357,10 @@ export async function certificadoEspecialHtml(c, socio, k) {
 }
 // Certificado del club (organización): número del club, fundación y club rotario patrocinador. Datos en ro_club_config.kit.
 export async function certificadoClubHtml(c, k) {
-  const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId), club = biz?.name || 'Club Rotaract';
+  const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId), P = await programaDe(c.env, c.businessId), club = biz?.name || P.club;
   const [pres] = await firmasJunta(c, k.fundado || null);
   return hojaCertificado(c, { titulo: 'Certificado de organización', otorga: 'Se certifica que', nombre: club,
     detalle: [k.numero ? `Club No. ${k.numero}` : '', k.distrito ? `Distrito ${k.distrito}` : '', k.fundado ? `Fundado el ${fechaLarga(k.fundado)}` : ''].filter(Boolean).join(' · '),
-    cuerpo: `El club ha sido debidamente organizado y se compromete, mediante sus funcionarios y socios, a cumplir con los Estatutos y el Reglamento del programa Rotaract de Rotary International.${k.patrocinador ? `<br><br>Patrocinado por<br><span style="font:500 15pt 'Cormorant Garamond',Georgia,serif;color:#1d2433">${esc(k.patrocinador)}</span>` : ''}`,
+    cuerpo: `El club ha sido debidamente organizado y se compromete, mediante sus funcionarios y socios, a cumplir con los Estatutos y el Reglamento del programa ${P.nombre} de Rotary International.${k.patrocinador ? `<br><br>Patrocinado por<br><span style="font:500 15pt 'Cormorant Garamond',Georgia,serif;color:#1d2433">${esc(k.patrocinador)}</span>` : ''}`,
     firmas: [{ nombre: k.presidente_patrocinador || '', rol: 'Presidencia del club rotario patrocinador', fecha: k.fundado || null }, { ...pres, fecha: k.fundado || null }] });
 }

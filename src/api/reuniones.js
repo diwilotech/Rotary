@@ -168,7 +168,7 @@ export function routes(r) {
       all(c.env, 'SELECT nombre, procedencia, tipo FROM ro_reunion_invitados WHERE business_id = ? AND reunion_id = ? ORDER BY created_at', c.businessId, x.id),
       all(c.env, "SELECT nombre, cargo FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId)]);
     const e = (t) => String(t ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])).replace(/\n/g, '<br>');
-    const club = biz?.name || 'Club Rotaract', p = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/i.test(j.cargo || ''));
+    const club = biz?.name || 'Club', p = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/i.test(j.cargo || ''));
     const fecha = new Date(`${x.fecha}T12:00:00Z`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acta · ${e(x.titulo)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"><style>
