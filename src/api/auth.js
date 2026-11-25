@@ -7,15 +7,16 @@ import {
 } from '../lib/auth.js';
 import { verifyTurnstile } from '../lib/turnstile.js';
 import { APP } from '../lib/modules.js';
+import { etiquetas } from '../lib/rotaract.js';
 
 // Versión de la política de tratamiento de datos que el usuario acepta (public/privacidad.html).
 export const POLICY_VERSION = '2026-10';
 
 // Abre sesión; si el usuario está en un solo negocio, lo deja elegido.
 async function startSession(c, userId) {
-  const businesses = await userBusinesses(c.env, userId);
+  const businesses = await userBusinesses(c.env, userId), et = await etiquetas(c.env, businesses);
   const token = await createSession(c.env, userId, businesses.length === 1 ? businesses[0].id : null);
-  return json({ ok: true, businesses: businesses.map(publicBusiness) }, 200, { 'set-cookie': sessionCookie(token, c.req) });
+  return json({ ok: true, businesses: businesses.map((b) => ({ ...publicBusiness(b), ...et[b.id] })) }, 200, { 'set-cookie': sessionCookie(token, c.req) });
 }
 
 const publicBusiness = (b) => ({ id: b.id, name: b.name, slug: b.slug, role: b.role, readOnly: isExpired(b.paid_until) });

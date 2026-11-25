@@ -342,6 +342,9 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Distrito por programa: la cuota del Distrito Rotary no le llega a un club Rotaract ni el Rotaract la ve', qR.status === 201 && !oblA.some((o) => o.id === qR.data.id) && !(await D.app('/api/distrito/cuotas')).data.rows.some((q) => q.id === qR.data.id)
     && (await DR.app('/api/distrito/cuotas')).data.rows.some((q) => q.id === qR.data.id));
   check('Distrito por programa: el Rotary no entra al detalle de un club Rotaract (404)', (await DR.app(`/api/distrito/clubes/${A.id}`)).status === 404);
+  const meSa = (await A.app('/api/me')).data, meSr = (await R1.app('/api/me')).data;
+  check('Siglas: RTC para Rotaract y RY para Rotary (en la barra y en la lista de a cuál entrar)', meSa.business.etiqueta.startsWith('RTC ') && meSr.business.etiqueta.startsWith('RY ') && meSa.businesses.every((b) => b.sigla && b.etiqueta), JSON.stringify(meSa.businesses));
+  check('Siglas: el distrito ve sus clubes con la sigla', (await D.app('/api/distrito/tablero')).data.clubes.every((k) => k.nombre.startsWith('RTC ')) && tR.clubes.every((k) => k.nombre.startsWith('RY ')));
   const E = await newBusiness('Club para quitar', { login: true });
   check('Distrito: el club nuevo aparece en su lista', (await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id));
   const qe = await D.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' });

@@ -43,7 +43,7 @@ if (window.top !== window.self) window.top.location.replace('/');
       return;
     }
     $('choose').querySelector('[data-list]').innerHTML = data.businesses.map((b) =>
-      `<button type="button" data-id="${esc(b.id)}"><i class="bi bi-shop"></i>${esc(b.name)}</button>`).join('');
+      `<button type="button" data-id="${esc(b.id)}"><i class="bi ${b.distrito ? 'bi-diagram-3' : 'bi-people'}"></i>${esc(b.etiqueta || b.name)}${b.distrito ? ' · Distrito' : ''}</button>`).join('');
     show('choose');
   }
 

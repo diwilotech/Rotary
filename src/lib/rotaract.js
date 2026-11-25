@@ -111,10 +111,20 @@ export async function anioRotario(c, anio, socioId = null) {
 // La app sirve a clubes Rotary, Rotaract e Interact (ro_club_config.programa; los de antes quedan Rotaract).
 // Solo Rotaract tiene hoy los archivos oficiales del logotipo en public/img/marca/; los demás usan el nombre del club.
 export const PROGRAMAS = {
-  rotaract: { id: 'rotaract', nombre: 'Rotaract', club: 'Club Rotaract', socio: 'rotaractiano', logo: true },
-  rotary: { id: 'rotary', nombre: 'Rotary', club: 'Club Rotario', socio: 'rotario', logo: false },
-  interact: { id: 'interact', nombre: 'Interact', club: 'Club Interact', socio: 'interactiano', logo: false },
+  rotaract: { id: 'rotaract', nombre: 'Rotaract', sigla: 'RTC', club: 'Club Rotaract', socio: 'rotaractiano', logo: true },
+  rotary: { id: 'rotary', nombre: 'Rotary', sigla: 'RY', club: 'Club Rotario', socio: 'rotario', logo: false },
+  interact: { id: 'interact', nombre: 'Interact', sigla: 'IT', club: 'Club Interact', socio: 'interactiano', logo: false },
 };
+// Nombre con la sigla del programa (RY / RTC / IT): muchos clubes se llaman igual («Medellín» rotario, Rotaract e Interact).
+// No se guarda en el negocio (los certificados y logos usan el nombre limpio); solo se muestra.
+export const conSigla = (nombre, prog) => { const s = programa(prog).sigla; return new RegExp(`^${s}\\b`, 'i').test(String(nombre || '').trim()) ? nombre : `${s} ${nombre}`; };
+// Etiqueta de varios negocios a la vez (para la lista de «a cuál entrar»): { id → { programa, sigla, distrito, etiqueta } }
+export async function etiquetas(env, list) {
+  if (!list.length) return {};
+  const rows = await all(env, `SELECT business_id, programa, es_distrito FROM ro_club_config WHERE business_id IN (${list.map(() => '?').join(',')})`, ...list.map((b) => b.id));
+  return Object.fromEntries(list.map((b) => { const r = rows.find((x) => x.business_id === b.id), p = programa(r?.programa), dist = !!r?.es_distrito;
+    return [b.id, { programa: p.id, sigla: p.sigla, distrito: dist, etiqueta: conSigla(b.name, p.id) }]; }));
+}
 export const programa = (id) => PROGRAMAS[id] || PROGRAMAS.rotaract;
 export async function programaDe(env, businessId) {
   return programa((await one(env, 'SELECT programa FROM ro_club_config WHERE business_id = ?', businessId))?.programa);
@@ -134,8 +144,8 @@ export async function distritoDe(env, businessId) {
 // Clubes del distrito: los negocios activos con ese código y ese programa que no son distritos.
 export async function clubesDelDistrito(env, codigo, prog = 'rotaract') {
   const def = env.DISTRITO_DEFECTO || '4271';
-  return all(env, `SELECT b.id, b.name, b.slug, COALESCE(k.programa, 'rotaract') programa FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
-    WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ? ORDER BY b.name`, def, codigo, prog);
+  return (await all(env, `SELECT b.id, b.name, b.slug, COALESCE(k.programa, 'rotaract') programa FROM businesses b LEFT JOIN ro_club_config k ON k.business_id = b.id
+    WHERE b.status = 'active' AND b.archived_at IS NULL AND COALESCE(k.es_distrito, 0) = 0 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ? ORDER BY b.name`, def, codigo, prog)).map((k) => ({ ...k, name: conSigla(k.name, k.programa) }));
 }
 // Condición SQL «business_id es un club de este distrito» (3 parámetros: defecto, código y programa). Sin listas IN de ids:
 // D1 acepta máximo 100 parámetros por consulta y un distrito puede tener más clubes.

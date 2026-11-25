@@ -24,6 +24,8 @@ import { json, readJson, HttpError, str, oneOf, email, date } from '../lib/http.
 import { db, uuid } from '../lib/db.js';
 import { createInvite, invitePath, isExpired, createSession, sessionCookie } from '../lib/auth.js';
 import { purgeArchived, purgeDate, issueSsoTicket, takeSsoTicket } from '../lib/platform-tools.js';
+import { etiquetas } from '../lib/rotaract.js';
+
 
 const ROLES = ['owner', 'admin', 'staff'];
 const RESERVED = new Set(['api', 'app', 'admin', 'login', 'assets', 'platform', 'staff', 'mcp', 'm', 'l', 'c', 'validar', 'css', 'js', 'icons', 'privacidad', 'dmca']);
@@ -48,8 +50,9 @@ async function listBusinesses(env, id, archived = false) {
              FROM memberships m JOIN users u ON u.id = m.user_id ${id ? 'WHERE m.business_id = ?' : ''}
             ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.email`, ...(id ? [id] : [])),
   ]);
+  const et = await etiquetas(env, businesses);   // campo opcional (propio de CD Rotary): «RTC Medellín», y si es distrito
   return businesses.map((b) => ({
-    id: b.id, name: b.name, slug: b.slug, created_at: b.created_at, paid_until: b.paid_until || null,
+    id: b.id, name: b.name, etiqueta: et[b.id]?.distrito ? `${et[b.id].etiqueta} · Distrito` : et[b.id]?.etiqueta, slug: b.slug, created_at: b.created_at, paid_until: b.paid_until || null,
     read_only: isExpired(b.paid_until),
     archived_at: b.archived_at || null, purge_on: purgeDate(b.archived_at),
     users: members.filter((m) => m.business_id === b.id).map((m) => ({

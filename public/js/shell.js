@@ -67,7 +67,7 @@
     if (!EMBED) document.getElementById('dw-shell').innerHTML = `
       <a class="visually-hidden-focusable position-absolute top-0 start-0 m-2 btn btn-primary" style="z-index:2000" href="#dw-content">Saltar al contenido</a>
       <header class="dw-top">
-        <a class="dw-brand" data-mod="inicio" href="/staff/"><span class="dw-brand__logo">${logo}</span><span class="dw-brand__name d-none d-lg-inline">${esc(me.business.name)}</span></a>
+        <a class="dw-brand" data-mod="inicio" href="/staff/"><span class="dw-brand__logo">${logo}</span><span class="dw-brand__name d-none d-lg-inline">${esc(me.business.etiqueta || me.business.name)}</span></a>
         <span class="dw-top__sep d-none d-lg-inline">/</span>
         <span class="dw-top__title" data-top-title>${esc(page.titulo)}</span>
         <span class="dw-top__spacer"></span>
@@ -82,7 +82,7 @@
           <ul class="dropdown-menu dropdown-menu-end shadow-sm">
             <li class="px-3 py-2"><div class="fw-semibold">${esc(me.user.name || me.user.email)}</div><div class="small text-body-secondary">${esc(me.user.email)} · ${ROLE[me.role] || esc(me.role)}</div></li>
             <li><hr class="dropdown-divider"></li>
-            ${me.businesses.length > 1 ? `<li><h6 class="dropdown-header">Cambiar de negocio</h6></li>${me.businesses.map((b) => `<li><button class="dropdown-item ${b.id === me.business.id ? 'active' : ''}" data-biz="${esc(b.id)}"><i class="bi bi-shop me-2"></i>${esc(b.name)}</button></li>`).join('')}<li><hr class="dropdown-divider"></li>` : ''}
+            ${me.businesses.length > 1 ? `<li><h6 class="dropdown-header">Entrar a</h6></li>${me.businesses.map((b) => `<li><button class="dropdown-item ${b.id === me.business.id ? 'active' : ''}" data-biz="${esc(b.id)}"><i class="bi ${b.distrito ? 'bi-diagram-3' : 'bi-people'} me-2"></i>${esc(b.etiqueta || b.name)}${b.distrito ? ' <span class="badge text-bg-light">Distrito</span>' : ''}</button></li>`).join('')}<li><hr class="dropdown-divider"></li>` : ''}
             ${canManage && me.modules.some((m) => m.id === 'marca') ? `<li><a class="dropdown-item" data-mod="marca" href="/staff/marca.html"><i class="bi bi-palette me-2"></i>Color y marca</a></li>` : ''}
             <li><button class="dropdown-item" data-pass><i class="bi bi-key me-2"></i>Cambiar contraseña</button></li>
             <li><a class="dropdown-item" href="/privacidad" target="_blank" rel="noopener"><i class="bi bi-shield-check me-2"></i>Política de datos</a></li>
