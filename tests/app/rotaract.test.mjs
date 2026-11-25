@@ -303,6 +303,37 @@ export default async function ({ check, newBusiness, newMember }) {
   const rz = (await A.app('/api/cajas/resumen')).data;
   check('Finanzas: los 12 meses del año rotario por caja', rz.cajas[0].meses.length === 12 && rz.cajas[0].meses[0].mes.endsWith('-07'));
 
+  /* Distrito: cuota de representación, programa, solicitudes de clubes, bonos, metas y quitar un club */
+  const vr = 50000 + Math.floor(Math.random() * 900) + 1;
+  const qr = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Representación prueba', tipo: 'por_club', valor_socio: vr, vence } });
+  const obr = (await A.app('/api/cajas/proyectado')).data.rubros.find((r) => r.categoria === 'Obligaciones RI y Distrito')?.cuotas_distritales.find((o) => o.id === qr.data.id);
+  check('Distrito: la cuota de representación es un valor fijo por club', qr.status === 201 && obr?.total === vr, JSON.stringify(obr));
+  const dc = await A.app('/api/socios/club', { method: 'PUT', body: { numero: '12237', pais: 'Colombia', distrito: '4271', zona: '25', programa: 'rotary' } });
+  const tab2 = (await D.app('/api/distrito/tablero')).data, ka = tab2.clubes.find((k) => k.id === A.id);
+  check('Datos del club: ID de Rotary, zona y programa; el distrito ve el programa y el avance', dc.status === 200 && dc.data.numero === '12237' && dc.data.zona === '25' && dc.data.programa === 'rotary' && ka?.programa === 'rotary' && ka.avance >= 0 && ka.avance <= 100 && Array.isArray(ka.falta), JSON.stringify(ka));
+  check('Datos del club: programa inventado se rechaza (400)', (await A.app('/api/socios/club', { method: 'PUT', body: { programa: 'otro' } })).status === 400);
+  await A.app('/api/socios/club', { method: 'PUT', body: { programa: 'rotaract' } });
+  const so = await D.app('/api/distrito/solicitudes', { method: 'POST', body: { nombre: 'Interact Club Prueba', programa: 'interact', presidente: 'Ana' } });
+  check('Distrito: solicita un club nuevo (sale por WhatsApp a Diwilo) y un club no puede', so.status === 201 && so.data.whatsapp.startsWith('https://wa.me/') && (await D.app('/api/distrito/solicitudes')).data.rows.some((x) => x.id === so.data.id)
+    && (await A.app('/api/distrito/solicitudes', { method: 'POST', body: { nombre: 'x' } })).status === 403);
+  check('Distrito: marca la solicitud como creada', (await D.app(`/api/distrito/solicitudes/${so.data.id}`, { method: 'PATCH', body: { estado: 'creado' } })).status === 200);
+  const bo = await D.app('/api/distrito/bonos', { method: 'POST', body: { nombre: 'Rifa prueba', valor: 20000 } });
+  const ba = await D.app(`/api/distrito/bonos/${bo.data.id}/clubes/${A.id}`, { method: 'PUT', body: { asignados: 10, vendidos: 4, pagado: 80000 } });
+  const bnA = (await A.app('/api/club/bonos')).data.rows.find((x) => x.id === bo.data.id), bnD = (await D.app('/api/distrito/bonos')).data.rows.find((x) => x.id === bo.data.id);
+  check('Distrito: bonos asignados por club; el club los ve y debe el saldo', ba.status === 200 && bnA?.saldo === 120000 && bnD?.vendidos === 4 && bnD.total === 200000, JSON.stringify(bnA));
+  check('Distrito: no se venden más bonos de los asignados (400); a otro distrito no (404)', (await D.app(`/api/distrito/bonos/${bo.data.id}/clubes/${A.id}`, { method: 'PUT', body: { asignados: 1, vendidos: 2 } })).status === 400
+    && (await D.app(`/api/distrito/bonos/${bo.data.id}/clubes/${B.id}`, { method: 'PUT', body: { asignados: 1 } })).status === 404);
+  check('Inicio del club: aviso de bonos por pagar', (await A.app('/api/club/resumen')).data.alertas.some((a) => a.texto.startsWith('Bonos del distrito')));
+  check('Distrito: no se borra un bono ya vendido (409)', (await D.app(`/api/distrito/bonos/${bo.data.id}`, { method: 'DELETE' })).status === 409);
+  const mt = await D.app('/api/distrito/metas', { method: 'PUT', body: { anio: tab2.anio, metas: { socios: 500, clubes: 40, horas: '' } } });
+  const mg = (await D.app(`/api/distrito/metas?anio=${tab2.anio}`)).data.metas;
+  check('Distrito: metas del año rotario', mt.status === 200 && mg.socios === 500 && mg.clubes === 40 && !('horas' in mg), JSON.stringify(mg));
+  const E = await newBusiness('Club para quitar', { login: true });
+  check('Distrito: el club nuevo aparece en su lista', (await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id));
+  const qe = await D.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' });
+  check('Distrito: quitar un club lo saca de su lista; el club ve el distrito vacío', qe.status === 200 && !(await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id) && (await E.app('/api/socios/club')).data.distrito === '');
+  check('Distrito: un club no puede quitar a otro (403)', (await A.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' })).status === 403);
+
   /* Obligaciones = rubros de «¿En qué se gasta?» (valor editable, pagar → movimiento) */
   const anioR = pj.anio;
   const pv = await A.app('/api/cajas/rubros', { method: 'PUT', body: { categoria: 'Pines', anio: anioR, valor: 50000 } });

@@ -10,13 +10,13 @@ import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { PAGA_CUOTA, EN_DISTRITO, enDistrito, ORDEN_DIA, ordenDelDia, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
 
-async function distritoOError(c) {
+export async function distritoOError(c) {
   const d = await distritoDe(c.env, c.businessId);
   if (!d.es_distrito) throw new HttpError(403, 'Esta sección es solo para el perfil del distrito');
   return d;
 }
 
-async function clubDelDistrito(c, id) {
+export async function clubDelDistrito(c, id) {
   const d = await distritoOError(c);
   const club = (await clubesDelDistrito(c.env, d.codigo)).find((x) => x.id === id);
   if (!club) throw new HttpError(404, 'Club no encontrado en este distrito');
@@ -62,7 +62,8 @@ export function routes(r) {
     const suma = (k) => filas.reduce((t, x) => t + (x[k] || 0), 0);
     return json({ codigo: d.codigo, anio, nombre_anio: `${anio}-${anio + 1}`, clubes: filas,
       totales: { clubes: filas.length, socios: suma('socios'), activados: suma('activados'), beneficiados: suma('beneficiados'), horas: suma('horas'), proyectos: suma('en_curso'),
-        distrital_total: suma('distrital_total'), distrital_pagado: suma('distrital_pagado') },
+        distrital_total: suma('distrital_total'), distrital_pagado: suma('distrital_pagado'),
+        asistencia: (() => { const v = filas.filter((x) => x.asistencia != null); return v.length ? Math.round(v.reduce((t, x) => t + x.asistencia, 0) / v.length) : null; })() },
       meses: meses.map((m) => { const x = movs.find((y) => y.mes === m) || {}, rr = reus.find((y) => y.mes === m) || {};
         return { mes: m, ingresos: x.ingresos || 0, egresos: x.egresos || 0, cuotas: x.cuotas || 0, distrital: x.distrital || 0, reuniones: rr.reuniones || 0, eventos: rr.eventos || 0 }; }),
       categorias: cats });
@@ -96,9 +97,10 @@ export function routes(r) {
   const campos = (b, parcial) => {
     const o = {};
     if (!parcial || 'nombre' in b) { o.nombre = cast('nombre', 'text', b.nombre); if (!o.nombre) throw new HttpError(400, 'Escribe el nombre de la cuota'); }
-    if (!parcial || 'valor_socio' in b) { o.valor_socio = cast('valor_socio', 'money', b.valor_socio); if (!(o.valor_socio > 0)) throw new HttpError(400, 'El valor por socio debe ser mayor que cero'); }
+    if (!parcial || 'valor_socio' in b) { o.valor_socio = cast('valor_socio', 'money', b.valor_socio); if (!(o.valor_socio > 0)) throw new HttpError(400, 'El valor debe ser mayor que cero'); }
     if (!parcial || 'vence' in b) { o.vence = cast('vence', 'date', b.vence); if (!o.vence) throw new HttpError(400, 'Indica la fecha en que vence'); o.anio = anioRotarioDe(o.vence); }
     if ('notas' in b) o.notas = cast('notas', 'long', b.notas);
+    if (!parcial || 'tipo' in b) o.tipo = cast('tipo', ['por_socio', 'por_club'], b.tipo);
     return o;
   };
   r.get('/api/distrito/cuotas', 'tenant', async (c) => {
@@ -110,15 +112,15 @@ export function routes(r) {
       all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...enDistrito(c.env, d.codigo)),
     ]) : [[], []];
     return json({ codigo: d.codigo, rows: cuotas.map((q) => {
-      const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;
+      const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = q.tipo === 'por_club' ? q.valor_socio : n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;
         return { club_id: k.id, club: k.name, socios: n, total, pagado, estado: total > 0 && pagado >= total ? 'pagada' : q.vence < today() ? 'vencida' : 'pendiente' }; });
       return { ...q, clubes: por, total: por.reduce((t, x) => t + x.total, 0), pagado: por.reduce((t, x) => t + Math.min(x.pagado, x.total), 0), pagaron: por.filter((x) => x.estado === 'pagada').length };
     }) });
   });
   r.post('/api/distrito/cuotas', 'manager', async (c) => {
     const d = await distritoOError(c), o = campos(await readJson(c.req)), t = Date.now();
-    const x = await c.env.DB.prepare('INSERT INTO ro_cuota_distrital (business_id, distrito, nombre, valor_socio, vence, anio, notas, creado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, d.codigo, o.nombre, o.valor_socio, o.vence, o.anio, o.notas || null, c.session.user_id, t, t).run();
+    const x = await c.env.DB.prepare('INSERT INTO ro_cuota_distrital (business_id, distrito, nombre, tipo, valor_socio, vence, anio, notas, creado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, d.codigo, o.nombre, o.tipo, o.valor_socio, o.vence, o.anio, o.notas || null, c.session.user_id, t, t).run();
     await audit(c, `Creó la cuota distrital «${o.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...o }, 201);
   });

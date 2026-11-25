@@ -70,6 +70,12 @@ async function comoVa(el, me) {
   el.innerHTML = `<div class="small text-uppercase fw-semibold text-body-secondary mb-2" style="letter-spacing:.06em">Cómo va el club</div>
     <div class="dw-grid">${k.map((w) => window.App.kpi(w)).join('')}</div>
     ${r.alertas.length ? `<div class="dw-card mt-2 p-0"><div class="list-group list-group-flush">${r.alertas.map((a) => `<a class="list-group-item list-group-item-action d-flex align-items-center gap-2 bg-transparent" href="${esc(a.ruta)}"><i class="bi ${ic[a.nivel] || ic.warning}"></i><span class="flex-grow-1">${esc(a.texto)}</span><i class="bi bi-chevron-right text-body-secondary"></i></a>`).join('')}</div></div>` : ''}`;
+  // Bonos que el distrito le asignó al club (los registra el distrito; aquí solo se ven)
+  const bonos = (await api('/api/club/bonos').catch(() => ({ rows: [] }))).rows;
+  if (bonos.length) el.insertAdjacentHTML('beforeend', `<div class="dw-card mt-2" id="bonos"><div class="ro-h mt-0"><i class="bi bi-ticket-perforated me-1"></i>Bonos del distrito</div>
+    ${bonos.map((b) => `<div class="small py-1 border-bottom d-flex flex-wrap gap-2"><b class="flex-grow-1">${esc(b.nombre)}</b><span>${b.vendidos}/${b.asignados} vendidos</span>
+      <span>pagado ${C.money(b.pagado)} de ${C.money(b.total)}</span>${b.saldo ? `<span class="text-danger">debe ${C.money(b.saldo)}</span>` : '<span class="text-success">al día</span>'}</div>`).join('')}
+    <div class="small text-body-secondary mt-1">Las ventas y pagos los registra el distrito: repórtale lo vendido y paga desde Finanzas → Caja menor.</div></div>`);
 }
 
 // Calendario del club: el mes con todo lo del club (reuniones, eventos, tareas que vencen, cumpleaños, proyectos y cuotas).

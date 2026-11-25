@@ -11,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'cuotas', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
+  let tab = ['anio', 'metas', 'cuotas', 'bonos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['cuotas', 'Cuota distrital', '#cuotas', 'bi-bank'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -25,7 +25,7 @@ DW.ready.then(async (me) => {
   const semaforo = (n) => (n >= 75 ? ['#198754', 'Va bien'] : n >= 50 ? ['#e0a800', 'Atención'] : ['#dc3545', 'Necesita apoyo']);
   function pintarClubes() {
     const hay = [...new Set(t.clubes.map((k) => k.programa))], lista = t.clubes.filter((k) => !prog || k.programa === prog).sort((a, b) => a.avance - b.avance);
-    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div>${hay.length > 1 ? `<div class="d-flex flex-wrap gap-2 mb-3">${[['', 'Todos'], ...hay.map((p) => [p, PROG[p] || p])].map(([p, l]) => `<button type="button" class="btn btn-sm rounded-pill ${p === prog ? 'btn-primary' : 'btn-outline-secondary'}" data-prog="${p}">${esc(l)} <span class="opacity-75">${p ? t.clubes.filter((k) => k.programa === p).length : t.clubes.length}</span></button>`).join('')}</div>` : ''}${lista.length ? `<div class="ro-dclubs">${lista.map((k) => { const [col, txt] = semaforo(k.avance); return `<button type="button" class="ro-dclub" data-club="${esc(k.id)}" style="border-top:4px solid ${col}">
+    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div><div data-sol></div>${hay.length > 1 ? `<div class="d-flex flex-wrap gap-2 mb-3">${[['', 'Todos'], ...hay.map((p) => [p, PROG[p] || p])].map(([p, l]) => `<button type="button" class="btn btn-sm rounded-pill ${p === prog ? 'btn-primary' : 'btn-outline-secondary'}" data-prog="${p}">${esc(l)} <span class="opacity-75">${p ? t.clubes.filter((k) => k.programa === p).length : t.clubes.length}</span></button>`).join('')}</div>` : ''}${lista.length ? `<div class="ro-dclubs">${lista.map((k) => { const [col, txt] = semaforo(k.avance); return `<button type="button" class="ro-dclub" data-club="${esc(k.id)}" style="border-top:4px solid ${col}">
         <div class="d-flex align-items-center gap-2"><span class="ro-av" style="width:40px;height:40px;font-size:15px">${esc(RO.initials(k.nombre))}</span><span class="flex-grow-1 text-truncate"><b>${esc(k.nombre)}</b><span class="d-block small text-body-secondary">${esc(PROG[k.programa] || '')}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="d-flex align-items-center gap-2 mt-2"><span class="small fw-semibold" style="color:${col}">${txt} · ${k.avance}%</span></div>${C.meter(k.avance, 100)}${k.falta.length ? `<div class="small text-body-secondary mt-1">Le falta: ${esc(k.falta.join(' · '))}</div>` : ''}
         <div class="ro-pstats mt-2"><span><b>${k.socios}</b>socios</span><span><b>${k.asistencia == null ? '—' : `${k.asistencia}%`}</b>asistencia</span><span><b>${C.num(k.beneficiados)}</b>beneficiados</span></div>
@@ -35,6 +35,27 @@ DW.ready.then(async (me) => {
         <div class="small text-body-secondary mt-2">Caja menor ${C.money(k.caja_menor)} · Caja mayor ${C.money(k.caja_mayor)} · ${k.en_curso} proyectos en curso</div></button>`; }).join('')}</div>`
       : window.App.empty('bi-diagram-3', `Aún no hay clubes en el distrito ${esc(t.codigo)}.`)}`;
     kpis(view.querySelector('[data-k]'));
+    solicitudes(view.querySelector('[data-sol]'));
+  }
+  // Clubes nuevos: el distrito los solicita y Diwilo los crea en su admin (la solicitud sale por WhatsApp con los datos)
+  const EST_SOL = { pendiente: ['soon', 'Pendiente'], creado: ['ok', 'Creado'], descartado: ['free', 'Descartado'] };
+  async function solicitudes(el) {
+    if (!el) return;
+    const rows = (await api('/api/distrito/solicitudes').catch(() => ({ rows: [] }))).rows.filter((s) => s.estado === 'pendiente' || Date.now() - s.updated_at < 30 * 864e5);
+    if (!rows.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="dw-card mb-3"><div class="ro-h mt-0"><i class="bi bi-plus-circle me-1"></i>Clubes nuevos solicitados</div>${rows.map((s) => `<div class="d-flex flex-wrap align-items-center gap-2 py-1 border-bottom small">
+      <span class="flex-grow-1"><b>${esc(s.nombre)}</b> · ${esc(PROG[s.programa] || s.programa)}${s.ciudad ? ` · ${esc(s.ciudad)}` : ''}${s.presidente ? ` · ${esc(s.presidente)}` : ''}</span>${C.chip(...EST_SOL[s.estado])}
+      ${M && s.estado === 'pendiente' ? `<a class="btn btn-sm btn-light" href="${esc(s.whatsapp)}" target="_blank" rel="noopener"><i class="bi bi-whatsapp me-1"></i>Reenviar</a><button class="btn btn-sm btn-light" data-sol-est="creado" data-sol-id="${s.id}">Ya se creó</button><button class="btn btn-sm btn-light" data-sol-est="descartado" data-sol-id="${s.id}">Descartar</button>` : ''}</div>`).join('')}
+      <div class="small text-body-secondary mt-1">Diwilo crea el club y le envía la invitación a la presidencia. Cuando aparezca en tu lista, márcalo como creado.</div></div>`;
+    el.querySelectorAll('[data-sol-id]').forEach((b) => (b.onclick = async () => { try { await api(`/api/distrito/solicitudes/${b.dataset.solId}`, { method: 'PATCH', body: { estado: b.dataset.solEst } }); solicitudes(el); } catch (x) { toast(x.message, false); } }));
+  }
+  async function solicitarClub() {
+    const out = await C.form({ title: 'Solicitar club nuevo', fields: [{ k: 'nombre', label: 'Nombre del club', type: 'text', required: true, full: true, placeholder: 'Rotaract Club de Envigado' },
+      { k: 'programa', label: 'Programa', type: 'select', options: [['rotary', 'Rotary'], ['rotaract', 'Rotaract'], ['interact', 'Interact']] }, { k: 'ciudad', label: 'Ciudad', type: 'text' },
+      { k: 'presidente', label: 'Presidencia (quien lo administrará)', type: 'text' }, { k: 'correo', label: 'Correo de la presidencia', type: 'email' }, { k: 'telefono', label: 'Teléfono', type: 'text' },
+      { k: 'notas', label: 'Notas', type: 'long' }], values: { programa: 'rotaract' }, okText: 'Solicitar' });
+    if (!out) return;
+    try { const r = await api('/api/distrito/solicitudes', { method: 'POST', body: out }); window.open(r.whatsapp, '_blank', 'noopener'); toast('Solicitud guardada: envíala por WhatsApp a Diwilo'); pintarClubes(); } catch (x) { toast(x.message, false); }
   }
 
   function pintarAnio() {
@@ -58,9 +79,9 @@ DW.ready.then(async (me) => {
   async function pintarCuotas() {
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     const d = await api('/api/distrito/cuotas');
-    view.innerHTML = `<p class="small text-body-secondary">La cuota distrital se cobra por socio activo: a cada club le llega como obligación en <b>Finanzas → Proyectado</b> por el valor × sus socios, y desde ahí la paga.</p>
+    view.innerHTML = `<p class="small text-body-secondary">Dos tipos: <b>por socio</b> (cuota distrital: valor × socios activos del club) y <b>por club</b> (cuota de representación: el mismo valor fijo para cada club). A cada club le llega como obligación en <b>Finanzas → Proyectado</b> y desde ahí la paga.</p>
       ${d.rows.length ? d.rows.map((q) => `<div class="dw-card mb-3"><div class="d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-bank fs-4" style="color:var(--dw-p)"></i>
-          <div class="flex-grow-1"><b>${esc(q.nombre)}</b><div class="small text-body-secondary">${C.money(q.valor_socio)} por socio · vence ${C.day(q.vence)} · año ${q.anio}-${q.anio + 1}${q.notas ? ` · ${esc(q.notas)}` : ''}</div></div>
+          <div class="flex-grow-1"><b>${esc(q.nombre)}</b><div class="small text-body-secondary">${q.tipo === 'por_club' ? `<span class="badge text-bg-light me-1">Representación</span>${C.money(q.valor_socio)} por club` : `${C.money(q.valor_socio)} por socio`} · vence ${C.day(q.vence)} · año ${q.anio}-${q.anio + 1}${q.notas ? ` · ${esc(q.notas)}` : ''}</div></div>
           <div class="text-end"><b>${C.money(q.pagado)}</b> <span class="small text-body-secondary">de ${C.money(q.total)}</span><div class="small">${q.pagaron}/${q.clubes.length} clubes pagaron</div></div>
           ${M ? `<button class="btn btn-sm btn-light" data-ed="${q.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-del="${q.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>
         ${C.meter(q.pagado, q.total)}
@@ -69,14 +90,14 @@ DW.ready.then(async (me) => {
       : window.App.empty('bi-bank', 'Aún no hay cuotas distritales.')}`;
     view.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => editar(d.rows.find((q) => String(q.id) === b.dataset.ed))));
     view.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
-      if (!(await window.App.confirm({ title: '¿Borrar esta cuota distrital?', text: 'Deja de aparecer en las finanzas de los clubes.', ok: 'Borrar' }))) return;
+      if (!(await window.App.confirm({ title: '¿Borrar esta cuota?', text: 'Deja de aparecer en las finanzas de los clubes.', ok: 'Borrar' }))) return;
       try { await api(`/api/distrito/cuotas/${b.dataset.del}`, { method: 'DELETE' }); toast('Borrada'); pintarCuotas(); } catch (x) { toast(x.message, false); }
     }));
   }
   async function editar(q) {
-    const out = await C.form({ title: q ? 'Editar cuota distrital' : 'Nueva cuota distrital', fields: [{ k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true },
-      { k: 'valor_socio', label: 'Valor por socio activo', type: 'money', required: true }, { k: 'vence', label: 'Vence', type: 'date', required: true }, { k: 'notas', label: 'Notas', type: 'long' }],
-      values: q || { nombre: `Cuota distrital ${t.nombre_anio}` }, okText: 'Guardar' });
+    const out = await C.form({ title: q ? 'Editar cuota' : 'Nueva cuota', fields: [{ k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true },
+      { k: 'tipo', label: 'Tipo', type: 'select', options: [['por_socio', 'Por socio activo (cuota distrital)'], ['por_club', 'Fija por club (cuota de representación)']] }, { k: 'valor_socio', label: 'Valor (por socio o por club, según el tipo)', type: 'money', required: true }, { k: 'vence', label: 'Vence', type: 'date', required: true }, { k: 'notas', label: 'Notas', type: 'long' }],
+      values: q || { nombre: `Cuota distrital ${t.nombre_anio}`, tipo: 'por_socio' }, okText: 'Guardar' });
     if (!out) return;
     try { await api(q ? `/api/distrito/cuotas/${q.id}` : '/api/distrito/cuotas', { method: q ? 'PATCH' : 'POST', body: out }); toast('Guardada: ya la ven los clubes'); await cargar(); } catch (x) { toast(x.message, false); }
   }
@@ -86,7 +107,7 @@ DW.ready.then(async (me) => {
     let d; try { d = await api(`/api/distrito/clubes/${encodeURIComponent(id)}`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
     const junta = d.socios.filter((s) => s.cargo && !/^soci[oa]$/i.test(s.cargo)), otros = d.socios.filter((s) => !junta.includes(s));
     const hoy = C.todayCo();
-    el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><h2 class="modal-title h5">${esc(d.club.nombre)}</h2><span class="badge text-bg-light ms-2">Solo lectura</span><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+    el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><h2 class="modal-title h5">${esc(d.club.nombre)}</h2><span class="badge text-bg-light ms-2">Solo lectura</span>${M ? '<button type="button" class="btn btn-sm btn-outline-danger ms-auto me-2" data-quitar><i class="bi bi-box-arrow-right me-1"></i>Quitar del distrito</button>' : ''}<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
       <div class="modal-body">
         <div class="d-flex gap-3 flex-wrap small mb-2"><span>Caja menor <b>${C.money(d.saldos.menor)}</b></span><span>Caja mayor <b>${C.money(d.saldos.mayor)}</b></span><span><b>${d.socios.length}</b> socios</span></div>
         <div class="ro-h">Junta</div>${junta.length ? junta.map((s) => `<div class="small py-1 border-bottom"><b>${esc(s.nombre)}</b> · <span style="color:var(--dw-p)">${esc(s.cargo)}</span>${s.activado_at ? ' <i class="bi bi-patch-check-fill text-success" title="Activado"></i>' : ''}</div>`).join('') : '<p class="small text-body-secondary">Sin junta registrada.</p>'}
@@ -95,6 +116,10 @@ DW.ready.then(async (me) => {
         <div class="ro-h">Reuniones y eventos (últimos 60 días y próximos)</div>${d.reuniones.length ? d.reuniones.map((r) => `<div class="small py-1 border-bottom ${r.fecha < hoy ? 'text-body-secondary' : ''}">${C.day(r.fecha)} · <b>${esc(r.titulo)}</b> · ${r.tipo === 'evento' ? 'Evento' : 'Reunión'}${r.estado === 'cancelada' ? ' (cancelada)' : ''}</div>`).join('') : '<p class="small text-body-secondary">Sin reuniones.</p>'}
         <div class="ro-h">Cuota distrital</div>${d.obligaciones.length ? d.obligaciones.map((o) => `<div class="small py-1 border-bottom d-flex gap-2"><span class="flex-grow-1">${esc(o.nombre)} · ${C.money(o.pagado)} de ${C.money(o.total)}</span>${C.chip(...EST[o.estado])}</div>`).join('') : '<p class="small text-body-secondary">Sin cuotas.</p>'}
       </div>`;
+    el.querySelector('[data-quitar]')?.addEventListener('click', async () => {
+      if (!(await window.App.confirm({ title: `¿Quitar a ${d.club.nombre} del distrito?`, text: 'Deja de aparecer aquí y no recibe las cuotas ni los bonos del distrito. Sus datos no se borran; el club vuelve a unirse escribiendo el código del distrito en sus Datos del club. Borrar el club del todo se hace desde Diwilo.', ok: 'Quitar' }))) return;
+      try { await api(`/api/distrito/clubes/${encodeURIComponent(id)}/quitar`, { method: 'POST' }); window.bootstrap?.Modal.getInstance(el)?.hide(); toast('Club quitado del distrito'); await cargar(); } catch (x) { toast(x.message, false); }
+    });
   }
 
   // Orden del día de las reuniones ordinarias: el distrito lo ajusta y sus clubes lo usan en el acta de cada reunión
@@ -163,13 +188,74 @@ DW.ready.then(async (me) => {
     try { await api(r ? `/api/distrito/juegos/retos/${r.id}` : '/api/distrito/juegos/retos', { method: r ? 'PATCH' : 'POST', body: out }); toast(r ? 'Reto guardado' : 'Reto creado: ya lo ven los clubes en Juegos'); pintarJuegos(); } catch (x) { toast(x.message, false); }
   }
 
+  /* ---------- Metas del año rotario (avance con lo que registran los clubes) ---------- */
+  const IND = [['clubes', 'Clubes', 'bi-diagram-3', C.num], ['socios', 'Socios activos', 'bi-people-fill', C.num], ['activados', 'Socios activados', 'bi-patch-check', C.num],
+    ['proyectos', 'Proyectos en curso', 'bi-globe-americas', C.num], ['beneficiados', 'Beneficiados', 'bi-heart', C.num], ['horas', 'Horas de servicio', 'bi-clock', C.num],
+    ['asistencia', 'Asistencia promedio (%)', 'bi-person-check', (v) => `${v}%`], ['distrital', 'Cuota distrital recaudada', 'bi-bank', C.money]];
+  const actual = (k) => ({ clubes: t.totales.clubes, socios: t.totales.socios, activados: t.totales.activados, proyectos: t.totales.proyectos, beneficiados: t.totales.beneficiados,
+    horas: t.totales.horas, asistencia: t.totales.asistencia || 0, distrital: t.totales.distrital_pagado })[k];
+  let metas = {};
+  async function pintarMetas() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    metas = (await api(`/api/distrito/metas?anio=${t.anio}`)).metas;
+    const con = IND.filter(([k]) => metas[k]);
+    view.innerHTML = `<div class="dw-card mb-3 d-flex align-items-center gap-2 flex-wrap"><b>Metas ${esc(t.nombre_anio)}</b><span class="small text-body-secondary">el avance sale solo de lo que registran los clubes</span>${selAnio()}</div>
+      ${con.length ? `<div class="ro-dclubs">${con.map(([k, l, ic, f]) => { const v = actual(k), m = metas[k], p = Math.min(100, Math.round((v / m) * 100)), [col] = semaforo(p);
+        return `<div class="ro-dclub"><div class="d-flex align-items-center gap-2"><i class="bi ${ic} fs-4" style="color:var(--dw-p)"></i><b class="flex-grow-1">${esc(l)}</b><b style="color:${col}">${p}%</b></div>
+          <div class="mt-2"><span class="fs-4 fw-semibold">${f(v)}</span> <span class="text-body-secondary">de ${f(m)}</span></div>${C.meter(v, m)}</div>`; }).join('')}</div>`
+        : window.App.empty('bi-bullseye', `Aún no hay metas para ${esc(t.nombre_anio)}.${M ? ' Usa «Editar metas».' : ''}`)}`;
+  }
+  async function editarMetas() {
+    const out = await C.form({ title: `Metas del distrito ${t.nombre_anio}`, fields: IND.map(([k, l]) => ({ k, label: l, type: k === 'distrital' ? 'money' : 'int' })), values: metas, okText: 'Guardar' });
+    if (!out) return;
+    try { await api('/api/distrito/metas', { method: 'PUT', body: { anio: t.anio, metas: out } }); toast('Metas guardadas'); pintarMetas(); } catch (x) { toast(x.message, false); }
+  }
+
+  /* ---------- Bonos por club: el distrito asigna, registra lo vendido y lo pagado ---------- */
+  let bonos = [];
+  async function pintarBonos() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    bonos = (await api('/api/distrito/bonos')).rows;
+    view.innerHTML = `<p class="small text-body-secondary">Bonos o boletas del distrito (rifas, eventos, campañas): asigna cuántos le tocan a cada club y registra lo vendido y lo pagado. Cada club los ve en su Inicio.</p>
+      ${bonos.length ? bonos.map((b) => `<div class="dw-card mb-3"><div class="d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-ticket-perforated fs-4" style="color:var(--dw-p)"></i>
+          <div class="flex-grow-1"><b>${esc(b.nombre)}</b><div class="small text-body-secondary">${C.money(b.valor)} cada uno${b.vence ? ` · vence ${C.day(b.vence)}` : ''}${b.notas ? ` · ${esc(b.notas)}` : ''}</div></div>
+          <div class="text-end"><b>${C.money(b.pagado)}</b> <span class="small text-body-secondary">de ${C.money(b.total)}</span><div class="small">${C.num(b.vendidos)}/${C.num(b.asignados)} vendidos</div></div>
+          ${M ? `<button class="btn btn-sm btn-light" data-bed="${b.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-bdel="${b.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>
+        ${C.meter(b.pagado, b.total)}
+        <details class="mt-2" ${b.asignados ? '' : 'open'}><summary class="small">Por club</summary>${window.App.table([{ label: 'Club', main: true, html: (x) => esc(x.club) }, { label: 'Asignados', cls: 'text-end', html: (x) => C.num(x.asignados) },
+          { label: 'Vendidos', cls: 'text-end', html: (x) => C.num(x.vendidos) }, { label: 'Pagado', cls: 'text-end', html: (x) => `${C.money(x.pagado)} <span class="text-body-secondary">/ ${C.money(x.total)}</span>` },
+          { label: '', html: (x) => (M ? `<button class="btn btn-sm btn-light" data-basig="${b.id}" data-bclub="${esc(x.club_id)}"><i class="bi bi-pencil"></i></button>` : '') }], b.clubes)}</details></div>`).join('')
+      : window.App.empty('bi-ticket-perforated', 'Aún no hay bonos del distrito.')}`;
+    view.querySelectorAll('[data-bed]').forEach((x) => (x.onclick = () => editarBono(bonos.find((b) => String(b.id) === x.dataset.bed))));
+    view.querySelectorAll('[data-bdel]').forEach((x) => (x.onclick = async () => {
+      if (!(await window.App.confirm({ title: '¿Borrar este bono?', text: 'Deja de aparecer en los clubes.', ok: 'Borrar' }))) return;
+      try { await api(`/api/distrito/bonos/${x.dataset.bdel}`, { method: 'DELETE' }); toast('Borrado'); pintarBonos(); } catch (e) { toast(e.message, false); }
+    }));
+    view.querySelectorAll('[data-basig]').forEach((x) => (x.onclick = async (e) => {
+      e.stopPropagation();
+      const b = bonos.find((y) => String(y.id) === x.dataset.basig), k = b.clubes.find((y) => y.club_id === x.dataset.bclub);
+      const out = await C.form({ title: `${b.nombre} · ${k.club}`, fields: [{ k: 'asignados', label: 'Asignados', type: 'int' }, { k: 'vendidos', label: 'Vendidos', type: 'int' }, { k: 'pagado', label: 'Pagado al distrito', type: 'money' }], values: k, okText: 'Guardar' });
+      if (!out) return;
+      try { await api(`/api/distrito/bonos/${b.id}/clubes/${encodeURIComponent(k.club_id)}`, { method: 'PUT', body: out }); toast('Guardado'); pintarBonos(); } catch (er) { toast(er.message, false); }
+    }));
+  }
+  async function editarBono(b) {
+    const out = await C.form({ title: b ? 'Editar bono' : 'Nuevo bono', fields: [{ k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true, placeholder: 'Rifa conferencia distrital' },
+      { k: 'valor', label: 'Valor de cada bono', type: 'money', required: true }, { k: 'vence', label: 'Fecha límite', type: 'date' }, { k: 'notas', label: 'Notas', type: 'long' }], values: b || {}, okText: 'Guardar' });
+    if (!out) return;
+    try { await api(b ? `/api/distrito/bonos/${b.id}` : '/api/distrito/bonos', { method: b ? 'PATCH' : 'POST', body: out }); toast(b ? 'Bono guardado' : 'Bono creado: ahora asígnalo a los clubes'); pintarBonos(); } catch (x) { toast(x.message, false); }
+  }
+
   function pintar() {
-    acciones.innerHTML = tab === 'cuotas' && M ? '<button class="btn btn-primary" data-nueva><i class="bi bi-plus-lg me-1"></i>Nueva cuota distrital</button>' : '';
-    acciones.querySelector('[data-nueva]')?.addEventListener('click', () => editar(null));
+    const ACC = { clubes: ['Solicitar club nuevo', solicitarClub], cuotas: ['Nueva cuota', () => editar(null)], bonos: ['Nuevo bono', () => editarBono(null)], metas: ['Editar metas', editarMetas] };
+    acciones.innerHTML = M && ACC[tab] ? `<button class="btn btn-primary" data-nueva><i class="bi ${tab === 'metas' ? 'bi-pencil' : 'bi-plus-lg'} me-1"></i>${ACC[tab][0]}</button>` : '';
+    acciones.querySelector('[data-nueva]')?.addEventListener('click', () => ACC[tab][1]());
     view.onclick = null;
     if (tab === 'orden') return pintarOrden();
     if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();
+    if (tab === 'metas') return pintarMetas();
+    if (tab === 'bonos') return pintarBonos();
     return tab === 'anio' ? pintarAnio() : pintarClubes();
   }
   async function cargar() { t = await api(`/api/distrito/tablero${anio ? `?anio=${anio}` : ''}`); anio = t.anio; pintar(); }

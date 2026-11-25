@@ -144,7 +144,7 @@ export function routes(r) {
   // Datos del club para su certificado de organización (número, fundación, club rotario patrocinador): en ro_club_config.kit
   // El distrito vive en su columna (con él el distrito agrupa a sus clubes); país y zona van con los demás datos en kit.club
   const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit, distrito, programa FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}').club || {}; } catch (_) { k = {}; }
-    return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito || c.env.DISTRITO_DEFECTO || '4271', programa: programa(r?.programa).id }; };
+    return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito === '0' ? '' : (r?.distrito || c.env.DISTRITO_DEFECTO || '4271'), programa: programa(r?.programa).id }; };
   r.get('/api/socios/club', `manager:${MOD}`, async (c) => json(await datosClub(c)));
   r.put('/api/socios/club', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req), d = { numero: cast('numero', 'text', b.numero), fundado: b.fundado ? cast('fundado', 'date', b.fundado) : null,

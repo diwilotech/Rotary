@@ -50,6 +50,11 @@ export function routes(r) {
         AND EXISTS (SELECT 1 FROM ro_tareas t WHERE t.business_id = p.business_id AND t.proyecto_id = p.id AND t.estado IN ('pendiente','en_curso')) LIMIT 5`, bid);
       for (const m of malos) alerta(`«${m.nombre}» está finalizado pero tiene tareas abiertas`, `/staff/impacto.html#p=${m.id}`);
     }
+    // Bonos que el distrito le asignó al club y aún no paga completos
+    const { codigo } = await distritoDe(c.env, bid);
+    const bn = await one(c.env, `SELECT SUM(x.asignados * b.valor - x.pagado) saldo, COUNT(*) n FROM ro_bonos_clubes x JOIN ro_bonos b ON b.id = x.bono_id
+      WHERE x.club_id = ? AND b.distrito = ? AND x.asignados * b.valor > x.pagado`, bid, codigo);
+    if (bn?.n) alerta(`Bonos del distrito: ${bn.n} por pagar ($${Number(bn.saldo).toLocaleString('es-CO')})`, '#bonos', 'info');
     if (mods.has('reuniones')) {
       out.proxima = await one(c.env, "SELECT id, titulo, tipo, fecha, hora_ini FROM ro_reuniones WHERE business_id = ? AND fecha >= ? AND estado <> 'cancelada' ORDER BY fecha, hora_ini LIMIT 1", bid, hoy) || null;
     }

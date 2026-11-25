@@ -163,12 +163,12 @@ export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUN
 export async function obligacionesClub(env, bid, { anio = null } = {}) {
   const { codigo } = await distritoDe(env, bid);
   const [cuotas, n, pagos] = await Promise.all([
-    all(env, `SELECT id, nombre, valor_socio, vence, anio, notas FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
+    all(env, `SELECT id, nombre, tipo, valor_socio, vence, anio, notas FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
     sociosQueCuentan(env, bid),
     all(env, "SELECT distrital_id, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY distrital_id", bid),
   ]);
   return cuotas.map((q) => {
-    const total = q.valor_socio * n, pagado = pagos.find((p) => p.distrital_id === q.id)?.total || 0;
+    const total = q.tipo === 'por_club' ? q.valor_socio : q.valor_socio * n, pagado = pagos.find((p) => p.distrital_id === q.id)?.total || 0;
     return { ...q, socios: n, total, pagado, saldo: Math.max(0, total - pagado), estado: pagado >= total && total > 0 ? 'pagada' : q.vence < today() ? 'vencida' : 'pendiente' };
   });
 }
