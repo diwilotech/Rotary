@@ -37,6 +37,7 @@ Partió de CD Academia (misma base: shell, login, panel con marco, contrato con 
 - `npm run db:migrate:local && npm test` → "Todo bien". Las pruebas levantan Diwilo Modulos con `scripts/modulos-local/wrangler.jsonc` (sin IA ni correo, no pide credenciales).
 
 ## Reglas
+- Service worker (`public/sw.js`): estáticos con red primero (sin conexión, lo guardado); subir `VERSION` solo si cambia la lista SHELL.
 - Toda consulta filtra por negocio. Vencida = solo lectura.
 - Migraciones nuevas: solo agregar, preservar datos.
 - En Diwilo Admin la app está con `modulosPorDefecto: false`: los negocios nuevos arrancan sin módulos.
