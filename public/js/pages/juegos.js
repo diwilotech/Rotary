@@ -96,7 +96,7 @@ DW.ready.then(async (me) => {
     const g = deCat(juego);
     h1.textContent = `${g.emoji} ${g.nombre}`; acciones.innerHTML = '';
     history.replaceState(null, '', `#banco=${juego}`);
-    window.RoContenido.montar(view, { base: '/api/juegos/contenido', juego, titulo: g.contenido?.nombre || 'Contenido', volver: () => (desdeSala ? abrir(desdeSala) : lobby()) });
+    window.RoContenido.montar(view, { base: '/api/juegos/contenido', juego, titulo: '', volver: () => (desdeSala ? abrir(desdeSala) : lobby()) });
     window.scrollTo({ top: 0 });
   }
 

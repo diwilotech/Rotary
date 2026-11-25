@@ -37,7 +37,7 @@
       const T = d.tipo;
       const lista = d.gestiona ? d.items.filter((x) => (!filtro || `${x.texto} ${x.detalle}`.toLowerCase().includes(filtro)) && (!origen || x.origen === origen) && (!estado || (estado === 'on' ? x.activo : !x.activo))) : [];
       const cuenta = (o) => d.items.filter((x) => x.origen === o).length;
-      el.innerHTML = `<div class="d-flex align-items-center gap-2 mb-3">${volver ? '<button type="button" class="btn btn-light" data-rcvolver><i class="bi bi-arrow-left me-1"></i>Volver</button>' : ''}<h2 class="h5 m-0">${esc(titulo)} · ${esc(T.nombre)}</h2></div>
+      el.innerHTML = `<div class="d-flex align-items-center gap-2 mb-3">${volver ? '<button type="button" class="btn btn-light" data-rcvolver><i class="bi bi-arrow-left me-1"></i>Volver</button>' : ''}<h2 class="h5 m-0">${titulo ? `${esc(titulo)} · ` : ''}${esc(T.nombre)}</h2></div>
         <div class="row g-3"><div class="col-lg-5"><form class="dw-card" data-nueva style="position:sticky;top:12px"><div class="fw-semibold mb-2"><i class="bi bi-plus-circle me-1"></i>Añadir ${esc(T.uno)}</div>${formulario(juego)}<div class="text-end mt-2"><button class="btn btn-primary">Añadir</button></div></form></div>
           <div class="col-lg-7"><div class="dw-card"><div class="small text-body-secondary mb-2"><i class="bi bi-collection me-1"></i><b class="text-body">${d.activas}</b> ${esc(T.nombre.toLowerCase())} en juego${d.gestiona ? '' : ' (las del club, las del distrito y las de la app)'}.</div>
           ${d.gestiona ? `<div class="d-flex flex-wrap gap-1 align-items-center mb-2">
