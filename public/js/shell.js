@@ -215,24 +215,100 @@
     throw e;
   });
 
-  // Mi carnet (barra superior): la credencial del socio con su foto, cargo y código; botón para editar sus datos y su foto.
+  // Mi carnet (barra superior): credencial de dos caras (frente con foto e ID de Rotary; reverso con QR). Tocarla la voltea.
+  let qrLib;
+  const qrSvg = async (txt) => {
+    qrLib ||= new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js'; sc.onload = res; sc.onerror = () => { qrLib = null; rej(); }; document.head.appendChild(sc); });
+    await qrLib; const q = window.qrcode(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  };
+  const CARNET_CSS = `<style>
+    .ro-k-stage{background:radial-gradient(120% 90% at 50% 0%,#1c2f6b 0%,#0b1430 70%);padding:22px 12px 26px;perspective:1400px}
+    .ro-k{position:relative;width:min(100%,330px);aspect-ratio:5/7.4;margin:0 auto;cursor:pointer;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+    .ro-k.is-back{transform:rotateY(180deg)}
+    .ro-k__face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:20px;overflow:hidden;color:#fff;display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 18px 16px;
+      background:repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px),linear-gradient(160deg,#22377a 0%,#172a63 45%,#0f1e4d 100%);
+      border:1.5px solid #d9b45a;box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 0 0 7px rgba(10,20,55,.0)}
+    .ro-k__face::before{content:"";position:absolute;inset:9px;border:1px solid rgba(217,180,90,.35);border-radius:14px;pointer-events:none}
+    .ro-k__back{transform:rotateY(180deg)}
+    .ro-k__gold{background:linear-gradient(135deg,#f6dd8f,#c9962e 55%,#f3d27a)}
+    .ro-k__wheel{-webkit-mask:url(/img/marca/rueda.svg) center/contain no-repeat;mask:url(/img/marca/rueda.svg) center/contain no-repeat}
+    .ro-k__wm{position:absolute;width:78%;aspect-ratio:1;left:11%;top:34%;background:#fff;opacity:.05}
+    .ro-k__logo{align-self:stretch;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:62px;padding:2px 6px}
+    .ro-k__logo img,.ro-k__logo svg{max-width:100%;max-height:74px;width:auto;height:auto;display:block}
+    .ro-k__svg svg{filter:brightness(0) invert(1)}
+    .ro-k__logo b{color:#f2d27e;letter-spacing:.14em;font-size:1.02rem}.ro-k__logo span{font-size:.78rem;opacity:.85}
+    .ro-k__brand{align-self:stretch;display:flex;align-items:center;gap:10px;text-align:left;position:relative}
+    .ro-k__brand .ro-k__wheel{width:42px;height:42px;flex:none}
+    .ro-k__brand img{height:40px;max-width:60px;object-fit:contain;border-radius:6px}
+    .ro-k__brand b{display:block;color:#f2d27e;letter-spacing:.14em;font-size:1.02rem;line-height:1.1}
+    .ro-k__brand span{font-size:.78rem;opacity:.85}
+    .ro-k__badge{margin:12px 0 10px;padding:3px 16px;border-radius:999px;color:#1a1a1a;font-weight:800;font-size:.68rem;letter-spacing:.16em;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+    .ro-k__band{position:absolute;left:0;right:0;top:41%;height:13%;background:linear-gradient(90deg,#c86ad1cc,#8f7fe0aa 40%,#7fc9a9aa 75%,#a5d98acc);opacity:.75}
+    .ro-k__foto{position:relative;width:46%;aspect-ratio:1;border-radius:50%;padding:5px;z-index:1;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+    .ro-k__foto>*{width:100%;height:100%;border-radius:50%;object-fit:cover;display:grid;place-items:center;background:#d41367;color:#fff;font-size:2.4rem;font-weight:800}
+    .ro-k__name{font-weight:800;font-size:1.28rem;line-height:1.15;margin-top:12px;position:relative;text-shadow:0 2px 6px rgba(0,0,0,.4)}
+    .ro-k__role{color:#f2d27e;font-weight:700;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;margin-top:4px;position:relative}
+    .ro-k__foot{margin-top:auto;align-self:stretch;border-top:1px solid rgba(217,180,90,.35);padding-top:10px;position:relative}
+    .ro-k__lbl{font-size:.64rem;letter-spacing:.2em;text-transform:uppercase;opacity:.8;font-weight:700}
+    .ro-k__id{font-size:1.7rem;font-weight:800;letter-spacing:.12em;line-height:1.1;color:#fbeecb}
+    .ro-k__since{font-size:.74rem;opacity:.85}
+    .ro-k__qr{background:#fff;border-radius:14px;padding:12px;width:68%;aspect-ratio:1;display:grid;place-items:center;color:#555;position:relative}
+    .ro-k__qr svg{width:100%;height:100%}
+    .ro-k__rows{align-self:stretch;text-align:left;margin-top:8px;position:relative}
+    .ro-k__rows>div{border-bottom:1px solid rgba(255,255,255,.12);padding:6px 2px}
+    .ro-k__rows b{display:block;font-size:.92rem}
+    .ro-k__motto{margin-top:auto;align-self:stretch;display:flex;align-items:center;gap:12px;font-style:italic;font-size:.82rem;position:relative}
+    .ro-k__motto .ro-k__wheel{width:36px;height:36px;flex:none}
+    .ro-k-hint{color:rgba(255,255,255,.6);font-size:.75rem;text-align:center;margin-top:12px}
+  </style>`;
   async function carnet() {
     const { modal, toast } = window.App;
-    const { el, m } = modal('<div class="modal-body p-4 text-center text-body-secondary">Cargando…</div>');
-    let k; try { k = (await api('/api/lotuyo/carnet')).carnet; } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
-    if (!k) { el.querySelector('.modal-body').innerHTML = `${window.App.empty('bi-person-vcard', 'Tu usuario aún no está enlazado a una ficha de socio. Pídele a la junta que te dé acceso desde Socios.')}`; return; }
+    const head = `<div class="modal-header"><h2 class="modal-title h5"><i class="bi bi-person-vcard me-2" style="color:var(--dw-p)"></i>Mi carnet</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>`;
+    const foot = (extra = '') => `<div class="modal-footer">${extra}<button type="button" class="btn btn-light" data-bs-dismiss="modal">Cerrar</button></div>`;
+    const { el } = modal(`${head}<div class="modal-body p-4 text-center text-body-secondary">Cargando…</div>${foot()}`);
+    const body = () => el.querySelector('.modal-body');
+    let k; try { k = (await api('/api/lotuyo/carnet')).carnet; } catch (x) { body().textContent = x.message; return; }
+    if (!k) { body().innerHTML = `${window.App.empty('bi-person-vcard', 'Tu usuario aún no está enlazado a una ficha de socio. Pídele a la junta que te dé acceso desde Socios.')}`; return; }
+    // Logo completo del club arriba: el de fondo oscuro (blanco) hecho en Marca; si no hay, el logotipo oficial con el nombre del club.
+    const logos = (DW.me?.modules || []).some((x) => x.id === 'marca') ? ((await api('/api/marca/logos').catch(() => null))?.logos || []) : [];
+    const logoClub = logos.find((x) => x.tipo === 'oscuro' && x.data_url)?.data_url || null;
     const ini = k.nombre.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    const fecha = (d) => d ? new Date(String(d).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+    let atras = false;
     const pinta = () => {
-      el.querySelector('.modal-content').innerHTML = `<style>.ro-carnet{border-radius:18px;overflow:hidden;background:var(--bs-body-bg);box-shadow:0 10px 30px rgba(0,0,0,.18)}
-          .ro-carnet__top{background:linear-gradient(135deg,var(--dw-p),color-mix(in srgb,var(--dw-p) 55%,#000));color:#fff;padding:16px;display:flex;align-items:center;gap:10px}
-          .ro-carnet__top img{height:34px;border-radius:6px;background:#fff;padding:2px}.ro-carnet__foto{width:110px;height:110px;border-radius:50%;object-fit:cover;border:4px solid var(--bs-body-bg);margin:-40px auto 6px;display:grid;place-items:center;background:rgba(var(--dw-p-rgb),.15);color:var(--dw-p);font-size:2.4rem;font-weight:700}</style>
-        <div class="modal-body p-3"><div class="ro-carnet"><div class="ro-carnet__top">${k.logo ? `<img src="${esc(k.logo)}" alt="">` : '<i class="bi bi-gear-wide-connected fs-3"></i>'}<div><div class="small text-uppercase" style="letter-spacing:.12em;opacity:.85">Carnet de socio</div><b>${esc(k.club)}</b></div></div>
-          <div class="text-center px-3 pb-3" style="padding-top:44px">${k.foto ? `<img class="ro-carnet__foto" src="${esc(k.foto)}" alt="">` : `<div class="ro-carnet__foto">${esc(ini)}</div>`}
-            <div class="fs-5 fw-bold">${esc(k.nombre)}</div><div class="fw-semibold" style="color:var(--dw-p)">${esc(k.cargo || k.tipo || '')}</div>
-            <div class="small text-body-secondary mt-1">${k.estado === 'activo' ? '<i class="bi bi-circle-fill text-success" style="font-size:.5rem;vertical-align:middle"></i> Activo' : esc(k.estado)}${k.fecha_ingreso ? ` · socio desde ${new Date(k.fecha_ingreso + 'T12:00:00Z').getUTCFullYear()}` : ''}</div>
-            <div class="small mt-2">${[k.email, k.telefono].filter(Boolean).map(esc).join(' · ')}</div>${k.profesion ? `<div class="small text-body-secondary">${esc(k.profesion)}</div>` : ''}
-            ${k.codigo ? `<div class="mt-2 small"><span class="badge text-bg-light"><i class="bi bi-patch-check-fill text-success me-1"></i>${esc(k.codigo)}</span></div>` : ''}</div></div></div>
-        <div class="modal-footer border-0 pt-0"><button class="btn btn-light" data-foto><i class="bi bi-camera me-1"></i>Foto</button><button class="btn btn-primary" data-editar><i class="bi bi-pencil me-1"></i>Editar</button></div>`;
+      const activado = !!k.activado_at, desde = k.activado_at || k.fecha_ingreso;
+      const id = k.myrotary_id || '—';
+      el.querySelector('.modal-content').innerHTML = `${CARNET_CSS}${head}
+        <div class="modal-body p-0"><div class="ro-k-stage">
+          <div class="ro-k${atras ? ' is-back' : ''}" data-flip role="button" tabindex="0" aria-label="Voltear carnet">
+            <div class="ro-k__face">
+              <div class="ro-k__wm ro-k__wheel"></div>
+              <div class="ro-k__logo">${logoClub ? `<img src="${esc(logoClub)}" alt="${esc(k.club)}">` : k.logo_oficial ? `<div class="ro-k__svg">${k.logo_oficial}</div>` : `<b>ROTARACT</b><span>${esc(k.club)}</span>`}</div>
+              <div class="ro-k__badge ro-k__gold">${activado ? 'SOCIO ACTIVADO' : esc((k.tipo || 'Socio').toUpperCase())}</div>
+              <div class="ro-k__band"></div>
+              <div class="ro-k__foto ro-k__gold">${k.foto ? `<img src="${esc(k.foto)}" alt="">` : `<div>${esc(ini)}</div>`}</div>
+              <div class="ro-k__name">${esc(k.nombre)}</div>
+              <div class="ro-k__role">${esc(k.cargo || 'Rotary International')}</div>
+              <div class="ro-k__foot"><div class="ro-k__lbl">ID de Rotary</div><div class="ro-k__id">${esc(id)}</div>${desde ? `<div class="ro-k__since">Socio desde ${esc(fecha(desde))}</div>` : ''}</div>
+            </div>
+            <div class="ro-k__face ro-k__back">
+              <div class="ro-k__wm ro-k__wheel" style="top:46%"></div>
+              <div class="ro-k__lbl" style="color:#f2d27e;opacity:1;margin:4px 0 12px">${activado ? 'Carné de socio activado' : 'Carné de socio'}</div>
+              <div class="ro-k__qr" data-qr><span class="small">Generando QR…</span></div>
+              <div class="small mt-2" style="opacity:.8;position:relative">Escanéalo para verificar el carné o pasar lista</div>
+              <div class="ro-k__rows"><div><span class="ro-k__lbl">Titular</span><b>${esc(k.nombre)}</b></div><div><span class="ro-k__lbl">ID de Rotary</span><b>${esc(id)}</b></div></div>
+              <div class="ro-k__motto"><div class="ro-k__wheel ro-k__gold"></div><span>«Dar de sí antes de pensar en sí»</span></div>
+            </div>
+          </div>
+          <div class="ro-k-hint"><i class="bi bi-arrow-repeat me-1"></i>Toca el carnet para voltearlo</div>
+        </div></div>
+        ${foot('<button type="button" class="btn btn-light me-auto" data-voltear><i class="bi bi-arrow-repeat me-1"></i>Voltear</button><button type="button" class="btn btn-light" data-foto><i class="bi bi-camera me-1"></i>Foto</button><button type="button" class="btn btn-primary" data-editar><i class="bi bi-pencil me-1"></i>Editar</button>')}`;
+      const card = el.querySelector('[data-flip]');
+      const flip = () => { atras = !atras; card.classList.toggle('is-back', atras); };
+      card.onclick = flip; card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } };
+      el.querySelector('[data-voltear]').onclick = flip;
+      const qrTxt = [`ROTARACT · ${k.club}`, `Titular: ${k.nombre}`, `ID de Rotary: ${k.myrotary_id || 'sin registrar'}`, activado ? `Activado: ${k.activado_at}` : '', k.codigo ? `Verificación: ${k.codigo}` : ''].filter(Boolean).join('\n');
+      qrSvg(qrTxt).then((svg) => { const q = el.querySelector('[data-qr]'); if (q) q.innerHTML = svg; }).catch(() => { const q = el.querySelector('[data-qr]'); if (q) q.innerHTML = '<span class="small">No se pudo generar el QR</span>'; });
       el.querySelector('[data-editar]').onclick = async () => {
         const out = await window.App.Crud.form({ title: 'Editar mi carnet', fields: [{ k: 'telefono', label: 'Celular', type: 'text' }, { k: 'profesion', label: 'Profesión', type: 'text' }, { k: 'instagram', label: 'Instagram', type: 'text' }, { k: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' }], values: k });
         if (!out) return;
@@ -245,7 +321,7 @@
           const r = await fetch(`/api/lotuyo/foto?nombre=${encodeURIComponent(f.name)}`, { method: 'POST', credentials: 'same-origin', headers: { 'x-app': '1', 'content-type': 'application/octet-stream' }, body: f });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) return toast(d.error || 'No se pudo subir la foto', false);
-          k.foto = d.foto; toast('Foto actualizada'); pinta();
+          k.foto = d.foto; atras = false; toast('Foto actualizada'); pinta();
         };
         i.click();
       };
