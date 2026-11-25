@@ -67,65 +67,124 @@ DW.ready.then(async (me) => {
         await api(`/api/cuotas/pagos/${p.id}`, { method: 'PATCH', body: out }); toast('Pago actualizado (también en la Caja menor)');
       }
       if (a === 'verificar') { await api(`/api/cuotas/pagos/${p.id}/verificar`, { method: 'POST', body: {} }); toast('Verificado: entró a la Caja menor'); }
-      if (a === 'rechazar') { const motivo = prompt('¿Por qué se rechaza? (el socio lo verá)'); if (!motivo) return; await api(`/api/cuotas/pagos/${p.id}/rechazar`, { method: 'POST', body: { motivo } }); toast('Rechazado'); }
+      if (a === 'rechazar') {
+        const out = await C.form({ title: `Rechazar pago · ${p.socio || ''}`, fields: [{ k: 'motivo', label: '¿Por qué se rechaza?', type: 'long', required: true, hint: 'el socio lo verá en «Lo tuyo»' }], okText: 'Rechazar' });
+        if (!out?.motivo) return; await api(`/api/cuotas/pagos/${p.id}/rechazar`, { method: 'POST', body: { motivo: out.motivo } }); toast('Rechazado');
+      }
       if (a === 'anular') { if (!(await window.App.confirm({ title: '¿Anular este pago?', text: 'Sale de la Caja menor y deja de contar en la cartera.', ok: 'Anular' }))) return; await api(`/api/cuotas/pagos/${p.id}/anular`, { method: 'POST', body: {} }); toast('Anulado'); }
       if (a === 'subir') { const f = await RO.elegirArchivo(); if (!f) return; await RO.subir(`/api/cuotas/pagos/${p.id}/comprobante`, f); toast('Comprobante adjunto'); }
       cargar();
     } catch (x) { toast(x.message, false); }
   }
 
-  function pintar() {
-    const q = filtro.toLowerCase(), k = cartera.filter((x) => !q || x.nombre.toLowerCase().includes(q)).sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
-    const pend = pagos.filter((p) => p.estado === 'pendiente');
-    const n = (e) => cartera.filter((x) => x.estado === e).length;
-    // Filtro por estado y tarjetas de color según cómo va cada socio (el nombre baja de línea, no se sale de la tarjeta)
-    const ORD = { debe: 0, por_vencer: 1, al_dia: 2, adelantado: 3 };
-    const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
-    // Recordatorio por WhatsApp: abre el chat con el mensaje listo (lo envía quien está en la junta, desde su WhatsApp)
-    const wa = (x) => { let t = String(x.telefono || '').replace(/\D/g, ''); if (!t) return ''; if (t.length === 10) t = `57${t}`;
-      const nom = x.nombre.split(' ')[0], txt = x.estado === 'debe' ? `Hola ${nom}, te escribimos de ${me.business.name}. Según la cartera del club tienes ${C.money(x.saldo)} pendientes en cuotas${x.vencido ? ` (${C.money(x.vencido)} vencidos)` : ''}. Puedes reportar tu pago con el comprobante en la app, en «Lo tuyo». ¡Gracias!`
-        : `Hola ${nom}, te recordamos de ${me.business.name} que tu cuota de ${C.money(x.saldo)} está por vencer. Puedes reportar el pago en la app, en «Lo tuyo». ¡Gracias!`;
-      return `https://wa.me/${t}?text=${encodeURIComponent(txt)}`; };
-    const linea = (x) => x.estado === 'debe' ? `<b>Debe ${C.money(x.saldo)}</b>${x.vencido ? ` · ${C.money(x.vencido)} vencido` : ''}`
-      : x.estado === 'por_vencer' ? `<b>Por vencer ${C.money(x.saldo)}</b>` : x.estado === 'adelantado' ? `<b>A favor ${C.money(x.a_favor)}</b>` : `<b>Al día</b> · pagado ${C.money(x.pagado)}`;
-    view.querySelector('[data-cartera]').innerHTML = `<p class="small text-body-secondary mb-2"><i class="bi bi-info-circle me-1"></i>Pagan cuota: socios activos y junta${cfg.aspirantes ? ', aspirantes' : ''}${cfg.honorarios ? ', honorarios' : ''}. Cada uno desde el mes en que ingresó (o el primer periodo creado).</p>` + (cartera.length ? `<div class="d-flex flex-wrap gap-2 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
-        .map(([e, l, c]) => `<button type="button" class="btn btn-sm ${fEst === e ? 'btn-primary' : 'btn-light'} rounded-pill" data-fe="${e}">${l} <span class="badge text-bg-${fEst === e ? 'light' : 'secondary'}">${c}</span></button>`).join('')}</div>
-      ${vis.length ? `<div class="ro-cart">${vis.map((x) => `<div class="ro-cc ro-cc-${x.estado}" data-s="${x.socio_id}" role="button" tabindex="0">
-          <div class="d-flex align-items-start gap-2">${RO.avatar(x, 38)}<div class="min-w-0 flex-grow-1"><b class="ro-cc-n">${esc(x.nombre)}</b>${x.cargo ? `<div class="small text-body-secondary text-truncate">${esc(x.cargo)}</div>` : ''}</div></div>
-          <div class="ro-cc-pie"><span class="ro-cc-e"><i class="bi ${ICO[x.estado]} me-1"></i>${(EST[x.estado] || EST.debe)[1]}</span><span class="text-end">${linea(x)}</span></div>
-          <div class="small text-body-secondary">${x.desde ? `Cobra desde <b class="text-capitalize">${C.monthName(x.desde)}</b>` : 'Sin meses por cobrar'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}${x.fecha_ingreso ? ` · ingresó ${C.day(x.fecha_ingreso)}` : ''}${['aspirante', 'honorario'].includes(x.tipo) ? ` · ${x.tipo === 'aspirante' ? 'aspirante' : 'honorario'}` : ''}<br>${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'}</div>${['debe', 'por_vencer'].includes(x.estado) && wa(x) ? `<a class="btn btn-sm btn-outline-success mt-1" href="${wa(x)}" target="_blank" rel="noopener" data-wa><i class="bi bi-whatsapp me-1"></i>Recordar</a>` : ''}</div>`).join('')}</div>`
-        : '<p class="small text-body-secondary">Nadie en este estado.</p>'}`
-      : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».'));
-    view.querySelector('[data-pend]').innerHTML = pend.length ? `<div class="alert alert-warning d-flex align-items-center gap-2"><i class="bi bi-hourglass-split"></i><span class="flex-grow-1">${pend.length} pago${pend.length > 1 ? 's' : ''} reportado${pend.length > 1 ? 's' : ''} por los socios esperan verificación.</span></div>` : '';
-    view.querySelector('[data-pagos]').innerHTML = pagos.length ? window.App.table([
-      { label: 'Fecha', html: (p) => C.day(p.fecha) }, { label: 'Socio', main: true, html: (p) => `${esc(p.socio || '')}<div class="small text-body-secondary fw-normal text-capitalize">${esc(p.metodo || '')}${p.observaciones ? ` · ${esc(p.observaciones)}` : ''}${p.motivo_rechazo ? ` · <span class="text-danger">${esc(p.motivo_rechazo)}</span>` : ''}</div>` },
-      { label: 'Monto', cls: 'text-end', html: (p) => `<b class="${p.estado === 'anulado' ? 'text-decoration-line-through text-body-secondary' : ''}">${C.money(p.monto)}</b>` }, { label: 'Estado', html: (p) => C.chip(...(PEST[p.estado] || PEST.pendiente)) },
-      { label: 'Comprobante', html: (p) => (p.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cuotas/pagos/${p.id}/comprobante" target="_blank" rel="noopener"><i class="bi bi-paperclip me-1"></i>Ver</a>` : W && p.estado !== 'anulado' ? `<button class="btn btn-sm btn-light" data-a="subir" data-p="${p.id}"><i class="bi bi-upload"></i></button>` : '<span class="text-body-secondary">—</span>') },
-      { label: '', cls: 'text-end text-nowrap', html: (p) => (!W ? '' : p.estado === 'pendiente' ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-success" data-a="verificar" data-p="${p.id}">Verificar</button> <button class="btn btn-sm btn-outline-danger" data-a="rechazar" data-p="${p.id}">Rechazar</button>`
-        : p.estado === 'verificado' ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-light" data-a="anular" data-p="${p.id}" title="Anular"><i class="bi bi-x-circle"></i></button>` : '') }], pagos) : window.App.empty('bi-receipt', 'Aún no hay ingresos de cuotas.');
+  // Comprobante que quedó en el sistema anterior: el texto «Comprobante en el sistema anterior: pagos/…» va como etiqueta, no como texto largo
+  const ANT = /\s*comprobante en el sistema anterior:\s*(\S+)/i;
+  const obsLimpia = (o) => String(o || '').replace(ANT, '').replace(/\s*·\s*$/, '').trim();
+  const mesHoy = C.todayCo().slice(0, 7);
+  let fPago = '', fMes = '';
+  // Recordatorio por WhatsApp: abre el chat con el mensaje listo (lo envía quien está en la junta, desde su WhatsApp)
+  const wa = (x) => { let t = String(x.telefono || '').replace(/\D/g, ''); if (!t) return ''; if (t.length === 10) t = `57${t}`;
+    const nom = x.nombre.split(' ')[0], txt = x.estado === 'debe' ? `Hola ${nom}, te escribimos de ${me.business.name}. Según la cartera del club tienes ${C.money(x.saldo)} pendientes en cuotas${x.vencido ? ` (${C.money(x.vencido)} vencidos)` : ''}. Puedes reportar tu pago con el comprobante en la app, en «Lo tuyo». ¡Gracias!`
+      : `Hola ${nom}, te recordamos de ${me.business.name} que tu cuota de ${C.money(x.saldo)} está por vencer. Puedes reportar el pago en la app, en «Lo tuyo». ¡Gracias!`;
+    return `https://wa.me/${t}?text=${encodeURIComponent(txt)}`; };
+
+  // Indicadores: lo vencido se mide contra lo que ya debía pagarse (no contra el año entero)
+  function pintarKpis(d) {
+    const el = view.querySelector('[data-kpis]');
+    const venc = d ? d.meses.filter((m) => m.mes <= mesHoy) : [];
+    const esp = venc.reduce((t, m) => t + m.esperado, 0), rec = venc.reduce((t, m) => t + m.recaudado, 0);
+    const deben = cartera.filter((x) => x.estado === 'debe'), vencido = cartera.reduce((t, x) => t + x.vencido, 0);
+    const favor = cartera.reduce((t, x) => t + x.a_favor, 0), pend = pagos.filter((x) => x.estado === 'pendiente');
+    const porCobrar = d ? d.meses.filter((m) => m.mes > mesHoy).reduce((t, m) => t + Math.max(0, m.esperado - m.recaudado), 0) : 0;
+    const k = [
+      { titulo: 'Recaudado a hoy', valor: esp ? `${Math.round((rec / esp) * 100)}%` : '—', detalle: `${C.money(rec)} de ${C.money(esp)} vencidos`, icono: 'bi-graph-up-arrow' },
+      { titulo: 'Vencido sin pagar', valor: C.money(vencido), detalle: deben.length ? `${deben.length} socio${deben.length > 1 ? 's' : ''} deben` : 'nadie debe', icono: 'bi-exclamation-circle' },
+      { titulo: 'Por verificar', valor: C.num(pend.length), detalle: pend.length ? C.money(pend.reduce((t, x) => t + x.monto, 0)) : 'sin pagos reportados', icono: 'bi-hourglass-split' },
+      { titulo: 'Saldo a favor', valor: C.money(favor), detalle: `${cartera.filter((x) => x.a_favor > 0).length} adelantados`, icono: 'bi-star' },
+      { titulo: 'Por cobrar en el año', valor: C.money(porCobrar), detalle: 'meses que aún no vencen', icono: 'bi-calendar2-week' }];
+    el.innerHTML = `<div class="ro-kpis">${k.map((w) => window.App.kpi(w)).join('')}</div>`;
+    el.querySelectorAll('.dw-kpi').forEach((x, i) => { if (i === 1 && vencido) x.classList.add('ro-kpi-mal'); if (i === 2 && pend.length) x.classList.add('ro-kpi-ojo'); });
   }
 
-  // Año rotario (julio → junio): barras de lo recaudado por mes y una casilla por socio y mes.
+  // Pagos que reportaron los socios: arriba, con comprobante y botones para verificar o rechazar
+  function pintarPend() {
+    const pend = pagos.filter((x) => x.estado === 'pendiente');
+    view.querySelector('[data-pend]').innerHTML = pend.length ? `<div class="dw-card mb-4 ro-pend"><div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-hourglass-split text-warning"></i><b class="flex-grow-1">Pagos por verificar (${pend.length})</b><span class="small text-body-secondary">al verificarlos entran a la Caja menor</span></div>
+      ${pend.map((p) => `<div class="ro-pend-f"><div class="min-w-0 flex-grow-1"><b>${esc(p.socio || 'Socio')}</b> <span class="text-body-secondary small">· ${C.day(p.fecha)} · <span class="text-capitalize">${esc(p.metodo || '')}</span></span>${obsLimpia(p.observaciones) ? `<div class="small text-body-secondary text-truncate">${esc(obsLimpia(p.observaciones))}</div>` : ''}</div>
+        <b class="text-nowrap">${C.money(p.monto)}</b>${p.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cuotas/pagos/${p.id}/comprobante" target="_blank" rel="noopener"><i class="bi bi-paperclip me-1"></i>Comprobante</a>` : '<span class="badge text-bg-warning">Sin comprobante</span>'}
+        ${W ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-success" data-a="verificar" data-p="${p.id}"><i class="bi bi-check-lg me-1"></i>Verificar</button><button class="btn btn-sm btn-outline-danger" data-a="rechazar" data-p="${p.id}">Rechazar</button>` : ''}</div>`).join('')}</div>` : '';
+  }
+
+  function pintarCartera() {
+    const q = filtro.toLowerCase(), k = cartera.filter((x) => !q || x.nombre.toLowerCase().includes(q));
+    const n = (e) => cartera.filter((x) => x.estado === e).length;
+    const ORD = { debe: 0, por_vencer: 1, al_dia: 2, adelantado: 3 };
+    const vis = k.filter((x) => !fEst || x.estado === fEst).sort((a, b) => ORD[a.estado] - ORD[b.estado] || b.saldo - a.saldo || a.nombre.localeCompare(b.nombre));
+    const monto = (x) => x.estado === 'debe' ? C.money(x.saldo) : x.estado === 'por_vencer' ? C.money(x.saldo) : x.estado === 'adelantado' ? `+${C.money(x.a_favor)}` : C.money(x.pagado);
+    const nota = (x) => x.estado === 'debe' ? (x.vencido ? `${C.money(x.vencido)} vencido` : 'debe') : x.estado === 'por_vencer' ? 'por vencer' : x.estado === 'adelantado' ? 'a favor' : 'pagado';
+    view.querySelector('[data-cartera]').innerHTML = cartera.length ? `<div class="d-flex flex-wrap gap-1 mb-2">${[['', 'Todos', cartera.length], ['debe', 'Deben', n('debe')], ['por_vencer', 'Por vencer', n('por_vencer')], ['al_dia', 'Al día', n('al_dia')], ['adelantado', 'Adelantados', n('adelantado')]]
+        .map(([e, l, c]) => `<button type="button" class="btn btn-sm ${fEst === e ? 'btn-primary' : 'btn-light'} rounded-pill" data-fe="${e}">${l} <span class="badge rounded-pill text-bg-${fEst === e ? 'light' : 'secondary'}">${c}</span></button>`).join('')}</div>
+      ${vis.length ? `<div class="ro-cart">${vis.map((x) => `<div class="ro-cc ro-cc-${x.estado}" data-s="${x.socio_id}" ${W ? 'role="button" tabindex="0" title="Registrar un pago"' : ''}>
+          <div class="d-flex align-items-center gap-2 min-w-0">${RO.avatar(x, 40)}<div class="min-w-0 flex-grow-1"><b class="ro-cc-n" title="${esc(x.nombre)}">${esc(x.nombre)}</b><div class="small text-body-secondary text-truncate" title="${esc(x.cargo || '')}">${esc(x.cargo || RO.TIPO?.[x.tipo] || 'Socio')}</div></div></div>
+          <div class="ro-cc-pie"><span class="ro-cc-e"><i class="bi ${ICO[x.estado]} me-1"></i>${(EST[x.estado] || EST.debe)[1]}</span><span class="text-end"><b class="ro-cc-m">${monto(x)}</b><span class="d-block small">${nota(x)}</span></span></div>
+          <div class="ro-cc-d"><span><i class="bi bi-calendar3 me-1"></i>Desde ${x.desde ? `<b class="text-capitalize">${C.monthName(x.desde)}</b>` : '—'} · ${x.periodos} ${x.periodos === 1 ? 'mes' : 'meses'}</span><span><i class="bi bi-receipt me-1"></i>${x.ultimo_pago ? `Último pago ${C.day(x.ultimo_pago)}` : 'Sin pagos'}</span></div>
+          ${['debe', 'por_vencer'].includes(x.estado) && wa(x) ? `<a class="btn btn-sm btn-outline-success" href="${wa(x)}" target="_blank" rel="noopener" data-wa><i class="bi bi-whatsapp me-1"></i>Recordar por WhatsApp</a>` : ''}</div>`).join('')}</div>`
+        : '<p class="small text-body-secondary">Nadie en este estado.</p>'}`
+      : window.App.empty('bi-wallet2', 'No hay socios que paguen cuota, o aún no hay periodos. Crea los meses en «Periodos».');
+  }
+
+  function pintarPagos() {
+    const enCartera = new Set(cartera.map((x) => x.socio_id));
+    const meses = [...new Set(pagos.map((p) => String(p.fecha).slice(0, 7)))].sort().reverse();
+    const lista = pagos.filter((p) => (!fPago || p.estado === fPago) && (!fMes || String(p.fecha).startsWith(fMes)) && (!filtro || String(p.socio || '').toLowerCase().includes(filtro.toLowerCase())));
+    const total = lista.filter((p) => p.estado === 'verificado').reduce((t, p) => t + p.monto, 0);
+    const n = (e) => pagos.filter((p) => p.estado === e).length;
+    view.querySelector('[data-pfil]').innerHTML = `${[['', 'Todos', pagos.length], ['verificado', 'Verificados', n('verificado')], ['pendiente', 'Por verificar', n('pendiente')], ['rechazado', 'Rechazados', n('rechazado')], ['anulado', 'Anulados', n('anulado')]]
+        .filter(([e, , c]) => !e || c).map(([e, l, c]) => `<button type="button" class="btn btn-sm ${fPago === e ? 'btn-primary' : 'btn-light'} rounded-pill" data-fp="${e}">${l} <span class="badge rounded-pill text-bg-${fPago === e ? 'light' : 'secondary'}">${c}</span></button>`).join('')}
+      <select class="form-select form-select-sm ms-auto" style="max-width:190px" data-fm aria-label="Mes del pago"><option value="">Todos los meses</option>${meses.map((m) => `<option value="${m}" ${m === fMes ? 'selected' : ''}>${C.monthName(m)}</option>`).join('')}</select>
+      <span class="small text-body-secondary">Verificado: <b class="text-body">${C.money(total)}</b></span>`;
+    view.querySelector('[data-pagos]').innerHTML = lista.length ? window.App.table([
+      { label: 'Fecha', html: (p) => `<span data-order="${esc(p.fecha)}">${C.day(p.fecha)}</span>` },
+      { label: 'Socio', main: true, html: (p) => `${esc(p.socio || '')}${p.socio_id && !enCartera.has(p.socio_id) ? ' <span class="badge rounded-pill text-bg-light border" title="Esta persona no está entre los que pagan cuota (revisa su tipo o estado en Socios)">fuera de la cartera</span>' : ''}
+        <div class="small text-body-secondary fw-normal"><span class="text-capitalize">${esc(p.metodo || '')}</span>${obsLimpia(p.observaciones) ? ` · ${esc(obsLimpia(p.observaciones))}` : ''}${p.motivo_rechazo ? ` · <span class="text-danger">${esc(p.motivo_rechazo)}</span>` : ''}</div>` },
+      { label: 'Monto', cls: 'text-end', html: (p) => `<b class="${['anulado', 'rechazado'].includes(p.estado) ? 'text-decoration-line-through text-body-secondary' : ''}">${C.money(p.monto)}</b>` }, { label: 'Estado', html: (p) => C.chip(...(PEST[p.estado] || PEST.pendiente)) },
+      { label: 'Comprobante', html: (p) => (p.comprobante ? `<a class="btn btn-sm btn-light" href="/api/cuotas/pagos/${p.id}/comprobante" target="_blank" rel="noopener"><i class="bi bi-paperclip me-1"></i>Ver</a>`
+        : `${ANT.test(p.observaciones || '') ? `<span class="badge text-bg-light border me-1" title="${esc(ANT.exec(p.observaciones)[1])}"><i class="bi bi-archive me-1"></i>Sistema anterior</span>` : ''}${W && p.estado !== 'anulado' ? `<button class="btn btn-sm btn-light" data-a="subir" data-p="${p.id}" title="Subir comprobante" aria-label="Subir comprobante"><i class="bi bi-upload"></i></button>` : ANT.test(p.observaciones || '') ? '' : '<span class="text-body-secondary">—</span>'}`) },
+      { label: '', cls: 'text-end text-nowrap', html: (p) => (!W ? '' : p.estado === 'pendiente' ? `<button class="btn btn-sm btn-success" data-a="verificar" data-p="${p.id}">Verificar</button> <button class="btn btn-sm btn-outline-danger" data-a="rechazar" data-p="${p.id}">Rechazar</button>`
+        : p.estado === 'verificado' ? `<button class="btn btn-sm btn-light" data-a="editar" data-p="${p.id}" title="Editar" aria-label="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-light" data-a="anular" data-p="${p.id}" title="Anular" aria-label="Anular"><i class="bi bi-x-circle"></i></button>` : '') }], lista)
+      : window.App.empty('bi-receipt', pagos.length ? 'Ningún pago con ese filtro.' : 'Aún no hay ingresos de cuotas.');
+  }
+
+  function pintar() {
+    view.querySelector('[data-quien]').innerHTML = `<i class="bi bi-info-circle me-1"></i>Pagan cuota: socios activos y junta${cfg.aspirantes ? ', aspirantes' : ''}${cfg.honorarios ? ', honorarios' : ''}. Cada uno desde su activación en el club (o su ingreso).${W ? ' Toca una tarjeta o una fila del año para registrarle un pago.' : ''}`;
+    pintarPend(); pintarCartera(); pintarPagos();
+  }
+
+  // Año rotario (julio → junio): barras por mes (los que aún no llegan, rayados como proyectados) y una casilla por socio y mes.
   const CEL = { pagado: 'Pagado', parcial: 'Abono parcial', debe: 'Debe', pendiente: 'Aún no vence', na: 'Sin cuota' };
   const MES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  let ultimoAnio = null;
   async function pintarAnio(a) {
     const el = view.querySelector('[data-anio]');
-    let d; try { d = await api(`/api/cuotas/anio${a ? `?anio=${a}` : ''}`); } catch (x) { el.innerHTML = ''; return; }
+    let d; try { d = await api(`/api/cuotas/anio${a ? `?anio=${a}` : ''}`); } catch (x) { el.innerHTML = ''; pintarKpis(null); return; }
     anio = d.anio;
+    if (d.anio === d.actual) ultimoAnio = d;
+    pintarKpis(ultimoAnio || d);
     const esp = d.meses.reduce((t, m) => t + m.esperado, 0), rec = d.meses.reduce((t, m) => t + m.recaudado, 0);
     const corto = (m) => MES[+m.slice(5)];
     el.innerHTML = `<div class="dw-card mb-4">
-      <div class="d-flex align-items-center gap-2 mb-2 flex-wrap"><h2 class="h6 m-0 flex-grow-1"><i class="bi bi-calendar-range me-1"></i>Año rotario ${esc(d.nombre)} <span class="small text-body-secondary fw-normal">· julio a junio</span></h2>
+      <div class="d-flex align-items-center gap-2 mb-1 flex-wrap"><h2 class="h6 m-0 flex-grow-1"><i class="bi bi-calendar-range me-1"></i>Año rotario ${esc(d.nombre)} <span class="small text-body-secondary fw-normal">· julio a junio</span></h2>
         <div class="btn-group btn-group-sm"><button class="btn btn-light" data-ay="${d.anio - 1}" ${d.anios[0] >= d.anio ? 'disabled' : ''} aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
         <button class="btn btn-light" data-ay="${d.anio + 1}" ${d.anios.at(-1) <= d.anio ? 'disabled' : ''} aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
-      <div class="small text-body-secondary mb-1">Recaudado <b class="text-body">${C.money(rec)}</b> de ${C.money(esp)}${esp ? ` · ${Math.round(rec / esp * 100)}%` : ''}</div>
+      <div class="small text-body-secondary mb-2">En el año: <b class="text-body">${C.money(rec)}</b> recaudados de ${C.money(esp)} esperados${esp ? ` (${Math.round((rec / esp) * 100)}%)` : ''}</div>
       <div data-abars></div>
-      ${d.rows.length ? `<div class="ro-anio mt-3"><table><thead><tr><th></th>${d.meses.map((m) => `<th title="${m.monto == null ? 'Sin periodo creado' : C.money(m.monto)}">${corto(m.mes)}</th>`).join('')}<th class="text-end">Meses</th></tr></thead>
-        <tbody>${d.rows.map((r) => `<tr><td class="ro-anio-n">${RO.avatar(r, 26)}<span class="text-truncate">${esc(r.nombre)}</span>${r.por_verificar ? '<i class="bi bi-hourglass-split text-warning" title="Tiene pagos por verificar"></i>' : ''}</td>
-          ${r.celdas.map((x) => `<td><i class="ro-c ro-c-${x.estado}" title="${corto(x.mes)} · ${CEL[x.estado]}${x.monto ? ` · ${C.money(x.aplicado)} de ${C.money(x.monto)}` : ''}"></i></td>`).join('')}
-          <td class="text-end small"><b>${r.pagados}</b>${r.a_favor ? `<div class="text-success" title="Saldo a favor">+${C.money(r.a_favor)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>
-        <div class="dw-legend mt-2">${['pagado', 'parcial', 'debe', 'pendiente'].map((k) => `<span><i class="ro-c ro-c-${k}"></i>${CEL[k]}</span>`).join('')}</div>` : ''}</div>`;
-    C.bars(el.querySelector('[data-abars]'), d.meses.map((m) => ({ label: corto(m.mes), a: m.recaudado, b: Math.max(0, m.esperado - m.recaudado) })), { la: 'Pagado', lb: 'Falta' });
+      ${d.rows.length ? `<div class="ro-anio mt-3"><table><thead><tr><th></th>${d.meses.map((m) => `<th class="${m.mes === mesHoy ? 'ro-hoy' : ''}" title="${m.monto == null ? 'Sin periodo creado' : C.money(m.monto)}">${corto(m.mes)}</th>`).join('')}<th class="text-end">Pagados</th></tr></thead>
+        <tbody>${d.rows.map((r) => `<tr ${W ? `data-s="${r.socio_id}" title="Registrar un pago de ${esc(r.nombre)}"` : ''}><td class="ro-anio-n">${RO.avatar(r, 26)}<span class="text-truncate" title="${esc(r.nombre)}">${esc(r.nombre)}</span>${r.por_verificar ? '<i class="bi bi-hourglass-split text-warning" title="Tiene pagos por verificar"></i>' : ''}</td>
+          ${r.celdas.map((x) => `<td class="${x.mes === mesHoy ? 'ro-hoy' : ''}"><i class="ro-c ro-c-${x.estado}" title="${corto(x.mes)} · ${CEL[x.estado]}${x.monto ? ` · ${C.money(x.aplicado)} de ${C.money(x.monto)}` : ''}"></i></td>`).join('')}
+          <td class="text-end small"><b>${r.pagados}</b>${r.a_favor ? `<div class="text-success" title="Saldo a favor">+${C.money(r.a_favor)}</div>` : ''}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td class="ro-anio-n small text-body-secondary">Recaudado</td>${d.meses.map((m) => `<td class="small ${m.mes === mesHoy ? 'ro-hoy' : ''}" title="${C.money(m.recaudado)} de ${C.money(m.esperado)}">${m.esperado ? `${Math.round((m.recaudado / m.esperado) * 100)}%` : ''}</td>`).join('')}<td></td></tr></tfoot></table></div>
+        <div class="dw-legend mt-2">${['pagado', 'parcial', 'debe', 'pendiente'].map((k) => `<span><i class="ro-c ro-c-${k}"></i>${CEL[k]}</span>`).join('')}<span><i class="ro-c ro-c-na"></i>Sin cuota</span></div>` : ''}</div>`;
+    C.bars(el.querySelector('[data-abars]'), d.meses.map((m) => ({ label: corto(m.mes), a: m.recaudado, b: Math.max(0, m.esperado - m.recaudado), projected: m.mes > mesHoy })), { la: 'Pagado', lb: 'Falta' });
   }
 
   async function cargar() {
@@ -133,25 +192,36 @@ DW.ready.then(async (me) => {
     pintar(); pintarAnio(anio);
   }
 
-  view.innerHTML = `<style>.ro-cart{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr))}
-      .ro-cc{--c:var(--bs-secondary-color);display:grid;gap:8px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 35%,transparent);border-left:5px solid var(--c);background:color-mix(in srgb,var(--c) 8%,var(--bs-body-bg));cursor:pointer;min-width:0}
-      .ro-cc:hover{background:color-mix(in srgb,var(--c) 14%,var(--bs-body-bg))}.ro-cc-n{display:block;line-height:1.25;overflow-wrap:anywhere}
+  view.innerHTML = `<style>.ro-kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));margin-bottom:16px}
+      .ro-kpi-mal .dw-kpi__icon{background:rgba(220,53,69,.15);color:var(--bs-danger)}.ro-kpi-ojo .dw-kpi__icon{background:rgba(255,193,7,.18);color:#d97706}
+      .ro-pend{border-left:4px solid var(--bs-warning)}.ro-pend-f{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--bs-border-color)}
+      .ro-cart{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr))}
+      .ro-cc{--c:var(--bs-secondary-color);display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 30%,var(--bs-border-color));border-left:5px solid var(--c);background:color-mix(in srgb,var(--c) 7%,var(--bs-body-bg));min-width:0;overflow:hidden}
+      .ro-cc[role=button]{cursor:pointer}.ro-cc[role=button]:hover{background:color-mix(in srgb,var(--c) 13%,var(--bs-body-bg))}
+      .ro-cc-n{display:block;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .ro-cc-debe{--c:var(--bs-danger)}.ro-cc-por_vencer{--c:#d97706}.ro-cc-al_dia{--c:var(--bs-success)}.ro-cc-adelantado{--c:#0284c7}
-      .ro-cc-pie{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;padding-top:8px;border-top:1px dashed color-mix(in srgb,var(--c) 40%,transparent);color:var(--c)}
-      .ro-cc-e{font-weight:700;white-space:nowrap}
-.ro-anio{overflow-x:auto}.ro-anio table{width:100%;border-collapse:separate;border-spacing:3px;font-size:.8rem}.ro-anio th{font-weight:600;color:var(--bs-secondary-color);text-align:center}
-      .ro-anio td{text-align:center;padding:0}.ro-anio-n{display:flex;align-items:center;gap:6px;text-align:left!important;min-width:150px;max-width:220px;padding-right:6px!important}
+      .ro-cc-pie{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--c) 12%,transparent);color:var(--c)}
+      .ro-cc-e{font-weight:700;white-space:nowrap}.ro-cc-m{font-size:1.15rem;font-variant-numeric:tabular-nums}.ro-cc-pie .small{opacity:.85;line-height:1.1}
+      .ro-cc-d{display:grid;gap:2px;font-size:.8rem;color:var(--bs-secondary-color)}
+      .ro-anio{overflow-x:auto}.ro-anio table{width:100%;border-collapse:separate;border-spacing:3px;font-size:.8rem}.ro-anio th{font-weight:600;color:var(--bs-secondary-color);text-align:center}
+      .ro-anio td{text-align:center;padding:0}.ro-anio-n{display:flex;align-items:center;gap:6px;text-align:left!important;min-width:190px;max-width:260px;padding-right:6px!important}
+      .ro-anio tbody tr[data-s]{cursor:pointer}.ro-anio tbody tr[data-s]:hover td{background:rgba(var(--dw-p-rgb),.06)}.ro-anio .ro-hoy{background:rgba(var(--dw-p-rgb),.1);border-radius:6px}.ro-anio th.ro-hoy{color:var(--dw-p)}
+      .ro-anio tfoot td{padding-top:4px;color:var(--bs-secondary-color);font-variant-numeric:tabular-nums}
       .ro-c{display:inline-block;width:100%;min-width:18px;height:18px;border-radius:5px;vertical-align:middle}.dw-legend .ro-c{width:12px;min-width:12px;height:12px;margin-right:4px}
       .ro-c-pagado{background:var(--bs-success)}.ro-c-parcial{background:var(--bs-warning)}.ro-c-debe{background:var(--bs-danger)}.ro-c-pendiente{background:rgba(var(--dw-p-rgb),.18)}.ro-c-na{border:1px dashed var(--bs-border-color)}</style>
-    <div data-anio></div>
-    <div class="d-flex align-items-center gap-2 mb-2"><h2 class="h6 mb-0 flex-grow-1">Cartera</h2><input class="form-control form-control-sm" style="max-width:220px" placeholder="Buscar socio…" data-q aria-label="Buscar socio"></div>
-    <div class="mb-4" data-cartera></div><div data-pend></div><h2 class="h6 mb-2">Ingresos de cuotas</h2><div class="dw-card p-0 p-md-2" data-pagos></div>`;
+    <div data-kpis></div><div data-pend></div><div data-anio></div>
+    <div class="d-flex align-items-center gap-2 mb-1"><h2 class="h6 mb-0 flex-grow-1">Cartera</h2><input class="form-control form-control-sm" style="max-width:220px" placeholder="Buscar socio…" data-q aria-label="Buscar socio"></div>
+    <p class="small text-body-secondary mb-2" data-quien></p>
+    <div class="mb-4" data-cartera></div>
+    <h2 class="h6 mb-2">Ingresos de cuotas</h2><div class="d-flex flex-wrap gap-1 align-items-center mb-2" data-pfil></div><div class="dw-card p-0 p-md-2" data-pagos></div>`;
   view.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.ro-cc')) e.target.click(); });
-  view.querySelector('[data-q]').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintar(); });
+  view.querySelector('[data-q]').addEventListener('input', (e) => { filtro = e.target.value.trim(); pintarCartera(); pintarPagos(); });
+  view.addEventListener('change', (e) => { if (e.target.matches('[data-fm]')) { fMes = e.target.value; pintarPagos(); } });
   view.addEventListener('click', (e) => {
     const y = e.target.closest('[data-ay]'); if (y) return pintarAnio(Number(y.dataset.ay));
     const b = e.target.closest('[data-a]'); if (b) return accion(b.dataset.a, pagos.find((p) => String(p.id) === b.dataset.p));
-    const fe = e.target.closest('[data-fe]'); if (fe) { fEst = fe.dataset.fe; return pintar(); }
+    const fe = e.target.closest('[data-fe]'); if (fe) { fEst = fe.dataset.fe; return pintarCartera(); }
+    const fp = e.target.closest('[data-fp]'); if (fp) { fPago = fp.dataset.fp; return pintarPagos(); }
     if (e.target.closest('[data-wa]')) return;
     const s = e.target.closest('[data-s]'); if (s && W) registrar(s.dataset.s);
   });
