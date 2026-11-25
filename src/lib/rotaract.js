@@ -117,7 +117,7 @@ export const PROGRAMAS = {
 };
 // Nombre con la sigla del programa (RY / RTC / IT): muchos clubes se llaman igual («Medellín» rotario, Rotaract e Interact).
 // No se guarda en el negocio (los certificados y logos usan el nombre limpio); solo se muestra.
-export const conSigla = (nombre, prog) => { const s = programa(prog).sigla; return new RegExp(`^${s}\\b`, 'i').test(String(nombre || '').trim()) ? nombre : `${s} ${nombre}`; };
+export const conSigla = (nombre, prog) => (/^(RY|RTC|IT|IN)\b/i.test(String(nombre || '').trim()) ? nombre : `${programa(prog).sigla} ${nombre}`);   // si ya trae sigla (p. ej. «IN 4271»), se deja
 // Etiqueta de varios negocios a la vez (para la lista de «a cuál entrar»): { id → { programa, sigla, distrito, etiqueta } }
 export async function etiquetas(env, list) {
   if (!list.length) return {};
