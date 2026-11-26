@@ -358,6 +358,7 @@ export default async function ({ check, newBusiness, newMember }) {
   // Formatos del distrito: el distrito arma el formato, el club lo llena y lo envía, el distrito revisa y el club crea el proyecto
   const fpl = (await D.app('/api/distrito/formatos')).data;
   const fm = await D.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'Presentación de proyectos', descripcion: 'Formato oficial', secciones: fpl.plantilla } });
+  check('Formatos: el distrito ya trae el formato oficial con selectores que clasifican', fpl.rows.some((f) => f.nombre === 'Presentación de proyectos' && f.secciones.filter((s) => s.clasifica).length === 3));
   check('Formatos: el distrito crea un formato desde la plantilla', fm.status === 201 && fpl.plantilla.some((s) => s.tipo === 'opciones'));
   check('Formatos: un club no crea formatos (403) ni ve lo del distrito', (await A.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'x', secciones: fpl.plantilla } })).status === 403 && (await A.app('/api/distrito/envios')).status === 403);
   const lfA = (await A.app('/api/formatos')).data, lfR = (await R1.app('/api/formatos')).data;
@@ -366,11 +367,15 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Formatos: encabezado con el distrito y el club', encA.distrito.includes('4271') && encA.programa === 'Rotaract' && encA.club.startsWith('RTC '), JSON.stringify(encA));
   const fe = await A.app('/api/formatos/envios', { method: 'POST', body: { formato_id: fm.data.id, titulo: 'Huerta comunitaria' } });
   const secF = fpl.plantilla, sid = (t) => secF.find((s) => s.titulo === t).id;
-  const resp = { [sid('Área de interés')]: 'Medio ambiente', [sid('Comunidad beneficiada')]: 'Barrio La Esperanza', [sid('Fecha de inicio')]: '2027-02-01', [sid('Responsable del proyecto')]: 'Ana',
+  const resp = { [sid('Área de interés')]: 'Medio ambiente', [sid('Avenida de servicio')]: 'Servicio en la comunidad', [sid('Tipo de proyecto')]: 'Del club', [sid('Comunidad beneficiada')]: 'Barrio La Esperanza', [sid('Fecha de inicio')]: '2027-02-01', [sid('Responsable del proyecto')]: 'Ana',
     [sid('Justificación')]: 'Falta de alimentos frescos', [sid('Objetivo general')]: 'Sembrar una huerta', [sid('Personas beneficiadas')]: '120', [sid('Presupuesto total')]: '850000', [sid('Área de interés') + 'x']: 'no' };
   await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { respuestas: { [sid('Área de interés')]: 'Opción inventada' } } });
   const sinOp = (await A.app(`/api/formatos/envios/${fe.data.id}`)).data;
   check('Formatos: el club empieza un borrador; una opción que no está en la lista no se guarda', fe.status === 201 && sinOp.estado === 'borrador' && !sinOp.respuestas[sid('Área de interés')]);
+  const ib = (await D.app('/api/distrito/impacto')).data, ibx = ib.rows.find((x) => x.id === fe.data.id);
+  check('Impacto del distrito: ve el borrador del club con su avance; lo puede leer pero no revisar (409)', ibx?.estado === 'borrador' && ib.estados.borrador >= 1 && typeof ibx.avance === 'number'
+    && (await D.app(`/api/distrito/envios/${fe.data.id}`)).status === 200 && (await D.app(`/api/distrito/envios/${fe.data.id}/revisar`, { method: 'POST', body: { estado: 'aprobado' } })).status === 409);
+  check('Impacto del distrito: un club no lo ve (403) y el Rotary no ve los de Rotaract', (await A.app('/api/distrito/impacto')).status === 403 && !(await DR.app('/api/distrito/impacto')).data.rows.some((x) => x.id === fe.data.id));
   check('Formatos: no se envía si faltan obligatorias (400)', (await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' })).status === 400);
   await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { titulo: 'Huerta comunitaria', respuestas: resp } });
   const fen = await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' });
@@ -385,6 +390,9 @@ export default async function ({ check, newBusiness, newMember }) {
     && (await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' })).status === 200);
   check('Formatos: crear el proyecto antes de aprobarlo no (409)', (await A.app(`/api/formatos/envios/${fe.data.id}/proyecto`, { method: 'POST' })).status === 409);
   const apr = await D.app(`/api/distrito/envios/${fe.data.id}/revisar`, { method: 'POST', body: { estado: 'aprobado', comentario: '¡Adelante!' } });
+  const iap = (await D.app('/api/distrito/impacto')).data, iax = iap.rows.find((x) => x.id === fe.data.id);
+  check('Impacto del distrito: aprobado, con su clasificación y los selectores del distrito', iax?.estado === 'aprobado' && iax.clases['Área de interés'] === 'Medio ambiente' && iax.clases['Tipo de proyecto'] === 'Del club'
+    && iap.selectores.some((x) => x.titulo === 'Avenida de servicio' && x.opciones.includes('Servicio internacional')), JSON.stringify(iax));
   const fpj = await A.app(`/api/formatos/envios/${fe.data.id}/proyecto`, { method: 'POST' });
   const docsF = (await A.app(`/api/impacto/proyectos/${fpj.data.id}/detalle`)).data, pjF = docsF.proyecto || {};
   check('Formatos: aprobado → el club crea el proyecto con sus datos y el formato en Documentación', apr.status === 200 && fpj.status === 201 && pjF.nombre === 'Huerta comunitaria' && pjF.estado === 'planeacion'

@@ -2,6 +2,8 @@
 // programa lo llena en una página formal con el encabezado y el logo del distrito, lo envía y el distrito lo revisa.
 //   Distrito: GET/POST /api/distrito/formatos · PATCH/DELETE /api/distrito/formatos/:id
 //             GET /api/distrito/envios?estado= · GET /api/distrito/envios/:id · POST /api/distrito/envios/:id/revisar {estado, comentario}
+//             GET /api/distrito/impacto (todo lo de los clubes, borradores incluidos, con su clasificación y avance)
+// Si el distrito no tiene formatos se le crea «Presentación de proyectos» con la plantilla (formatoBase).
 //   Club:     GET /api/formatos (formatos activos + envíos del club) · GET /api/formatos/encabezado · GET /api/formatos/logo
 //             POST /api/formatos/envios {formato_id, titulo} · GET/PATCH/DELETE /api/formatos/envios/:id
 //             POST /api/formatos/envios/:id/enviar · POST /api/formatos/envios/:id/proyecto (aprobado → proyecto en Impacto)
@@ -18,9 +20,14 @@ const ESTADOS = ['borrador', 'enviado', 'aprobado', 'devuelto', 'rechazado'];
 const EDITABLE = ['borrador', 'devuelto'];
 
 // Plantilla sugerida para presentar proyectos (las 7 áreas de interés de Rotary)
+// Las preguntas de «opciones» con clasifica = true separan los proyectos en Distrito → Impacto (filtros y conteos).
+export const NOMBRE_BASE = 'Presentación de proyectos';
 export const PLANTILLA = [
+  ['seccion', 'Clasificación del proyecto'],
+  ['opciones', 'Área de interés', 'La causa de Rotary que atiende el proyecto', true, ['Paz y prevención de conflictos', 'Prevención y tratamiento de enfermedades', 'Agua, saneamiento e higiene', 'Salud materno-infantil', 'Educación básica y alfabetización', 'Desarrollo económico de la comunidad', 'Medio ambiente'], true],
+  ['opciones', 'Avenida de servicio', '', true, ['Servicio en el club', 'Servicio a través de la ocupación', 'Servicio en la comunidad', 'Servicio internacional', 'Servicio a las nuevas generaciones'], true],
+  ['opciones', 'Tipo de proyecto', '', true, ['Del club', 'Con otros clubes', 'Distrital', 'Con una alianza o empresa'], true],
   ['seccion', 'Datos generales'],
-  ['opciones', 'Área de interés', '', true, ['Paz y prevención de conflictos', 'Prevención y tratamiento de enfermedades', 'Agua, saneamiento e higiene', 'Salud materno-infantil', 'Educación básica y alfabetización', 'Desarrollo económico de la comunidad', 'Medio ambiente']],
   ['texto', 'Comunidad beneficiada', 'Nombre de la fundación, barrio, colegio u hogar', true],
   ['texto', 'Lugar', 'Municipio, barrio o dirección'],
   ['fecha', 'Fecha de inicio', '', true], ['fecha', 'Fecha de finalización'],
@@ -33,7 +40,8 @@ export const PLANTILLA = [
   ['numero', 'Personas beneficiadas', '', true], ['numero', 'Horas de servicio estimadas'],
   ['dinero', 'Presupuesto total'], ['parrafo', 'Fuentes de financiación y alianzas', 'Caja del club, alianzas, patrocinios, aportes en especie…'],
   ['parrafo', 'Indicadores de impacto', '¿Cómo se medirá el resultado?'], ['parrafo', 'Observaciones'],
-].map(([tipo, titulo, ayuda = '', requerido = false, opciones], i) => ({ id: `s${i + 1}`, tipo, titulo, ayuda, requerido, ...(opciones ? { opciones } : {}) }));
+].map(([tipo, titulo, ayuda = '', requerido = false, opciones, clasifica], i) => ({ id: `s${i + 1}`, tipo, titulo, ayuda, requerido, ...(opciones ? { opciones } : {}), ...(clasifica ? { clasifica: true } : {}) }));
+const DESC_BASE = 'Formato oficial del distrito para presentar los proyectos de servicio. Llénalo con la junta, guárdalo como borrador mientras avanzas y envíalo cuando esté completo: el distrito lo revisa y, aprobado, lo conviertes en proyecto en Impacto.';
 
 const leer = (s, def) => { try { return JSON.parse(s || '') ?? def; } catch { return def; } };
 
@@ -51,6 +59,7 @@ function limpiarSecciones(v) {
     if (tipo === 'opciones') {
       o.opciones = (Array.isArray(s.opciones) ? s.opciones : String(s.opciones || '').split('\n')).map((x) => String(x).trim().slice(0, 150)).filter(Boolean).slice(0, 30);
       if (!o.opciones.length) throw new HttpError(400, `Escribe las opciones de «${titulo}»`);
+      if (s.clasifica) o.clasifica = true;
     }
     return o;
   });
@@ -81,6 +90,16 @@ async function negocioDistrito(env, bid) {
   return { d, distritoId: r?.id || null };
 }
 
+// Si el distrito aún no tiene formatos, se le crea el oficial con la plantilla (una sola vez: después lo maneja el distrito)
+async function formatoBase(env, distritoId, clave) {
+  if (!distritoId || await one(env, 'SELECT id FROM ro_formatos WHERE distrito = ? AND business_id = ? LIMIT 1', clave, distritoId)) return;
+  const t = Date.now();
+  await env.DB.prepare('INSERT INTO ro_formatos (business_id, distrito, nombre, descripcion, secciones, activo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+    .bind(distritoId, clave, NOMBRE_BASE, DESC_BASE, JSON.stringify(PLANTILLA), t, t).run();
+}
+// Clasificación de una solicitud: { 'Área de interés': 'Medio ambiente', … } con las preguntas que clasifican
+const clasesDe = (secciones, respuestas) => Object.fromEntries(secciones.filter((s) => s.clasifica && respuestas[s.id]).map((s) => [s.titulo, respuestas[s.id]]));
+
 const formatoDe = (f) => ({ ...f, secciones: leer(f.secciones, []) });
 const envioDe = (e) => ({ ...e, secciones: leer(e.secciones, []), respuestas: leer(e.respuestas, {}) });
 
@@ -91,7 +110,7 @@ async function envioDelClub(c, id) {
 }
 async function envioDelDistrito(c, d, id) {
   const e = await one(c.env, `SELECT e.*, b.name club, COALESCE(k.programa, 'rotaract') programa FROM ro_formato_envios e JOIN businesses b ON b.id = e.business_id LEFT JOIN ro_club_config k ON k.business_id = e.business_id
-    WHERE e.id = ? AND e.distrito = ? AND e.estado <> 'borrador' AND e.${EN_DISTRITO}`, Number(id) || 0, d.clave, ...enDistrito(c.env, d.codigo, d.programa));
+    WHERE e.id = ? AND e.distrito = ? AND e.${EN_DISTRITO}`, Number(id) || 0, d.clave, ...enDistrito(c.env, d.codigo, d.programa));
   if (!e) throw new HttpError(404, 'Solicitud no encontrada');
   return { ...envioDe(e), club: conSigla(e.club, e.programa) };
 }
@@ -125,6 +144,7 @@ export function routes(r) {
   /* ---------- Distrito: formatos ---------- */
   r.get('/api/distrito/formatos', 'tenant', async (c) => {
     const d = await distritoOError(c);
+    await formatoBase(c.env, c.businessId, d.clave);
     const rows = await all(c.env, `SELECT f.*, (SELECT COUNT(*) FROM ro_formato_envios e WHERE e.formato_id = f.id AND e.estado = 'enviado') por_revisar,
       (SELECT COUNT(*) FROM ro_formato_envios e WHERE e.formato_id = f.id AND e.estado <> 'borrador') recibidos FROM ro_formatos f WHERE f.distrito = ? AND f.business_id = ? ORDER BY f.activo DESC, f.updated_at DESC`, d.clave, c.businessId);
     return json({ rows: rows.map(formatoDe), plantilla: PLANTILLA, tipos: TIPOS_SECCION });
@@ -168,10 +188,35 @@ export function routes(r) {
     d.clave, ...(ESTADOS.includes(est) ? [est] : []), ...enDistrito(c.env, d.codigo, d.programa));
     return json({ rows: rows.map((x) => ({ ...x, club: conSigla(x.club, x.programa) })) });
   });
+  // Impacto del distrito: TODO lo de los clubes (también borradores, en solo lectura) con su clasificación y cuánto llevan
+  r.get('/api/distrito/impacto', 'tenant', async (c) => {
+    const d = await distritoOError(c);
+    await formatoBase(c.env, c.businessId, d.clave);
+    const [rows, fmts] = await Promise.all([
+      all(c.env, `SELECT e.id, e.business_id, e.formato_id, e.formato_nombre, e.titulo, e.estado, e.comentario, e.secciones, e.respuestas, e.enviado_at, e.revisado_at, e.proyecto_id, e.updated_at,
+        b.name club, COALESCE(k.programa, 'rotaract') programa FROM ro_formato_envios e JOIN businesses b ON b.id = e.business_id LEFT JOIN ro_club_config k ON k.business_id = e.business_id
+        WHERE e.distrito = ? AND e.${EN_DISTRITO} ORDER BY e.updated_at DESC LIMIT 1000`, d.clave, ...enDistrito(c.env, d.codigo, d.programa)),
+      all(c.env, 'SELECT secciones FROM ro_formatos WHERE distrito = ? AND business_id = ? ORDER BY activo DESC, updated_at DESC', d.clave, c.businessId),
+    ]);
+    // Selectores: las preguntas que clasifican en los formatos del distrito (y en lo ya llenado), con sus opciones
+    const sel = new Map();
+    const sumar = (secs) => secs.filter((s) => s.clasifica).forEach((s) => { const o = sel.get(s.titulo) || new Set(); s.opciones.forEach((x) => o.add(x)); sel.set(s.titulo, o); });
+    fmts.forEach((f) => sumar(leer(f.secciones, [])));
+    const out = rows.map((x) => {
+      const secs = leer(x.secciones, []), resp = leer(x.respuestas, {}), preg = secs.filter((s) => s.tipo !== 'seccion');
+      sumar(secs);
+      return { id: x.id, business_id: x.business_id, club: conSigla(x.club, x.programa), titulo: x.titulo, formato_nombre: x.formato_nombre, estado: x.estado, comentario: x.comentario,
+        enviado_at: x.enviado_at, revisado_at: x.revisado_at, updated_at: x.updated_at, proyecto_id: x.proyecto_id,
+        avance: preg.length ? Math.round((preg.filter((s) => resp[s.id]).length / preg.length) * 100) : 0, clases: clasesDe(secs, resp) };
+    });
+    const estados = Object.fromEntries(ESTADOS.map((k) => [k, out.filter((x) => x.estado === k).length]));
+    return json({ rows: out, estados, selectores: [...sel].map(([titulo, o]) => ({ titulo, opciones: [...o] })) });
+  });
   r.get('/api/distrito/envios/:id', 'tenant', async (c) => json(await envioDelDistrito(c, await distritoOError(c), c.params.id)));
   r.post('/api/distrito/envios/:id/revisar', 'manager', async (c) => {
     const d = await distritoOError(c), e = await envioDelDistrito(c, d, c.params.id), b = await readJson(c.req);
     const estado = cast('estado', ['aprobado', 'devuelto', 'rechazado'], b.estado), comentario = cast('comentario', 'long', b.comentario);
+    if (e.estado === 'borrador') throw new HttpError(409, 'El club aún no lo envía');
     if (e.estado !== 'enviado' && !(e.estado === 'aprobado' && estado !== 'aprobado' && !e.proyecto_id)) throw new HttpError(409, 'Esta solicitud ya fue revisada');
     if (estado !== 'aprobado' && !comentario) throw new HttpError(400, 'Escribe al club qué debe corregir o por qué no se aprueba');
     await c.env.DB.prepare('UPDATE ro_formato_envios SET estado = ?, comentario = ?, revisado_at = ?, updated_at = ? WHERE id = ?').bind(estado, comentario, Date.now(), Date.now(), e.id).run();
@@ -181,7 +226,8 @@ export function routes(r) {
 
   /* ---------- Club ---------- */
   r.get('/api/formatos', `tenant:${MOD}`, async (c) => {
-    const d = await distritoDe(c.env, c.businessId);
+    const { d, distritoId } = await negocioDistrito(c.env, c.businessId);
+    await formatoBase(c.env, distritoId, d.clave);
     const [formatos, envios] = await Promise.all([
       all(c.env, `SELECT f.id, f.nombre, f.descripcion, f.fecha_limite, f.secciones FROM ro_formatos f JOIN businesses b ON b.id = f.business_id
         WHERE f.distrito = ? AND f.activo = 1 AND b.archived_at IS NULL ORDER BY f.updated_at DESC`, d.clave),

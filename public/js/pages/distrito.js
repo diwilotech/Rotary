@@ -11,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'metas', 'formatos', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
+  let tab = ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['impacto', 'Impacto', '#impacto', 'bi-globe-americas'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -296,8 +296,52 @@ DW.ready.then(async (me) => {
     view.onclick = (e) => {
       const b = e.target.closest('[data-fenv]'); if (b) { filtroEnv = b.dataset.fenv; return pintarFormatos(); }
       const f = e.target.closest('[data-formato]'); if (f) return M ? editarFormato(fmt.rows.find((x) => x.id === Number(f.dataset.formato))) : null;
-      const v = e.target.closest('[data-envio]'); if (v) return verEnvio(Number(v.dataset.envio));
+      const v = e.target.closest('[data-envio]'); if (v) return verEnvio(Number(v.dataset.envio), 'formatos');
     };
+  }
+  /* ---------- Impacto: todos los proyectos que presentan los clubes, por estado y por clasificación ---------- */
+  const IMP_EST = [['', 'Todos'], ['borrador', 'Borradores'], ['enviado', 'En revisión'], ['devuelto', 'Devueltos'], ['rechazado', 'No aprobados'], ['aprobado', 'Aprobados']];
+  const imp = { estado: '', club: '', sel: {}, q: '' };
+  async function pintarImpacto() {
+    irH('impacto');
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let d;
+    try { d = await api('/api/distrito/impacto'); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    F.css();
+    const clubes = [...new Set(d.rows.map((x) => x.club))].sort();
+    const pasa = (x, sinEstado) => (sinEstado || !imp.estado || x.estado === imp.estado) && (!imp.club || x.club === imp.club)
+      && Object.entries(imp.sel).every(([k, v]) => !v || x.clases[k] === v) && (!imp.q || `${x.titulo} ${x.club}`.toLowerCase().includes(imp.q));
+    const pintarLista = () => {
+      const base = d.rows.filter((x) => pasa(x, true)), lista = base.filter((x) => pasa(x));
+      view.querySelector('[data-iest]').innerHTML = IMP_EST.map(([k, l]) => `<button type="button" class="btn btn-sm rounded-pill ${k === imp.estado ? 'btn-primary' : 'btn-light'}" data-iestado="${k}">${l} <span class="opacity-75">${k ? base.filter((x) => x.estado === k).length : base.length}</span></button>`).join('');
+      view.querySelector('[data-ilista]').innerHTML = lista.length ? `<div class="dw-card p-0">${lista.map((x) => `<button type="button" class="d-flex gap-3 align-items-center w-100 text-start border-0 border-bottom bg-transparent p-3 text-reset" data-ienvio="${x.id}">
+          <i class="bi ${x.estado === 'borrador' ? 'bi-pencil-square text-body-secondary' : 'bi-file-earmark-richtext text-primary'} fs-4"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.titulo)}</b>
+          <span class="small text-body-secondary">${esc(x.club)} · ${esc(x.formato_nombre || '')} · ${x.estado === 'borrador' ? `lleva ${x.avance}% · editado el ${esc(F.fechaLarga(new Date(x.updated_at).toISOString()))}` : x.enviado_at ? `enviado el ${esc(F.fechaLarga(new Date(x.enviado_at).toISOString()))}` : ''}</span>
+          ${Object.keys(x.clases).length ? `<span class="d-flex flex-wrap gap-1 mt-1">${Object.entries(x.clases).map(([k, v]) => `<span class="badge rounded-pill text-bg-light border fw-normal" title="${esc(k)}">${esc(v)}</span>`).join('')}</span>` : ''}
+          ${x.estado === 'borrador' ? `<span class="d-block mt-1" style="max-width:260px">${C.meter(x.avance, 100)}</span>` : ''}</span>${F.chip(x.estado)}${x.proyecto_id ? '<i class="bi bi-globe-americas text-success" title="Ya es proyecto del club"></i>' : ''}</button>`).join('')}</div>`
+        : `<div class="dw-card small text-body-secondary">${d.rows.length ? 'Ningún proyecto con estos filtros.' : 'Los clubes aún no han empezado a presentar proyectos. Cuando un club abra el formato en Impacto → Al distrito, aparece aquí como borrador.'}</div>`;
+      view.querySelector('[data-ireparto]').innerHTML = d.selectores.map((s, i) => `<div class="col-md-6 col-xl-4"><div class="dw-card h-100"><div class="ro-h mt-0">${esc(s.titulo)}</div><div data-irank="${i}"></div></div></div>`).join('');
+      d.selectores.forEach((s, i) => { const el = view.querySelector(`[data-irank="${i}"]`), n = s.opciones.map((o) => ({ k: o, n: lista.filter((x) => x.clases[s.titulo] === o).length })).filter((o) => o.n);
+        if (n.length) C.rank(el, n.sort((a, b) => b.n - a.n), C.num); else el.innerHTML = '<p class="small text-body-secondary mb-0">Sin proyectos en esta vista.</p>'; });
+    };
+    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-ik></div>
+      <div class="dw-card mb-3"><div class="d-flex flex-wrap gap-1 mb-2" data-iest></div>
+        <div class="row g-2"><div class="col-md-4 col-xl-3"><input class="form-control form-control-sm" type="search" placeholder="Buscar proyecto o club" data-iq value="${esc(imp.q)}" aria-label="Buscar"></div>
+          <div class="col-md-4 col-xl-3"><select class="form-select form-select-sm" data-iclub aria-label="Club"><option value="">Todos los clubes</option>${clubes.map((k) => `<option ${k === imp.club ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
+          ${d.selectores.map((s) => `<div class="col-md-4 col-xl-3"><select class="form-select form-select-sm" data-isel="${esc(s.titulo)}" aria-label="${esc(s.titulo)}"><option value="">${esc(s.titulo)}: todas</option>${s.opciones.map((o) => `<option ${imp.sel[s.titulo] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`).join('')}</div></div>
+      <div class="mb-4" data-ilista></div>
+      ${d.selectores.length ? '<div class="ro-h">Para qué son los proyectos</div><div class="row g-3" data-ireparto></div>' : '<div data-ireparto></div>'}
+      <div class="small text-body-secondary mt-3"><i class="bi bi-info-circle me-1"></i>Los selectores salen de las preguntas «Elegir una opción» marcadas como <b>Clasifica</b> en Formatos.</div>`;
+    const e = d.estados;
+    C.kpis(view.querySelector('[data-ik]'), [['En borrador', C.num(e.borrador), 'los clubes los están llenando', 'bi-pencil-square'], ['En revisión', C.num(e.enviado), 'esperan tu revisión', 'bi-hourglass-split'],
+      ['Sin aprobar', C.num(e.devuelto + e.rechazado), `${e.devuelto} devueltos · ${e.rechazado} no aprobados`, 'bi-arrow-return-left'], ['Aprobados', C.num(e.aprobado), `${d.rows.filter((x) => x.proyecto_id).length} ya son proyecto`, 'bi-patch-check']]);
+    pintarLista();
+    view.onclick = (ev) => {
+      const b = ev.target.closest('[data-iestado]'); if (b) { imp.estado = b.dataset.iestado; return pintarLista(); }
+      const v = ev.target.closest('[data-ienvio]'); if (v) return verEnvio(Number(v.dataset.ienvio), 'impacto');
+    };
+    view.onchange = (ev) => { if (ev.target.matches('[data-iclub]')) imp.club = ev.target.value; else if (ev.target.dataset.isel) imp.sel[ev.target.dataset.isel] = ev.target.value; else return; pintarLista(); };
+    view.oninput = (ev) => { if (!ev.target.matches('[data-iq]')) return; imp.q = ev.target.value.trim().toLowerCase(); pintarLista(); };
   }
   async function editarFormato(f) {
     if (!fmt) fmt = await api('/api/distrito/formatos');
@@ -309,14 +353,16 @@ DW.ready.then(async (me) => {
       borrar: f ? async () => { await api(`/api/distrito/formatos/${f.id}`, { method: 'DELETE' }); toast('Formato borrado'); salir(); } : null,
       volver: salir });
   }
-  async function verEnvio(id) {
+  let origen = 'formatos';   // a qué pestaña vuelve la solicitud abierta
+  async function verEnvio(id, de) {
+    if (de) origen = de;
     view.onclick = null; view.oninput = null; view.onchange = null;
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     let x, e;
     try { [x, e] = await Promise.all([api(`/api/distrito/envios/${id}`), F.encabezado()]); } catch (err) { view.innerHTML = `<div class="dw-card">${esc(err.message)}</div>`; return; }
     irH(`envio=${id}`);
-    acciones.innerHTML = '<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>Formatos</button><button class="btn btn-light" data-imprimir title="Imprimir o guardar en PDF"><i class="bi bi-printer"></i></button>';
-    acciones.onclick = (ev) => { if (ev.target.closest('[data-volver]')) { acciones.onclick = null; tab = 'formatos'; return pintar(); } if (ev.target.closest('[data-imprimir]')) F.imprimir(); };
+    acciones.innerHTML = `<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>${origen === 'impacto' ? 'Impacto' : 'Formatos'}</button>`+'<button class="btn btn-light" data-imprimir title="Imprimir o guardar en PDF"><i class="bi bi-printer"></i></button>';
+    acciones.onclick = (ev) => { if (ev.target.closest('[data-volver]')) { acciones.onclick = null; tab = origen; return pintar(); } if (ev.target.closest('[data-imprimir]')) F.imprimir(); };
     const revisar = M && (x.estado === 'enviado' || (x.estado === 'aprobado' && !x.proyecto_id));
     view.innerHTML = `<div class="row g-3"><div class="col-xl-8"><div class="fmt-fondo">${F.hoja(e, x, 'ver')}</div></div>
       <div class="col-xl-4"><div class="dw-card" style="position:sticky;top:76px"><div class="d-flex align-items-center gap-2 mb-2"><b>Revisión del distrito</b><span class="ms-auto">${F.chip(x.estado)}</span></div>
@@ -324,7 +370,7 @@ DW.ready.then(async (me) => {
         ${x.comentario ? `<div class="small p-2 rounded mb-2" style="background:rgba(var(--dw-p-rgb),.07);white-space:pre-wrap"><i class="bi bi-chat-left-quote me-1"></i>${esc(x.comentario)}</div>` : ''}
         ${revisar ? `<label class="form-label small fw-semibold mb-1" for="rv_c">Comentario para el club</label><textarea class="form-control mb-2" id="rv_c" rows="4" placeholder="Obligatorio si lo devuelves o no lo apruebas">${x.estado === 'aprobado' ? esc(x.comentario || '') : ''}</textarea>
           <div class="d-grid gap-2">${x.estado === 'enviado' ? '<button class="btn btn-success" data-rv="aprobado"><i class="bi bi-patch-check me-1"></i>Aprobar</button>' : ''}<button class="btn btn-outline-warning" data-rv="devuelto"><i class="bi bi-arrow-return-left me-1"></i>Devolver para corregir</button><button class="btn btn-outline-danger" data-rv="rechazado"><i class="bi bi-x-circle me-1"></i>No aprobar</button></div>
-          ${x.estado === 'aprobado' ? '<div class="small text-body-secondary mt-2">Ya está aprobado; mientras el club no cree el proyecto aún puedes devolverlo.</div>' : ''}` : x.proyecto_id ? '<div class="small text-success"><i class="bi bi-globe-americas me-1"></i>El club ya lo convirtió en proyecto.</div>' : ''}</div></div></div>`;
+          ${x.estado === 'aprobado' ? '<div class="small text-body-secondary mt-2">Ya está aprobado; mientras el club no cree el proyecto aún puedes devolverlo.</div>' : ''}` : x.proyecto_id ? '<div class="small text-success"><i class="bi bi-globe-americas me-1"></i>El club ya lo convirtió en proyecto.</div>' : x.estado === 'borrador' ? '<div class="small text-body-secondary"><i class="bi bi-pencil me-1"></i>Borrador: el club aún lo está llenando. Lo podrás revisar cuando lo envíe.</div>' : ''}</div></div></div>`;
     view.onclick = async (ev) => {
       const b = ev.target.closest('[data-rv]'); if (!b) return;
       const comentario = view.querySelector('#rv_c').value.trim();
@@ -341,6 +387,7 @@ DW.ready.then(async (me) => {
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => ACC[tab][1]());
     view.onclick = null; view.oninput = null; view.onchange = null; acciones.onclick = null;
     if (tab === 'formatos') return pintarFormatos();
+    if (tab === 'impacto') return pintarImpacto();
     if (tab === 'orden') return pintarOrden();
     if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();
