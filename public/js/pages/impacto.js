@@ -17,7 +17,7 @@ DW.ready.then(async (me) => {
   const toneA = (e) => ({ activa: 'ok', seguimiento: 'soon', prospecto: 'free', cerrada: 'free', descartada: 'bad' }[e]);
   const socios = await RO.socios();
   const hash0 = location.hash.slice(1);
-  let tab = hash0 === 'alianzas' ? 'alianzas' : (['comunidades', 'beneficiarios'].includes(hash0) || hash0.startsWith('c=')) ? 'comunidades' : 'proyectos', rows = [];
+  let tab = hash0 === 'alianzas' ? 'alianzas' : (hash0 === 'distrito' || /^fn?=/.test(hash0)) ? 'distrito' : (['comunidades', 'beneficiarios'].includes(hash0) || hash0.startsWith('c=')) ? 'comunidades' : 'proyectos', rows = [];
   const comunidades = async () => (await api('/api/impacto/comunidades?limit=1000')).rows;
   const alianzas = async () => (await api('/api/impacto/alianzas?limit=1000')).rows;
   const ir = (h) => history.replaceState(null, '', h ? `#${h}` : location.pathname);
@@ -41,15 +41,17 @@ DW.ready.then(async (me) => {
     { k: 'beneficiados', label: 'Personas beneficiadas', type: 'int', hint: 'si no están todas registradas' }, { k: 'horas_servicio', label: 'Horas de servicio', type: 'int' },
     { k: 'foto_url', label: 'Foto (enlace https)', type: 'url', full: true }, { k: 'descripcion', label: 'Descripción', type: 'long' }, { k: 'objetivo', label: 'Objetivo', type: 'long' }];
 
-  async function editarP(p) {
-    const out = await C.form({ title: p ? 'Editar proyecto' : 'Nuevo proyecto', fields: camposP(await comunidades()), values: p ? { ...p } : { estado: 'propuesta' }, onDelete: p ? () => api(`/api/impacto/proyectos/${p.id}`, { method: 'DELETE' }) : null });
+  async function editarP(p, previo) {
+    // En la página (no en ventana): Cancelar vuelve al proyecto o a la lista
+    acciones.innerHTML = ''; view.onclick = null;
+    const out = await C.formPage({ el: view, title: p ? 'Editar proyecto' : 'Nuevo proyecto', subtitle: p ? p.nombre : 'Los aportes, documentos y beneficiarios se agregan después en el proyecto', fields: camposP(await comunidades()), values: previo || (p ? { ...p } : { estado: 'propuesta' }), okText: p ? 'Guardar cambios' : 'Crear proyecto', onDelete: p ? () => api(`/api/impacto/proyectos/${p.id}`, { method: 'DELETE' }) : null });
     if (out === 'deleted') { toast('Proyecto borrado'); abierto = null; ir(); return cargar(); }
-    if (!out) return;
+    if (!out) return p ? abrir(p.id) : cargar();
     // Pasar a «Finalizado» desde el formulario: primero se guarda lo demás y luego la lista de cierre decide el estado
     const fin = p && out.estado === 'finalizado' && p.estado !== 'finalizado';
     if (fin) out.estado = p.estado;
     try { const r = await api(p ? `/api/impacto/proyectos/${p.id}` : '/api/impacto/proyectos', { method: p ? 'PATCH' : 'POST', body: out });
-      if (fin) { await cerrarProyecto(p.id); return abierto ? abrir(abierto) : cargar(); } toast('Guardado'); abierto ? abrir(abierto) : p ? cargar() : abrir(r.id); } catch (x) { toast(x.message, false); }
+      if (fin) { await cerrarProyecto(p.id); return abierto ? abrir(abierto) : cargar(); } toast('Guardado'); abierto ? abrir(abierto) : p ? cargar() : abrir(r.id); } catch (x) { toast(x.message, false); return editarP(p, out); }
   }
   async function editarC(cm, despues) {
     const out = await C.form({ title: cm ? 'Editar comunidad' : 'Nueva comunidad', fields: camposC, values: cm ? { ...cm } : {}, onDelete: cm ? () => api(`/api/impacto/comunidades/${cm.id}`, { method: 'DELETE' }) : null });
@@ -516,11 +518,103 @@ DW.ready.then(async (me) => {
         { label: 'Autorizaciones', html: (b) => `${b.autorizacion_datos ? '<i class="bi bi-shield-check text-success" title="Datos"></i>' : '<i class="bi bi-shield-x text-danger" title="Sin autorización de datos"></i>'} ${b.autorizacion_imagen ? '<i class="bi bi-camera text-success" title="Imagen"></i>' : ''}` }] }).load();
   }
 
+  /* ---------- formatos del distrito: el club los llena como un documento formal y los envía ---------- */
+  const F = window.ROFmt;
+  async function pintarDistrito() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let d, e;
+    try { [d, e] = await Promise.all([api('/api/formatos'), F.encabezado()]); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    F.css();
+    const porFormato = (id) => d.envios.filter((x) => x.formato_id === id).length;
+    view.innerHTML = `<div class="dw-card mb-3 d-flex gap-3 align-items-center flex-wrap">${e.logo ? `<img src="${esc(e.logo)}" alt="" style="height:52px;width:auto">` : '<span class="fmt-logo-i" style="width:52px;height:52px;font-size:1.6rem;background:#17458f;color:#f7a81b"><i class="bi bi-gear-wide-connected"></i></span>'}
+        <div class="flex-grow-1"><h2 class="h5 mb-0">Formatos del ${esc(e.distrito)}</h2><div class="small text-body-secondary">Presenta tus proyectos al distrito con su formato oficial. Se llena como un documento, se guarda solo y se envía cuando esté listo.</div></div></div>
+      <div class="ro-h">Formatos disponibles</div>
+      ${d.formatos.length ? `<div class="row g-2 mb-4">${d.formatos.map((f) => `<div class="col-md-6 col-xl-4"><div class="fmt-card h-100"><i class="bi bi-file-earmark-text"></i><div class="flex-grow-1 min-w-0">
+          <b class="d-block">${esc(f.nombre)}</b><span class="small text-body-secondary">${f.preguntas} preguntas${f.fecha_limite ? ` · hasta el ${esc(F.fechaLarga(f.fecha_limite))}` : ''}${porFormato(f.id) ? ` · ${porFormato(f.id)} del club` : ''}</span>
+          ${f.descripcion ? `<p class="small mb-2 mt-1 text-body-secondary" style="white-space:pre-wrap">${esc(f.descripcion)}</p>` : ''}
+          ${M ? `<button class="btn btn-sm btn-primary mt-1" data-fnuevo="${f.id}"><i class="bi bi-pencil-square me-1"></i>Llenar formato</button>` : ''}</div></div></div>`).join('')}</div>`
+        : `<div class="dw-card mb-4">${window.App.empty('bi-file-earmark-text', 'Tu distrito aún no ha publicado formatos. Cuando lo haga, aparecen aquí para presentar proyectos.')}</div>`}
+      <div class="ro-h">Lo que ha presentado el club</div>
+      ${d.envios.length ? `<div class="dw-card p-0">${d.envios.map((x) => `<button type="button" class="d-flex gap-3 align-items-center w-100 text-start border-0 border-bottom bg-transparent p-3 text-reset" data-fver="${x.id}">
+          <i class="bi bi-file-earmark-richtext fs-4 text-primary"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.titulo)}</b>
+          <span class="small text-body-secondary">${esc(x.formato_nombre || '')}${x.enviado_at ? ` · enviado el ${esc(F.fechaLarga(new Date(x.enviado_at).toISOString()))}` : ''}</span>
+          ${x.comentario && ['devuelto', 'rechazado', 'aprobado'].includes(x.estado) ? `<span class="small d-block text-truncate"><i class="bi bi-chat-left-quote me-1"></i>${esc(x.comentario)}</span>` : ''}</span>
+          ${F.chip(x.estado)}${x.proyecto_id ? '<i class="bi bi-globe-americas text-success" title="Ya es un proyecto"></i>' : ''}</button>`).join('')}</div>`
+        : '<p class="small text-body-secondary">Aún no han presentado nada.</p>'}`;
+    view.onclick = (ev) => {
+      const n = ev.target.closest('[data-fnuevo]'); if (n) return abrirEnvio(null, Number(n.dataset.fnuevo));
+      const v = ev.target.closest('[data-fver]'); if (v) return abrirEnvio(Number(v.dataset.fver));
+    };
+  }
+
+  // Página del formato: llenar (borrador o devuelto) o leer (enviado, aprobado, no aprobado). Se guarda solo mientras se escribe.
+  async function abrirEnvio(id, formatoId) {
+    abierto = null; tab = 'distrito'; view.onclick = null; view.oninput = null;
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let x, e;
+    try {
+      e = await F.encabezado();
+      if (id) x = await api(`/api/formatos/envios/${id}`);
+      else { const f = (await api('/api/formatos')).formatos.find((k) => k.id === formatoId); if (!f) throw new Error('Formato no encontrado'); x = { formato_id: f.id, formato_nombre: f.nombre, descripcion: f.descripcion, fecha_limite: f.fecha_limite, secciones: f.secciones, respuestas: {}, titulo: '', estado: 'borrador' }; }
+    } catch (err) { view.innerHTML = `<div class="dw-card">${esc(err.message)}</div>`; return; }
+    ir(id ? `f=${id}` : `fn=${formatoId}`);
+    const llenar = M && ['borrador', 'devuelto'].includes(x.estado);
+    acciones.innerHTML = `<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>Al distrito</button>
+      <button class="btn btn-light" data-imprimir title="Imprimir o guardar en PDF"><i class="bi bi-printer"></i></button>
+      ${llenar ? `<span class="small text-body-secondary align-self-center" data-estado>${id ? 'Guardado' : ''}</span>${id && x.estado === 'borrador' ? '<button class="btn btn-outline-danger" data-fborrar title="Borrar borrador"><i class="bi bi-trash"></i></button>' : ''}
+        <button class="btn btn-outline-primary" data-guardar><i class="bi bi-save me-1"></i>Guardar</button><button class="btn btn-primary" data-enviar><i class="bi bi-send me-1"></i>Enviar al distrito</button>` : ''}
+      ${x.estado === 'aprobado' && M ? (x.proyecto_id ? `<button class="btn btn-success" data-irp="${x.proyecto_id}"><i class="bi bi-globe-americas me-1"></i>Ver el proyecto</button>` : '<button class="btn btn-success" data-crearp><i class="bi bi-plus-lg me-1"></i>Crear el proyecto</button>') : ''}`;
+    const aviso = { devuelto: ['warning', 'bi-arrow-return-left', 'El distrito lo devolvió para corregir'], rechazado: ['danger', 'bi-x-circle', 'El distrito no lo aprobó'], aprobado: ['success', 'bi-patch-check', 'Aprobado por el distrito'], enviado: ['info', 'bi-hourglass-split', 'Enviado: el distrito lo está revisando'] }[x.estado];
+    view.innerHTML = `${aviso ? `<div class="alert alert-${aviso[0]} fmt-aviso d-flex gap-2"><i class="bi ${aviso[1]}"></i><div><b>${aviso[2]}.</b>${x.comentario ? `<div style="white-space:pre-wrap">${esc(x.comentario)}</div>` : ''}${x.estado === 'aprobado' && !x.proyecto_id ? '<div class="small">Con «Crear el proyecto» queda en Proyectos con estos datos y el formato en su Documentación.</div>' : ''}</div></div>` : ''}
+      <form class="fmt-fondo" novalidate data-hoja>${F.hoja(e, x, llenar ? 'llenar' : 'ver')}</form>`;
+    const hojaEl = view.querySelector('[data-hoja]'), estado = acciones.querySelector('[data-estado]');
+    F.autoAlto(hojaEl);
+    let envId = id, t = null, pend = false;
+    const guardar = async (silencio) => {
+      clearTimeout(t); pend = false;
+      const b = F.leer(hojaEl, x.secciones);
+      if (!b.titulo) { if (!silencio) { toast('Escribe el nombre del proyecto', false); hojaEl.querySelector('[name="titulo"]').focus(); } return false; }
+      if (estado) estado.textContent = 'Guardando…';
+      try {
+        if (!envId) { envId = (await api('/api/formatos/envios', { method: 'POST', body: { formato_id: x.formato_id, titulo: b.titulo } })).id; ir(`f=${envId}`); }
+        await api(`/api/formatos/envios/${envId}`, { method: 'PATCH', body: b });
+        if (estado) estado.textContent = 'Guardado'; if (!silencio) toast('Guardado');
+        return true;
+      } catch (err) { if (estado) estado.textContent = 'Sin guardar'; toast(err.message, false); return false; }
+    };
+    if (llenar) {
+      hojaEl.oninput = hojaEl.onchange = () => { pend = true; if (estado) estado.textContent = 'Cambios sin guardar'; clearTimeout(t); t = setTimeout(() => guardar(true), 2500); };
+      hojaEl.onsubmit = (ev) => ev.preventDefault();
+    }
+    acciones.onclick = async (ev) => {
+      const b = ev.target.closest('button'); if (!b) return;
+      if (b.dataset.volver != null) { if (pend) await guardar(true); clearTimeout(t); acciones.onclick = null; ir('distrito'); return cargar(); }
+      if (b.dataset.imprimir != null) return F.imprimir();
+      if (b.dataset.guardar != null) return guardar(false);
+      if (b.dataset.enviar != null) {
+        if (!(await guardar(false))) return;
+        const falta = x.secciones.filter((s) => s.requerido && !F.leer(hojaEl, x.secciones).respuestas[s.id]);
+        if (falta.length) { toast(`Falta llenar: ${falta.slice(0, 4).map((s) => s.titulo).join(', ')}${falta.length > 4 ? '…' : ''}`, false); hojaEl.querySelector(`[name="r_${falta[0].id}"]`)?.focus(); return; }
+        if (!(await window.App.confirm({ title: '¿Enviar al distrito?', text: 'Después de enviarlo no se puede cambiar, salvo que el distrito lo devuelva para corregir.', ok: 'Enviar' }))) return;
+        try { await api(`/api/formatos/envios/${envId}/enviar`, { method: 'POST' }); toast('Enviado al distrito'); acciones.onclick = null; return abrirEnvio(envId); } catch (err) { toast(err.message, false); }
+        return;
+      }
+      if (b.dataset.fborrar != null) { if (!(await window.App.confirm({ title: '¿Borrar este borrador?', ok: 'Borrar' }))) return; clearTimeout(t); try { await api(`/api/formatos/envios/${envId}`, { method: 'DELETE' }); toast('Borrador borrado'); acciones.onclick = null; ir('distrito'); return cargar(); } catch (err) { toast(err.message, false); } return; }
+      if (b.dataset.crearp != null) { try { const r = await api(`/api/formatos/envios/${envId}/proyecto`, { method: 'POST' }); toast('Proyecto creado'); acciones.onclick = null; tab = 'proyectos'; sec = 'resumen'; return abrir(r.id); } catch (err) { toast(err.message, false); } return; }
+      if (b.dataset.irp) { acciones.onclick = null; tab = 'proyectos'; sec = 'resumen'; return abrir(b.dataset.irp); }
+    };
+  }
+
   /* ---------- pestañas ---------- */
   async function cargar() {
-    acciones.innerHTML = ''; view.onclick = null;
+    acciones.innerHTML = ''; acciones.onclick = null; view.onclick = null;
+    if (tab === 'distrito') return pintarDistrito();
     if (tab === 'proyectos') {
-      if (M) { acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nuevo proyecto</button>'; acciones.querySelector('[data-nuevo]').onclick = () => editarP(null); }
+      if (M) {
+        acciones.innerHTML = `${me.distrito?.es_distrito ? '' : '<button class="btn btn-outline-primary" data-aldistrito><i class="bi bi-send-check me-1"></i>Presentar al distrito</button>'}<button class="btn btn-primary" data-nuevo><i class="bi bi-plus-lg me-1"></i>Nuevo proyecto</button>`;
+        acciones.querySelector('[data-nuevo]').onclick = () => editarP(null);
+        acciones.querySelector('[data-aldistrito]')?.addEventListener('click', () => { tab = 'distrito'; ir('distrito'); document.querySelectorAll('.ro-club a').forEach((a) => a.classList.toggle('on', a.dataset.club === 'distrito')); cargar(); });
+      }
       rows = (await api('/api/impacto/tarjetas')).rows;
       view.onclick = (e) => { const c = e.target.closest('[data-p]'); if (c) { sec = 'resumen'; abrir(c.dataset.p); } };
       pintarLista();
@@ -564,6 +658,6 @@ DW.ready.then(async (me) => {
     .ro-items td{padding:.25rem}.ro-fz{border:1px solid var(--bs-border-color);border-radius:12px;padding:10px;margin-bottom:8px}
     .ro-fin{display:inline-flex;gap:6px;align-items:center;font-size:.78rem;font-weight:600;color:var(--f);background:color-mix(in srgb,var(--f) 14%,transparent);border-radius:999px;padding:3px 10px}</style>`);
   RO.nav(tab, (k) => { tab = k; abierto = null; cargar(); });
-  const ini = /^#([pc])=(\d+)$/.exec(location.hash);
-  if (ini?.[1] === 'p') { rows = (await api('/api/impacto/tarjetas')).rows; await abrir(ini[2]); } else if (ini?.[1] === 'c') await abrirC(ini[2]); else await cargar();
+  const ini = /^#(p|c|f|fn)=(\d+)$/.exec(location.hash);
+  if (ini?.[1] === 'f' || ini?.[1] === 'fn') await abrirEnvio(ini[1] === 'f' ? Number(ini[2]) : null, ini[1] === 'fn' ? Number(ini[2]) : null); else if (ini?.[1] === 'p') { rows = (await api('/api/impacto/tarjetas')).rows; await abrir(ini[2]); } else if (ini?.[1] === 'c') await abrirC(ini[2]); else await cargar();
 });

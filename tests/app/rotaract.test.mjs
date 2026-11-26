@@ -354,6 +354,44 @@ export default async function ({ check, newBusiness, newMember }) {
   check('Cargos: el club no cambia la lista (403) y la del Distrito Rotary no le llega', (await A.app('/api/distrito/cargos', { method: 'PUT', body: { items: ['x'] } })).status === 403 && (await R1.app('/api/socios/cargos')).data.origen === 'sugerido');
   check('Cargos: la lista debe tener la presidencia (400)', (await D.app('/api/distrito/cargos', { method: 'PUT', body: { items: ['Tesorero/a del club'] } })).status === 400);
   await D.app('/api/distrito/cargos', { method: 'PUT', body: { items: [] } });
+
+  // Formatos del distrito: el distrito arma el formato, el club lo llena y lo envía, el distrito revisa y el club crea el proyecto
+  const fpl = (await D.app('/api/distrito/formatos')).data;
+  const fm = await D.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'Presentación de proyectos', descripcion: 'Formato oficial', secciones: fpl.plantilla } });
+  check('Formatos: el distrito crea un formato desde la plantilla', fm.status === 201 && fpl.plantilla.some((s) => s.tipo === 'opciones'));
+  check('Formatos: un club no crea formatos (403) ni ve lo del distrito', (await A.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'x', secciones: fpl.plantilla } })).status === 403 && (await A.app('/api/distrito/envios')).status === 403);
+  const lfA = (await A.app('/api/formatos')).data, lfR = (await R1.app('/api/formatos')).data;
+  check('Formatos: le llega al club de su programa y no al de otro programa', lfA.formatos.some((f) => f.id === fm.data.id) && !lfR.formatos.some((f) => f.id === fm.data.id));
+  const encA = (await A.app('/api/formatos/encabezado')).data;
+  check('Formatos: encabezado con el distrito y el club', encA.distrito.includes('4271') && encA.programa === 'Rotaract' && encA.club.startsWith('RTC '), JSON.stringify(encA));
+  const fe = await A.app('/api/formatos/envios', { method: 'POST', body: { formato_id: fm.data.id, titulo: 'Huerta comunitaria' } });
+  const secF = fpl.plantilla, sid = (t) => secF.find((s) => s.titulo === t).id;
+  const resp = { [sid('Área de interés')]: 'Medio ambiente', [sid('Comunidad beneficiada')]: 'Barrio La Esperanza', [sid('Fecha de inicio')]: '2027-02-01', [sid('Responsable del proyecto')]: 'Ana',
+    [sid('Justificación')]: 'Falta de alimentos frescos', [sid('Objetivo general')]: 'Sembrar una huerta', [sid('Personas beneficiadas')]: '120', [sid('Presupuesto total')]: '850000', [sid('Área de interés') + 'x']: 'no' };
+  await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { respuestas: { [sid('Área de interés')]: 'Opción inventada' } } });
+  const sinOp = (await A.app(`/api/formatos/envios/${fe.data.id}`)).data;
+  check('Formatos: el club empieza un borrador; una opción que no está en la lista no se guarda', fe.status === 201 && sinOp.estado === 'borrador' && !sinOp.respuestas[sid('Área de interés')]);
+  check('Formatos: no se envía si faltan obligatorias (400)', (await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' })).status === 400);
+  await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { titulo: 'Huerta comunitaria', respuestas: resp } });
+  const fen = await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' });
+  check('Formatos: el club lo envía y ya no lo puede cambiar (409)', fen.status === 200 && (await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { titulo: 'Otro' } })).status === 409);
+  const ldE = (await D.app('/api/distrito/envios?estado=enviado')).data.rows;
+  check('Formatos: el distrito lo ve por revisar con el club; el Rotary no (404)', ldE.some((x) => x.id === fe.data.id && x.club.startsWith('RTC ')) && (await DR.app(`/api/distrito/envios/${fe.data.id}`)).status === 404);
+  check('Formatos: devolver sin comentario no (400)', (await D.app(`/api/distrito/envios/${fe.data.id}/revisar`, { method: 'POST', body: { estado: 'devuelto' } })).status === 400);
+  await D.app(`/api/distrito/envios/${fe.data.id}/revisar`, { method: 'POST', body: { estado: 'devuelto', comentario: 'Agrega el cronograma' } });
+  const dev = (await A.app('/api/formatos')).data.envios.find((x) => x.id === fe.data.id);
+  check('Formatos: devuelto → el club ve el comentario y lo puede corregir y reenviar', dev.estado === 'devuelto' && dev.comentario === 'Agrega el cronograma'
+    && (await A.app(`/api/formatos/envios/${fe.data.id}`, { method: 'PATCH', body: { respuestas: { ...resp, [sid('Actividades y cronograma')]: 'Febrero: siembra' } } })).status === 200
+    && (await A.app(`/api/formatos/envios/${fe.data.id}/enviar`, { method: 'POST' })).status === 200);
+  check('Formatos: crear el proyecto antes de aprobarlo no (409)', (await A.app(`/api/formatos/envios/${fe.data.id}/proyecto`, { method: 'POST' })).status === 409);
+  const apr = await D.app(`/api/distrito/envios/${fe.data.id}/revisar`, { method: 'POST', body: { estado: 'aprobado', comentario: '¡Adelante!' } });
+  const fpj = await A.app(`/api/formatos/envios/${fe.data.id}/proyecto`, { method: 'POST' });
+  const docsF = (await A.app(`/api/impacto/proyectos/${fpj.data.id}/detalle`)).data, pjF = docsF.proyecto || {};
+  check('Formatos: aprobado → el club crea el proyecto con sus datos y el formato en Documentación', apr.status === 200 && fpj.status === 201 && pjF.nombre === 'Huerta comunitaria' && pjF.estado === 'planeacion'
+    && pjF.beneficiados === 120 && pjF.presupuesto === 850000 && pjF.fecha_inicio === '2027-02-01' && JSON.stringify((await A.app(`/api/impacto/docs/${docsF.docs[0]?.id}`)).data).includes('Barrio La Esperanza'), JSON.stringify(docsF.docs).slice(0, 300));
+  check('Formatos: crearlo otra vez devuelve el mismo proyecto', (await A.app(`/api/formatos/envios/${fe.data.id}/proyecto`, { method: 'POST' })).data.id === fpj.data.id);
+  check('Formatos: un formato con solicitudes no se borra (409)', (await D.app(`/api/distrito/formatos/${fm.data.id}`, { method: 'DELETE' })).status === 409);
+  check('Formatos: otro club no ve la solicitud (404)', (await B.app(`/api/formatos/envios/${fe.data.id}`)).status === 404);
   const E = await newBusiness('Club para quitar', { login: true });
   check('Distrito: el club nuevo aparece en su lista', (await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id));
   const qe = await D.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' });

@@ -11,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'metas', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
+  let tab = ['anio', 'metas', 'formatos', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -272,11 +272,75 @@ DW.ready.then(async (me) => {
     try { await api(b ? `/api/distrito/bonos/${b.id}` : '/api/distrito/bonos', { method: b ? 'PATCH' : 'POST', body: out }); toast(b ? 'Bono guardado' : 'Bono creado: ahora asígnalo a los clubes'); pintarBonos(); } catch (x) { toast(x.message, false); }
   }
 
+  /* ---------- Formatos: el distrito los arma, los clubes los llenan y aquí se revisan ---------- */
+  const F = window.ROFmt, irH = (h) => history.replaceState(null, '', h ? `#${h}` : location.pathname);
+  let fmt = null, filtroEnv = 'enviado';
+  async function pintarFormatos() {
+    irH('formatos');
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let env;
+    try { [fmt, env] = await Promise.all([api('/api/distrito/formatos'), api(`/api/distrito/envios${filtroEnv ? `?estado=${filtroEnv}` : ''}`)]); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    F.css();
+    const filtros = [['enviado', 'Por revisar'], ['aprobado', 'Aprobados'], ['devuelto', 'Devueltos'], ['rechazado', 'No aprobados'], ['', 'Todos']];
+    view.innerHTML = `<div class="ro-h">Lo que presentan los clubes</div>
+      <div class="d-flex flex-wrap gap-1 mb-2">${filtros.map(([k, l]) => `<button type="button" class="btn btn-sm rounded-pill ${k === filtroEnv ? 'btn-primary' : 'btn-light'}" data-fenv="${k}">${l}</button>`).join('')}</div>
+      ${env.rows.length ? `<div class="dw-card p-0 mb-4">${env.rows.map((x) => `<button type="button" class="d-flex gap-3 align-items-center w-100 text-start border-0 border-bottom bg-transparent p-3 text-reset" data-envio="${x.id}">
+          <i class="bi bi-file-earmark-richtext fs-4 text-primary"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.titulo)}</b>
+          <span class="small text-body-secondary">${esc(x.club)} · ${esc(x.formato_nombre || '')}${x.enviado_at ? ` · ${esc(F.fechaLarga(new Date(x.enviado_at).toISOString()))}` : ''}</span></span>${F.chip(x.estado)}</button>`).join('')}</div>`
+        : `<div class="dw-card mb-4 small text-body-secondary">${filtroEnv === 'enviado' ? 'No hay nada por revisar.' : 'No hay solicitudes con este estado.'}</div>`}
+      <div class="ro-h">Formatos del distrito</div>
+      ${fmt.rows.length ? `<div class="row g-2">${fmt.rows.map((f) => `<div class="col-md-6 col-xl-4"><button type="button" class="fmt-card w-100 h-100 text-start text-reset" data-formato="${f.id}"><i class="bi bi-file-earmark-text"></i>
+          <span class="flex-grow-1 min-w-0"><b class="d-block">${esc(f.nombre)}</b><span class="small text-body-secondary">${f.secciones.filter((s) => s.tipo !== 'seccion').length} preguntas · ${f.recibidos} recibidos${f.por_revisar ? ` · <b class="text-warning-emphasis">${f.por_revisar} por revisar</b>` : ''}</span>
+          <span class="d-block mt-1">${f.activo ? C.chip('ok', 'Disponible') : C.chip('free', 'Oculto para los clubes')}${f.fecha_limite ? ` <span class="small text-body-secondary">hasta ${esc(F.fechaLarga(f.fecha_limite))}</span>` : ''}</span></span></button></div>`).join('')}</div>`
+        : `<div class="dw-card">${window.App.empty('bi-file-earmark-text', 'Crea el formato con el que los clubes presentan sus proyectos. Puedes partir de la plantilla sugerida.')}</div>`}`;
+    view.onclick = (e) => {
+      const b = e.target.closest('[data-fenv]'); if (b) { filtroEnv = b.dataset.fenv; return pintarFormatos(); }
+      const f = e.target.closest('[data-formato]'); if (f) return M ? editarFormato(fmt.rows.find((x) => x.id === Number(f.dataset.formato))) : null;
+      const v = e.target.closest('[data-envio]'); if (v) return verEnvio(Number(v.dataset.envio));
+    };
+  }
+  async function editarFormato(f) {
+    if (!fmt) fmt = await api('/api/distrito/formatos');
+    acciones.innerHTML = ''; view.onclick = null;
+    irH(f ? `formato=${f.id}` : 'formato=nuevo');
+    const salir = () => { view.onclick = null; view.oninput = null; view.onchange = null; tab = 'formatos'; pintar(); };
+    await F.constructor(view, f, { plantilla: fmt.plantilla,
+      guardar: async (body) => { await api(f ? `/api/distrito/formatos/${f.id}` : '/api/distrito/formatos', { method: f ? 'PATCH' : 'POST', body }); toast('Formato guardado'); salir(); },
+      borrar: f ? async () => { await api(`/api/distrito/formatos/${f.id}`, { method: 'DELETE' }); toast('Formato borrado'); salir(); } : null,
+      volver: salir });
+  }
+  async function verEnvio(id) {
+    view.onclick = null; view.oninput = null; view.onchange = null;
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    let x, e;
+    try { [x, e] = await Promise.all([api(`/api/distrito/envios/${id}`), F.encabezado()]); } catch (err) { view.innerHTML = `<div class="dw-card">${esc(err.message)}</div>`; return; }
+    irH(`envio=${id}`);
+    acciones.innerHTML = '<button class="btn btn-light" data-volver><i class="bi bi-arrow-left me-1"></i>Formatos</button><button class="btn btn-light" data-imprimir title="Imprimir o guardar en PDF"><i class="bi bi-printer"></i></button>';
+    acciones.onclick = (ev) => { if (ev.target.closest('[data-volver]')) { acciones.onclick = null; tab = 'formatos'; return pintar(); } if (ev.target.closest('[data-imprimir]')) F.imprimir(); };
+    const revisar = M && (x.estado === 'enviado' || (x.estado === 'aprobado' && !x.proyecto_id));
+    view.innerHTML = `<div class="row g-3"><div class="col-xl-8"><div class="fmt-fondo">${F.hoja(e, x, 'ver')}</div></div>
+      <div class="col-xl-4"><div class="dw-card" style="position:sticky;top:76px"><div class="d-flex align-items-center gap-2 mb-2"><b>Revisión del distrito</b><span class="ms-auto">${F.chip(x.estado)}</span></div>
+        <div class="small text-body-secondary mb-2">${esc(x.club)}${x.enviado_at ? ` · enviado el ${esc(F.fechaLarga(new Date(x.enviado_at).toISOString()))}` : ''}</div>
+        ${x.comentario ? `<div class="small p-2 rounded mb-2" style="background:rgba(var(--dw-p-rgb),.07);white-space:pre-wrap"><i class="bi bi-chat-left-quote me-1"></i>${esc(x.comentario)}</div>` : ''}
+        ${revisar ? `<label class="form-label small fw-semibold mb-1" for="rv_c">Comentario para el club</label><textarea class="form-control mb-2" id="rv_c" rows="4" placeholder="Obligatorio si lo devuelves o no lo apruebas">${x.estado === 'aprobado' ? esc(x.comentario || '') : ''}</textarea>
+          <div class="d-grid gap-2">${x.estado === 'enviado' ? '<button class="btn btn-success" data-rv="aprobado"><i class="bi bi-patch-check me-1"></i>Aprobar</button>' : ''}<button class="btn btn-outline-warning" data-rv="devuelto"><i class="bi bi-arrow-return-left me-1"></i>Devolver para corregir</button><button class="btn btn-outline-danger" data-rv="rechazado"><i class="bi bi-x-circle me-1"></i>No aprobar</button></div>
+          ${x.estado === 'aprobado' ? '<div class="small text-body-secondary mt-2">Ya está aprobado; mientras el club no cree el proyecto aún puedes devolverlo.</div>' : ''}` : x.proyecto_id ? '<div class="small text-success"><i class="bi bi-globe-americas me-1"></i>El club ya lo convirtió en proyecto.</div>' : ''}</div></div></div>`;
+    view.onclick = async (ev) => {
+      const b = ev.target.closest('[data-rv]'); if (!b) return;
+      const comentario = view.querySelector('#rv_c').value.trim();
+      if (b.dataset.rv !== 'aprobado' && !comentario) { toast('Escribe al club qué debe corregir o por qué no se aprueba', false); view.querySelector('#rv_c').focus(); return; }
+      b.disabled = true;
+      try { await api(`/api/distrito/envios/${id}/revisar`, { method: 'POST', body: { estado: b.dataset.rv, comentario } }); toast({ aprobado: 'Aprobado', devuelto: 'Devuelto al club', rechazado: 'Marcado como no aprobado' }[b.dataset.rv]); verEnvio(id); }
+      catch (err) { toast(err.message, false); b.disabled = false; }
+    };
+  }
+
   function pintar() {
-    const ACC = { clubes: ['Solicitar club nuevo', solicitarClub], cuotas: ['Nueva cuota', () => editar(null)], bonos: ['Nuevo bono', () => editarBono(null)], metas: ['Editar metas', editarMetas] };
+    const ACC = { clubes: ['Solicitar club nuevo', solicitarClub], formatos: ['Nuevo formato', () => editarFormato(null)], cuotas: ['Nueva cuota', () => editar(null)], bonos: ['Nuevo bono', () => editarBono(null)], metas: ['Editar metas', editarMetas] };
     acciones.innerHTML = M && ACC[tab] ? `<button class="btn btn-primary" data-nueva><i class="bi ${tab === 'metas' ? 'bi-pencil' : 'bi-plus-lg'} me-1"></i>${ACC[tab][0]}</button>` : '';
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => ACC[tab][1]());
-    view.onclick = null; view.oninput = null;
+    view.onclick = null; view.oninput = null; view.onchange = null; acciones.onclick = null;
+    if (tab === 'formatos') return pintarFormatos();
     if (tab === 'orden') return pintarOrden();
     if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();
@@ -295,5 +359,11 @@ DW.ready.then(async (me) => {
     const pg = e.target.closest('[data-prog]'); if (pg) { prog = pg.dataset.prog; pintarClubes(); return; }
     const k = e.target.closest('[data-club]'); if (k) detalle(k.dataset.club);
   });
-  await cargar();
+  const ini = /^#(formato|envio)=(\w+)$/.exec(location.hash);   // enlace directo a una solicitud o a un formato
+  if (!ini) await cargar();
+  else {
+    t = await api('/api/distrito/tablero'); anio = t.anio;
+    if (ini[1] === 'envio') await verEnvio(Number(ini[2]));
+    else if (M) { fmt = await api('/api/distrito/formatos'); await editarFormato(fmt.rows.find((x) => x.id === Number(ini[2])) || null); } else pintar();
+  }
 });

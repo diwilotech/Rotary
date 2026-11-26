@@ -27,29 +27,32 @@
 
   // ---- formulario en ventana ----
   // fields: [{ k, label, type: text|long|email|url|date|month|money|usd|int|bool|select, options, ref, full, hint, placeholder, required, check, default, empty }]
+  // campos del formulario (los usa la ventana y la página)
+  const inputDe = (values, lists) => (f) => {
+    const v = values[f.k] ?? f.default ?? '';
+    const req = f.required ? 'required' : '';
+    const id = `f_${f.k}`;
+    if (f.type === 'long') return `<textarea class="form-control" id="${id}" name="${f.k}" rows="3" ${req}>${esc(v)}</textarea>`;
+    if (f.type === 'bool') return `<div class="form-check form-switch mt-1"><input class="form-check-input" type="checkbox" id="${id}" name="${f.k}" ${v ? 'checked' : ''}><label class="form-check-label" for="${id}">${esc(f.check || 'Sí')}</label></div>`;
+    if (f.type === 'select' || f.ref) {
+      const opts = f.ref ? [['', f.empty || '—'], ...lists[f.ref].map((r) => [r.id, r[LABEL[f.ref] || 'name'] || r.nombre || r.titulo || `#${r.id}`])] : f.options;
+      // [valor, etiqueta, grupo?]: con grupo, se arman <optgroup> en el orden en que aparecen
+      const op = ([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`;
+      let html = '', g = null;
+      for (const o of opts) { if ((o[2] || null) !== g) { if (g) html += '</optgroup>'; g = o[2] || null; if (g) html += `<optgroup label="${esc(g)}">`; } html += op(o); }
+      if (g) html += '</optgroup>';
+      return `<select class="form-select" id="${id}" name="${f.k}" ${req}>${html}</select>`;
+    }
+    const type = { date: 'date', month: 'month', money: 'number', usd: 'number', int: 'number', email: 'email', url: 'url' }[f.type] || 'text';
+    const extra = f.type === 'money' ? 'min="0" step="1" inputmode="numeric"' : f.type === 'usd' ? 'min="0" step="0.01" inputmode="decimal"' : f.type === 'int' ? 'step="1" inputmode="numeric"' : '';
+    return `<input class="form-control" type="${type}" id="${id}" name="${f.k}" value="${esc(v)}" ${extra} ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''} ${req}>`;
+  };
+
   function form({ title, fields, values = {}, base, okText = 'Guardar', onDelete }) {
     return new Promise(async (resolve) => {
       const lists = {};
       for (const f of fields.filter((x) => x.ref)) lists[f.ref] = await refs(base, f.ref);
-      const input = (f) => {
-        const v = values[f.k] ?? f.default ?? '';
-        const req = f.required ? 'required' : '';
-        const id = `f_${f.k}`;
-        if (f.type === 'long') return `<textarea class="form-control" id="${id}" name="${f.k}" rows="3" ${req}>${esc(v)}</textarea>`;
-        if (f.type === 'bool') return `<div class="form-check form-switch mt-1"><input class="form-check-input" type="checkbox" id="${id}" name="${f.k}" ${v ? 'checked' : ''}><label class="form-check-label" for="${id}">${esc(f.check || 'Sí')}</label></div>`;
-        if (f.type === 'select' || f.ref) {
-          const opts = f.ref ? [['', f.empty || '—'], ...lists[f.ref].map((r) => [r.id, r[LABEL[f.ref] || 'name'] || r.nombre || r.titulo || `#${r.id}`])] : f.options;
-          // [valor, etiqueta, grupo?]: con grupo, se arman <optgroup> en el orden en que aparecen
-          const op = ([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`;
-          let html = '', g = null;
-          for (const o of opts) { if ((o[2] || null) !== g) { if (g) html += '</optgroup>'; g = o[2] || null; if (g) html += `<optgroup label="${esc(g)}">`; } html += op(o); }
-          if (g) html += '</optgroup>';
-          return `<select class="form-select" id="${id}" name="${f.k}" ${req}>${html}</select>`;
-        }
-        const type = { date: 'date', month: 'month', money: 'number', usd: 'number', int: 'number', email: 'email', url: 'url' }[f.type] || 'text';
-        const extra = f.type === 'money' ? 'min="0" step="1" inputmode="numeric"' : f.type === 'usd' ? 'min="0" step="0.01" inputmode="decimal"' : f.type === 'int' ? 'step="1" inputmode="numeric"' : '';
-        return `<input class="form-control" type="${type}" id="${id}" name="${f.k}" value="${esc(v)}" ${extra} ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''} ${req}>`;
-      };
+      const input = inputDe(values, lists);
       const { el, m } = window.App.modal(`<form class="needs-validation" novalidate>
         <div class="modal-header border-0 pb-0"><h2 class="modal-title h5">${esc(title)}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
         <div class="modal-body"><div class="row g-2">${fields.map((f) => `<div class="${f.full || f.type === 'long' ? 'col-12' : 'col-sm-6'}"><label class="form-label small mb-1" for="f_${f.k}">${esc(f.label)}${f.hint ? ` <span class="text-body-secondary">· ${esc(f.hint)}</span>` : ''}</label>${input(f)}</div>`).join('')}</div>
@@ -73,6 +76,41 @@
         finish(out);
       };
       setTimeout(() => f.querySelector('input:not([type=checkbox]), select, textarea')?.focus(), 250);
+    });
+  }
+
+  // ---- formulario como página (sin ventana): se pinta en «el» y vuelve con los datos, 'deleted' o null (Cancelar) ----
+  function formPage({ el, title, subtitle, fields, values = {}, base, okText = 'Guardar', onDelete }) {
+    return new Promise(async (resolve) => {
+      const lists = {};
+      for (const f of fields.filter((x) => x.ref)) lists[f.ref] = await refs(base, f.ref);
+      const input = inputDe(values, lists);
+      el.innerHTML = `<form class="dw-card needs-validation mx-auto" style="max-width:920px" novalidate>
+        <div class="d-flex align-items-center gap-2 mb-3"><button type="button" class="btn btn-light btn-sm rounded-circle" data-cancel aria-label="Volver"><i class="bi bi-arrow-left"></i></button>
+          <div><h2 class="h5 mb-0">${esc(title)}</h2>${subtitle ? `<div class="small text-body-secondary">${esc(subtitle)}</div>` : ''}</div></div>
+        <div class="row g-3">${fields.map((f) => `<div class="${f.full || f.type === 'long' ? 'col-12' : 'col-md-6'}"><label class="form-label small fw-semibold mb-1" for="f_${f.k}">${esc(f.label)}${f.hint ? ` <span class="text-body-secondary fw-normal">· ${esc(f.hint)}</span>` : ''}</label>${input(f)}</div>`).join('')}</div>
+        <div class="small text-danger mt-2" data-err></div>
+        <div class="d-flex flex-wrap gap-2 justify-content-between mt-3 pt-3 border-top"><span>${onDelete ? '<button type="button" class="btn btn-outline-danger btn-sm" data-del><i class="bi bi-trash me-1"></i>Borrar</button>' : ''}</span>
+          <span class="d-flex gap-2"><button type="button" class="btn btn-light" data-cancel>Cancelar</button><button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>${esc(okText)}</button></span></div></form>`;
+      const f = el.querySelector('form');
+      f.querySelectorAll('textarea').forEach((t) => { t.rows = 4; });
+      let done = false;
+      const finish = (v) => { if (done) return; done = true; resolve(v); };
+      f.querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = () => finish(null); });
+      f.querySelector('[data-del]')?.addEventListener('click', async () => {
+        if (!(await confirm({ title: '¿Borrar este registro?', text: 'No se puede deshacer. Queda en la bitácora.' }))) return;
+        try { await onDelete(); finish('deleted'); } catch (x) { f.querySelector('[data-err]').textContent = x.message; }
+      });
+      f.onsubmit = (e) => {
+        e.preventDefault();
+        f.classList.add('was-validated');
+        if (!f.checkValidity()) { f.querySelector(':invalid')?.focus(); return; }
+        const out = {};
+        for (const fd of fields) { const x = f.elements[fd.k]; out[fd.k] = fd.type === 'bool' ? x.checked : x.value.trim(); }
+        finish(out);
+      };
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => f.querySelector('input:not([type=checkbox]), select, textarea')?.focus({ preventScroll: true }), 50);
     });
   }
 
@@ -170,5 +208,5 @@
     const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = name; a.click();
   }
 
-  window.App.Crud = { money, num, pct, day, monthName, todayCo, chip, refs, dropRefs, refName, form, table, bars, meter, kpis, rank, seg, download };
+  window.App.Crud = { money, num, pct, day, monthName, todayCo, chip, refs, dropRefs, refName, form, formPage, table, bars, meter, kpis, rank, seg, download };
 })();

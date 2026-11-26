@@ -7,7 +7,7 @@
     [['socios', 'Socios', '/staff/socios.html', 'bi-people', 'socios'], ['certificados', 'Certificados', '/staff/socios.html#certificados', 'bi-award', 'socios'],
       ['reuniones', 'Reuniones', '/staff/reuniones.html', 'bi-calendar-event', 'reuniones'], ['tareas', 'Tareas', '/staff/tareas.html', 'bi-kanban', 'tareas']],
     [['proyectos', 'Proyectos', '/staff/impacto.html', 'bi-globe-americas', 'impacto'], ['alianzas', 'Alianzas', '/staff/impacto.html#alianzas', 'bi-people', 'impacto'],
-      ['comunidades', 'Comunidades', '/staff/impacto.html#comunidades', 'bi-house-heart', 'impacto']],
+      ['comunidades', 'Comunidades', '/staff/impacto.html#comunidades', 'bi-house-heart', 'impacto'], ['distrito', 'Al distrito', '/staff/impacto.html#distrito', 'bi-send-check', 'impacto']],
     [['menor', 'Caja menor', '/staff/cajas.html#menor', 'bi-cup-hot', 'cajas'], ['mayor', 'Caja mayor', '/staff/cajas.html#mayor', 'bi-bricks', 'cajas'],
       ['cajita', 'Cajita de macería', '/staff/cajas.html#cajita', 'bi-coin', 'cajas'],
       ['cuotas', 'Cuotas', '/staff/cuotas.html', 'bi-wallet2', 'cuotas']],
