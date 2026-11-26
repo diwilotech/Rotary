@@ -230,6 +230,8 @@
       border:1.5px solid #d9b45a;box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 0 0 7px rgba(10,20,55,.0)}
     .ro-k__face::before{content:"";position:absolute;inset:9px;border:1px solid rgba(217,180,90,.35);border-radius:14px;pointer-events:none}
     .ro-k__back{transform:rotateY(180deg)}
+    /* iPhone: la foto (con z-index) de la cara de adelante se veía a través del reverso; la cara que no se ve se oculta a mitad del giro */
+    .ro-k__face{transition:visibility 0s linear .35s}.ro-k:not(.is-back) .ro-k__back,.ro-k.is-back .ro-k__face:not(.ro-k__back){visibility:hidden}
     .ro-k__gold{background:linear-gradient(135deg,#f6dd8f,#c9962e 55%,#f3d27a)}
     .ro-k__wheel{-webkit-mask:url(/img/marca/rueda.svg) center/contain no-repeat;mask:url(/img/marca/rueda.svg) center/contain no-repeat}
     .ro-k__wm{position:absolute;width:78%;aspect-ratio:1;left:11%;top:34%;background:#fff;opacity:.05}
