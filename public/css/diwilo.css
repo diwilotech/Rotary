@@ -356,7 +356,7 @@ body.dw-alumno .dw-main { margin-left: 0; padding: calc(var(--dw-top-h) + 20px) 
   [data-acciones]::-webkit-scrollbar, .ro-acc::-webkit-scrollbar { display: none; }
   [data-acciones]:empty { display: none !important; }
   /* las filas a todo lo ancho (márgenes negativos) no deben mover la página de lado */
-  html, body { overflow-x: hidden; }
+  html, body { overflow-x: clip; }
   .dw-main { overflow-x: clip; }
   [data-acciones] > .btn, [data-acciones] > a.btn, .ro-acc > .btn, .ro-acc > a.btn { flex: none; white-space: nowrap; border-radius: 999px; padding: .4rem .9rem; font-size: .9rem; }
   /* tablas como tarjetas: etiqueta a la izquierda y el valor (con su ícono) a la derecha, en una línea */
