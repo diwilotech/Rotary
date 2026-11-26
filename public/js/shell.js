@@ -333,4 +333,36 @@
 
   window.DW = { ready, applyTheme, carnet };
 
+  // ---- Datos frescos en el celular ----
+  // 1) Al volver a la app después de 45 s afuera, la página se recarga sola (si no hay nada escrito sin guardar ni una ventana abierta).
+  // 2) Deslizar hacia abajo desde arriba recarga (la app instalada en iPhone no lo trae). Solo en la página con contenido, no en el panel.
+  if (!PANEL) {
+    let escrito = false, fuera = 0;
+    document.addEventListener('input', (e) => { if (e.target.matches?.('input:not([type=search]):not([data-q]),textarea,select,[contenteditable]')) escrito = true; }, true);
+    const recargar = () => { try { sessionStorage.setItem('dw_y', String(window.scrollY)); } catch (_) { /* sin almacenamiento */ } location.reload(); };
+    try { const y = Number(sessionStorage.getItem('dw_y')); sessionStorage.removeItem('dw_y'); if (y) ready.then(() => setTimeout(() => window.scrollTo(0, y), 400)); } catch (_) { /* nada */ }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { fuera = Date.now(); return; }
+      if (fuera && Date.now() - fuera > 45000 && !escrito && !document.querySelector('.modal.show')) recargar();
+    });
+    let y0 = null, dy = 0, burbuja = null;
+    const arriba = () => (document.scrollingElement || document.documentElement).scrollTop <= 0;
+    document.addEventListener('touchstart', (e) => { y0 = e.touches.length === 1 && arriba() && !document.querySelector('.modal.show') && !e.target.closest('.dw-kanban,.ro-acc,[data-acciones],.ro-club,textarea,input,select') ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (y0 == null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0 || !arriba()) { burbuja?.remove(); burbuja = null; return; }
+      if (!burbuja) { burbuja = document.createElement('div'); burbuja.className = 'dw-ptr'; burbuja.innerHTML = '<i class="bi bi-arrow-clockwise"></i>'; document.body.appendChild(burbuja); }
+      const p = Math.min(dy / 90, 1);
+      burbuja.style.transform = `translate(-50%, ${Math.min(dy * 0.6, 70)}px) rotate(${p * 270}deg)`; burbuja.style.opacity = String(0.3 + p * 0.7);
+      burbuja.classList.toggle('listo', p >= 1);
+    }, { passive: true });
+    document.addEventListener('touchend', () => {
+      if (burbuja && dy >= 90 && arriba()) { burbuja.classList.add('girando'); recargar(); } else { burbuja?.remove(); burbuja = null; }
+      y0 = null; dy = 0;
+    });
+    document.head.insertAdjacentHTML('beforeend', `<style>.dw-ptr{position:fixed;left:50%;top:8px;z-index:3000;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--bs-body-bg);color:var(--dw-p,#d41367);box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:1.2rem;pointer-events:none;transform:translate(-50%,0)}
+      .dw-ptr.listo{background:var(--dw-p,#d41367);color:#fff}.dw-ptr.girando i{animation:dw-ptr-g .7s linear infinite}@keyframes dw-ptr-g{to{transform:rotate(360deg)}}</style>`);
+  }
+
 })();

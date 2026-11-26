@@ -3,7 +3,7 @@
 // por negocio ni mostrar datos viejos de otra sesión. Sin modo offline ni notificaciones push por ahora.
 // Estáticos: primero la red (así una publicación nueva se ve de una vez) y, sin conexión, lo guardado.
 // Sube VERSION si cambia la lista SHELL.
-const VERSION = 'dw-v29';
+const VERSION = 'dw-v30';
 const SHELL = ['/css/diwilo.css', '/js/app.js', '/js/crud.js', '/js/shell.js', '/js/login.js', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/logo-diwilo.svg', '/manifest.json'];
 const PRIVATE = /^\/(staff|api|mcp)(\/|$)/;
 

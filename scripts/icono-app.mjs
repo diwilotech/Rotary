@@ -1,0 +1,15 @@
+import sharp from 'sharp';
+import fs from 'node:fs';
+const root = process.argv[2];
+const rueda = fs.readFileSync(`${root}/public/img/marca/rueda.svg`, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+const vb = /viewBox="([^"]+)"/.exec(rueda)[1];
+const cuerpo = rueda.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/#D41367/gi, '#ffffff');
+const icono = (rx, pct) => { const s = 512 * pct, o = (512 - s) / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e11d74"/><stop offset="1" stop-color="#a3124f"/></linearGradient></defs><rect width="512" height="512" rx="${rx}" fill="url(#g)"/><svg x="${o}" y="${o}" width="${s}" height="${s}" viewBox="${vb}">${cuerpo}</svg></svg>`; };
+const normal = icono(112, 0.7), mask = icono(0, 0.56), apple = icono(0, 0.66);
+fs.writeFileSync(`${root}/public/icons/icon.svg`, normal);
+await sharp(Buffer.from(normal)).resize(192, 192).png().toFile(`${root}/public/icons/icon-192.png`);
+await sharp(Buffer.from(normal)).resize(512, 512).png().toFile(`${root}/public/icons/icon-512.png`);
+await sharp(Buffer.from(mask)).resize(512, 512).png().toFile(`${root}/public/icons/icon-maskable-512.png`);
+await sharp(Buffer.from(apple)).resize(180, 180).png().toFile(`${root}/public/icons/apple-touch-icon.png`);
+console.log('ok');
