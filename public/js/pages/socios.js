@@ -12,8 +12,32 @@ DW.ready.then(async (me) => {
   let vista = (() => { try { return localStorage.getItem('ro_socios_vista') || 'tarjetas'; } catch (_) { return 'tarjetas'; } })();
   RO_.nav(tab, (k) => { tab = k; pintar(); });
 
-  if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
+  if (M && !RO_APP) acciones.innerHTML = '<button class="btn btn-light" data-registro><i class="bi bi-link-45deg me-1"></i>Enlace de registro</button><button class="btn btn-primary" data-nuevo><i class="bi bi-person-plus me-1"></i>Nuevo socio</button>';
   acciones.querySelector('[data-nuevo]')?.addEventListener('click', () => editar(null));
+  acciones.querySelector('[data-registro]')?.addEventListener('click', () => enlaceRegistro());
+
+  // Enlace de registro: cada socio crea su cuenta solo (rol Socio). El enlace solo se ve al crearlo: cambiarlo invalida el anterior.
+  async function enlaceRegistro(url = null) {
+    const { el } = window.App.modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>');
+    const dibujar = async (u) => {
+      const st = u ? { activo: true } : await window.App.api('/api/socios/registro');
+      const msg = u ? `¡Hola! Regístrate en la app del club ${me.business.etiqueta || me.business.name} con este enlace: ${u}` : '';
+      el.querySelector('.modal-content').innerHTML = `<div class="modal-header"><h2 class="modal-title h5"><i class="bi bi-link-45deg me-1"></i>Enlace de registro de socios</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body"><p class="small text-body-secondary">Compártelo con los socios: cada uno escribe sus datos y crea su contraseña. Si su correo ya está en la lista, queda enlazado a su ficha; si no, entra como <b>aspirante</b> y la junta lo revisa. Los socios no salen en Equipo, solo la junta.</p>
+          ${u ? `<div class="input-group mb-2"><input class="form-control" readonly value="${esc(u)}" data-url><button class="btn btn-primary" data-copiar><i class="bi bi-clipboard me-1"></i>Copiar</button></div>
+            <a class="btn btn-success w-100 mb-2" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener"><i class="bi bi-whatsapp me-1"></i>Enviar por WhatsApp</a>
+            <p class="small text-warning-emphasis mb-0"><i class="bi bi-info-circle me-1"></i>Guárdalo: por seguridad solo se muestra ahora. Si lo pierdes, crea uno nuevo (el anterior deja de servir).</p>`
+          : `<p class="mb-0">${st.activo ? `<i class="bi bi-check-circle-fill text-success me-1"></i>Hay un enlace activo desde el ${new Date(st.desde).toLocaleDateString('es-CO')}. Por seguridad no se vuelve a mostrar: crea uno nuevo para compartirlo.` : '<i class="bi bi-slash-circle me-1"></i>No hay enlace activo.'}</p>`}</div>
+        <div class="modal-footer">${st.activo ? '<button class="btn btn-outline-danger me-auto" data-apagar>Apagar enlace</button>' : ''}<button class="btn ${u ? 'btn-light' : 'btn-primary'}" data-nuevo-enlace>${st.activo ? 'Crear enlace nuevo' : 'Crear enlace'}</button></div>`;
+      el.querySelector('[data-copiar]')?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(u); toast('Enlace copiado'); } catch (_) { el.querySelector('[data-url]').select(); } });
+      el.querySelector('[data-nuevo-enlace]').onclick = async () => {
+        if (st.activo && !(await window.App.confirm({ title: '¿Crear un enlace nuevo?', text: 'El enlace anterior deja de servir.', ok: 'Crear' }))) return;
+        try { dibujar((await window.App.api('/api/socios/registro', { method: 'POST' })).url); } catch (x) { toast(x.message, false); }
+      };
+      el.querySelector('[data-apagar]')?.addEventListener('click', async () => { try { await window.App.api('/api/socios/registro', { method: 'DELETE' }); toast('Enlace apagado'); dibujar(null); } catch (x) { toast(x.message, false); } });
+    };
+    try { await dibujar(url); } catch (x) { el.querySelector('.modal-body').textContent = x.message; }
+  }
 
   const campos = (s) => [{ k: 'nombre', label: 'Nombre completo', type: 'text', required: true, full: true },
     { k: 'cargo', label: 'Cargo en la junta', type: 'select', options: [['', 'Sin cargo (socio)'], ...[...new Set([...CARGOS, ...(s?.cargo ? [s.cargo] : [])])].map((x) => [x, x])] },

@@ -71,6 +71,26 @@
         <button class="dl-btn" type="submit">Guardar y entrar</button>
       </form>
 
+      <!-- Enlace de registro del club (#registro=<token>): el socio crea su cuenta -->
+      <form id="registro" class="dl-form" hidden novalidate>
+        <input type="text" name="nombre" class="dl-in" placeholder="Nombre completo" aria-label="Nombre completo" maxlength="100" autocomplete="name" required>
+        <input type="email" name="email" class="dl-in" placeholder="Tu correo electrónico" aria-label="Correo" autocomplete="email" required>
+        <input type="tel" name="telefono" class="dl-in" placeholder="Celular (WhatsApp)" aria-label="Celular" autocomplete="tel">
+        <input type="text" name="documento" class="dl-in" placeholder="Documento de identidad (opcional)" aria-label="Documento">
+        <label class="small text-body-secondary" style="margin:-4px 0 -6px">Fecha de nacimiento (opcional)</label>
+        <input type="date" name="fecha_nacimiento" class="dl-in" aria-label="Fecha de nacimiento">
+        <input type="password" name="password" class="dl-in" placeholder="Contraseña (mínimo 8)" aria-label="Contraseña" minlength="8" maxlength="200" autocomplete="new-password" required>
+        <input type="password" name="confirm" class="dl-in" placeholder="Repite la contraseña" aria-label="Repite la contraseña" minlength="8" maxlength="200" autocomplete="new-password" required>
+        <p class="small text-body-secondary" style="margin:0">¿Ya tienes cuenta en Diwilo (por ejemplo, en el distrito)? Usa tu correo y tu contraseña de siempre.</p>
+        <div style="display:grid;gap:8px">
+          <label class="dl-check"><input type="checkbox" name="consent"><span>Autorizo el tratamiento de mis datos personales según la <a href="/privacidad" target="_blank" rel="noopener">Política de datos</a>.</span></label>
+          <label class="dl-check"><input type="checkbox" name="adult"><span data-adulto>Confirmo que soy mayor de 18 años.</span></label>
+        </div>
+        <div class="dl-ts" data-turnstile></div>
+        <p class="dl-err" data-err role="alert"></p>
+        <button class="dl-btn" type="submit">Crear mi cuenta</button>
+      </form>
+
       <!-- Varios negocios con la misma cuenta -->
       <div id="choose" hidden><div class="dl-pick" data-list></div></div>
 

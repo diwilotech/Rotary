@@ -13,7 +13,7 @@ import { etiquetas } from '../lib/rotaract.js';
 export const POLICY_VERSION = '2026-10';
 
 // Abre sesión; si el usuario está en un solo negocio, lo deja elegido.
-async function startSession(c, userId) {
+export async function startSession(c, userId) {
   const businesses = await userBusinesses(c.env, userId), et = await etiquetas(c.env, businesses);
   const token = await createSession(c.env, userId, businesses.length === 1 ? businesses[0].id : null);
   return json({ ok: true, businesses: businesses.map((b) => ({ ...publicBusiness(b), ...et[b.id] })) }, 200, { 'set-cookie': sessionCookie(token, c.req) });

@@ -27,12 +27,15 @@ export function routes(r) {
   r.get('/api/team', 'tenant', async (c) => {
     // La junta siempre está en el equipo (la presidencia o la junta, al abrir Equipo, completa a quien falte)
     const junta = ['owner', 'admin'].includes(c.role) ? await juntaAlEquipo(c) : null;
+    // En Equipo solo está la junta (y quien tenga acceso sin ser socio). Los socios con acceso se manejan en Socios.
     const users = await db(c.env).all(
       `SELECT u.id, u.email, u.name, m.role, m.modulos, u.password_hash IS NOT NULL AS has_password
          FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.business_id = ?
+          AND NOT (m.role = 'staff' AND EXISTS (SELECT 1 FROM ro_socios s WHERE s.business_id = m.business_id AND s.user_id = u.id))
         ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.email`, c.businessId);
+    const socios = (await db(c.env).first(`SELECT COUNT(*) n FROM memberships m JOIN ro_socios s ON s.business_id = m.business_id AND s.user_id = m.user_id WHERE m.business_id = ? AND m.role = 'staff'`, c.businessId))?.n || 0;
     const catalogo = (await assignableModules(c.env)).map((m) => ({ id: m.id, nombre: m.nombre, defecto: moduleAllowed('staff', null, m.id) }));
-    return json({ junta, catalogo, users: users.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, status: u.has_password ? 'active' : 'invited',
+    return json({ junta, catalogo, socios_con_acceso: socios, users: users.map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, status: u.has_password ? 'active' : 'invited',
       modulos: u.role === 'staff' ? catalogo.map((m) => m.id).filter((id) => moduleAllowed('staff', parseModulos(u.modulos), id)) : null })) });
   });
 

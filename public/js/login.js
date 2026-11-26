@@ -6,12 +6,12 @@ if (window.top !== window.self) window.top.location.replace('/');
   const { api, esc } = window.App;
   const $ = (id) => document.getElementById(id);
   // Muestra un paso y ajusta el título del recuadro (diseño común de ingreso de las apps de Diwilo).
-  const TEXT = { login: ['Ingresa', 'Con tu correo y contraseña'], invite: ['Crea tu contraseña', ''], choose: ['¿A qué negocio entras?', ''] };
+  const TEXT = { login: ['Ingresa', 'Con tu correo y contraseña'], invite: ['Crea tu contraseña', ''], registro: ['Únete a tu club', ''], choose: ['¿A dónde entras?', 'Tu club o el distrito'] };
   const show = (id) => {
-    ['login', 'invite', 'choose'].forEach((x) => ($(x).hidden = x !== id));
+    ['login', 'invite', 'registro', 'choose'].forEach((x) => ($(x).hidden = x !== id));
     $('help').hidden = id !== 'login';
     $('title').textContent = TEXT[id][0];
-    if (id !== 'invite') $('sub').textContent = TEXT[id][1];
+    if (id !== 'invite' && id !== 'registro') $('sub').textContent = TEXT[id][1];
   };
   let cfg = { turnstileSiteKey: null };
   const widgets = {};
@@ -105,10 +105,40 @@ if (window.top !== window.self) window.top.location.replace('/');
     };
   }
 
+  // Enlace de registro del club: el socio crea su cuenta y entra directo a su club
+  async function startRegistro(token) {
+    const f = $('registro'), err = f.querySelector('[data-err]');
+    show('registro');
+    let info;
+    try { info = await api(`/api/registro/${encodeURIComponent(token)}`); } catch (ex) {
+      show('login'); mountTurnstile('login'); $('login').querySelector('[data-err]').textContent = ex.message; return;
+    }
+    $('title').textContent = `Únete a ${info.club}`;
+    $('sub').textContent = `Crea tu cuenta de socio · ${info.programa_nombre}`;
+    if (info.menores) f.querySelector('[data-adulto]').textContent = 'Soy mayor de edad o tengo la autorización de mi madre, padre o acudiente.';
+    mountTurnstile('registro');
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      if (f.nombre.value.trim().length < 3) { err.textContent = 'Escribe tu nombre completo'; return; }
+      if (!f.email.value.includes('@')) { err.textContent = 'Escribe tu correo'; return; }
+      if (f.password.value.length < 8) { err.textContent = 'La contraseña debe tener al menos 8 caracteres'; return; }
+      if (f.password.value !== f.confirm.value) { err.textContent = 'Las contraseñas no coinciden'; return; }
+      if (!f.consent.checked || !f.adult.checked) { err.textContent = 'Para continuar, marca las dos autorizaciones'; return; }
+      try {
+        await api(`/api/registro/${encodeURIComponent(token)}`, { method: 'POST', body: { nombre: f.nombre.value, email: f.email.value, telefono: f.telefono.value, documento: f.documento.value,
+          fecha_nacimiento: f.fecha_nacimiento.value, password: f.password.value, consent: true, adult: true, turnstile: tsToken('registro') } });
+        location.replace('/');
+      } catch (ex) { err.textContent = ex.message; tsReset('registro'); }
+    };
+  }
+
   $('invite').onsubmit = (e) => e.preventDefault(); // nunca se envía solo
+  $('registro').onsubmit = (e) => e.preventDefault();
   const route = () => {
-    const token = new URLSearchParams(location.hash.slice(1)).get('invite');
-    if (token) startInvite(token);
+    const h = new URLSearchParams(location.hash.slice(1)), token = h.get('invite'), reg = /^\/unirse\/([0-9a-f]{36})$/.exec(location.pathname)?.[1];
+    if (reg) startRegistro(reg);
+    else if (token) startInvite(token);
     else { show('login'); mountTurnstile('login'); }
   };
   addEventListener('hashchange', route);

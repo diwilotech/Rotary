@@ -28,6 +28,7 @@ import * as lotuyoApi from './api/lotuyo.js';
 import * as clubApi from './api/club.js';
 import * as distritoApi from './api/distrito.js';
 import * as distritoGestionApi from './api/distrito-gestion.js';
+import * as registroApi from './api/registro.js';
 import * as juegosApi from './api/juegos.js';
 import { isCentralApi, centralModuleOf, centralApi, centralPage, centralAsset, centralPublic } from './lib/central.js';
 import { CENTRALES } from './lib/modules.js';
@@ -35,7 +36,7 @@ import { CENTRALES } from './lib/modules.js';
 const router = new Router();
 // platform va primero. Agrega aquí cada módulo nuevo de src/api/ (y su entrada en modulos.app.json).
 // Los horizontales (Finanzas, Marketing…) no van aquí: se piden en modulos.app.json → "centrales" y viven en Diwilo Modulos.
-const MODULE_APIS = [sociosApi, reunionesApi, tareasApi, impactoApi, encuestasApi, cajasApi, cuotasApi, lotuyoApi, clubApi, distritoApi, distritoGestionApi, juegosApi];
+const MODULE_APIS = [sociosApi, reunionesApi, tareasApi, impactoApi, encuestasApi, cajasApi, cuotasApi, lotuyoApi, clubApi, distritoApi, distritoGestionApi, registroApi, juegosApi];
 for (const mod of [platformApi, platformModulesApi, authApi, meApi, settingsApi, mcpApi, teamApi, ...MODULE_APIS]) if (typeof mod.routes === 'function') mod.routes(router);
 
 const SECURITY_HEADERS = {
@@ -96,6 +97,8 @@ const worker = {
       // Los chats de clientes se muestran dentro de las webs y tarjetas (iframe): su respuesta trae sus propios encabezados de marco
       if (url.pathname.startsWith('/chat/') || url.pathname.startsWith('/v1/') || url.pathname.startsWith('/wa/')) return withHeaders(await centralPublic(env, url, req), { 'x-content-type-options': 'nosniff' });
       if (url.pathname.startsWith('/l/') || url.pathname.startsWith('/validar/') || url.pathname.startsWith('/c/')) return withHeaders(await centralPublic(env, url, req), SECURITY_HEADERS);
+      // Enlace de registro de socios del club: siempre la página de ingreso (aunque haya sesión), que muestra «Únete a tu club»
+      if (req.method === 'GET' && /^\/unirse\/[0-9a-f]{36}$/.test(url.pathname)) return withHeaders(await asset(env, req, '/'), { ...SECURITY_HEADERS, 'cache-control': 'no-store' });
       // Enlace público para que los invitados externos se registren a una reunión
       if (req.method === 'GET' && /^\/r\/[a-f0-9]{8,40}$/.test(url.pathname)) return withHeaders(await reunionesApi.paginaRegistro(env, url.pathname.slice(3)), SECURITY_HEADERS);
       // Código de las páginas de los módulos centrales
