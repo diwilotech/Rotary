@@ -8,7 +8,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
-import { PAGA_CUOTA, EN_DISTRITO, enDistrito, ORDEN_DIA, ordenDelDia, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden } from '../lib/rotaract.js';
+import { PAGA_CUOTA, EN_DISTRITO, enDistrito, ORDEN_DIA, ordenDelDia, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden, cargosDe, CARGOS_SUGERIDOS } from '../lib/rotaract.js';
 
 export async function distritoOError(c) {
   const d = await distritoDe(c.env, c.businessId);
@@ -79,6 +79,18 @@ export function routes(r) {
     ]);
     socios.sort((a, b) => cargoOrden(a.cargo) - cargoOrden(b.cargo) || a.nombre.localeCompare(b.nombre));
     return json({ club: { id, nombre: club.name }, socios, proyectos, reuniones, saldos: sal, obligaciones: obl });
+  });
+
+  /* Cargos de la junta: el distrito define la lista y los clubes de su programa los asignan */
+  r.get('/api/distrito/cargos', 'tenant', async (c) => { await distritoOError(c); return json({ ...(await cargosDe(c.env, c.businessId)), sugerido: CARGOS_SUGERIDOS }); });
+  r.put('/api/distrito/cargos', 'manager', async (c) => {
+    await distritoOError(c);
+    const b = await readJson(c.req), items = [...new Set((Array.isArray(b.items) ? b.items : []).map((x) => cast('cargo', 'text', x)).filter((x) => x && !/^soci[oa]$/i.test(x)))].slice(0, 60);
+    if (b.items?.length && !items.some((x) => cargoOrden(x) === 1)) throw new HttpError(400, 'La lista debe tener la presidencia del club (por ejemplo «Presidente/a del club»)');
+    await c.env.DB.prepare('INSERT INTO ro_club_config (business_id, es_distrito, cargos, updated_at) VALUES (?, 1, ?, ?) ON CONFLICT(business_id) DO UPDATE SET cargos = excluded.cargos, updated_at = excluded.updated_at')
+      .bind(c.businessId, items.length ? JSON.stringify(items) : null, Date.now()).run();
+    await audit(c, 'Cambió los cargos de la junta de los clubes', { modulo: 'distrito' });
+    return json({ ok: true, ...(await cargosDe(c.env, c.businessId)) });
   });
 
   /* Orden del día de las reuniones ordinarias: el distrito lo edita y sus clubes lo usan en el acta */

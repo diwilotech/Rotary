@@ -163,6 +163,20 @@ export const ORDEN_DIA = [
   { titulo: 'Asuntos varios y cajita de macería', detalle: 'Anuncios rápidos y recaudación simbólica para el fondo de compañerismo o proyectos.' },
   { titulo: 'Toque de campana de cierre', detalle: 'Clausura formal de la reunión.' },
 ];
+// Cargos de la junta: los define el distrito para los clubes de su programa (ro_club_config.cargos del negocio del distrito);
+// la presidencia de cada club solo asigna de esa lista. Sin lista del distrito, la sugerida (los nombres de siempre).
+export const CARGOS_SUGERIDOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club',
+  'Director/a de Servicio a la Comunidad', 'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos',
+  'Presidente/a del Comité de la Fundación del club'];
+export async function cargosDe(env, bid) {
+  const { codigo, es_distrito, programa: prog } = await distritoDe(env, bid);
+  const r = await one(env, es_distrito ? 'SELECT cargos FROM ro_club_config WHERE business_id = ?' : `SELECT k.cargos FROM ro_club_config k JOIN businesses b ON b.id = k.business_id
+    WHERE k.es_distrito = 1 AND COALESCE(k.distrito, ?) = ? AND COALESCE(k.programa, 'rotaract') = ? AND k.cargos IS NOT NULL AND b.archived_at IS NULL ORDER BY k.updated_at DESC LIMIT 1`,
+  ...(es_distrito ? [bid] : [env.DISTRITO_DEFECTO || '4271', codigo, prog]));
+  try { const l = JSON.parse(r?.cargos || 'null'); if (Array.isArray(l) && l.length) return { items: l, origen: 'distrito' }; } catch (_) { /* la sugerida */ }
+  return { items: CARGOS_SUGERIDOS, origen: 'sugerido' };
+}
+
 // El orden del día que usa un club: el de su distrito (si el distrito lo editó) o el sugerido
 export async function ordenDelDia(env, bid) {
   const { codigo, es_distrito, programa: prog } = await distritoDe(env, bid);

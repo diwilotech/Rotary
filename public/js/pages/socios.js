@@ -6,8 +6,8 @@ DW.ready.then(async (me) => {
   const C = window.App.Crud;
   const view = document.querySelector('[data-view]'), acciones = document.querySelector('[data-acciones]');
   const RO_ = window.RO, M = me.canManage, RO_APP = me.business.readOnly;
-  const CARGOS = ['Presidente/a del club', 'Vicepresidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Macero/a del club', 'Director/a de Servicio al Club', 'Director/a de Servicio a la Comunidad',
-    'Director/a de Servicio Internacional', 'Director/a de Desarrollo Profesional', 'Director/a de Imagen Pública', 'Director/a de Proyectos', 'Presidente/a del Comité de la Fundación del club'];
+  // Cargos de la junta: la lista la define el distrito; la presidencia solo los asigna
+  const CARGOS = (await api('/api/socios/cargos').catch(() => ({ items: [] }))).items;
   let tab = location.hash === '#certificados' || location.hash === '#activacion' ? 'certificados' : 'socios', filtro = '', rows = [], chip = 'todos';
   let vista = (() => { try { return localStorage.getItem('ro_socios_vista') || 'tarjetas'; } catch (_) { return 'tarjetas'; } })();
   RO_.nav(tab, (k) => { tab = k; pintar(); });
@@ -40,7 +40,7 @@ DW.ready.then(async (me) => {
   }
 
   const campos = (s) => [{ k: 'nombre', label: 'Nombre completo', type: 'text', required: true, full: true },
-    { k: 'cargo', label: 'Cargo en la junta', type: 'select', options: [['', 'Sin cargo (socio)'], ...[...new Set([...CARGOS, ...(s?.cargo ? [s.cargo] : [])])].map((x) => [x, x])] },
+    { k: 'cargo', label: 'Cargo en la junta (lista del distrito)', type: 'select', options: [['', 'Sin cargo (socio)'], ...[...new Set([...CARGOS, ...(s?.cargo ? [s.cargo] : [])])].map((x) => [x, x])] },
     { k: 'tipo_membresia', label: 'Tipo de membresía', type: 'select', options: Object.entries(RO_.TIPO) }, { k: 'estado', label: 'Estado', type: 'select', options: Object.entries(RO_.ESTADO).map(([k, [, l]]) => [k, l]) },
     { k: 'email', label: 'Correo', type: 'email' }, { k: 'telefono', label: 'Celular', type: 'text' }, { k: 'documento', label: 'Documento', type: 'text' }, { k: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' },
     { k: 'fecha_ingreso', label: '1 · Ingreso al club', type: 'date' }, { k: 'activado_at', label: '2 · Activación en el club', type: 'date', hint: 'con certificado' },

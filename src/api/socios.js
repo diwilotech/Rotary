@@ -13,7 +13,7 @@ import { createInvite, invitePath } from '../lib/auth.js';
 import { db, uuid } from '../lib/db.js';
 import { audit } from '../lib/audit.js';
 import { guardarArchivo, borrarArchivo, servirArchivo } from '../lib/archivos.js';
-import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, certificadoClubHtml, socioDeSesion, anioRotarioDe, PROGRAMAS, programa } from '../lib/rotaract.js';
+import { cargoOrden, cartera, certificadoHtml, certificadoEspecialHtml, certificadoClubHtml, socioDeSesion, anioRotarioDe, PROGRAMAS, programa, cargosDe } from '../lib/rotaract.js';
 
 const MOD = 'socios';
 export const TIPOS = ['socio', 'socio_externo', 'voluntario_invitado', 'aspirante', 'honorario'];
@@ -56,6 +56,13 @@ export async function juntaAlEquipo(c, soloId = null) {
   return { agregados, sin_correo: sinCorreo };
 }
 
+// El cargo debe estar en la lista que definió el distrito (vacío o «socio» = sin cargo)
+async function cargoValido(c, cargo) {
+  if (!cargo || /^soci[oa]$/i.test(cargo)) return;
+  const { items } = await cargosDe(c.env, c.businessId);
+  if (!items.some((x) => x.toLowerCase() === String(cargo).toLowerCase())) throw new HttpError(400, `El cargo «${cargo}» no está en la lista del distrito. Pídele al distrito que lo agregue.`);
+}
+
 export const ENTITIES = {
   socios: { table: 'ro_socios', label: 'el socio', title: 'nombre', search: ['nombre', 'email', 'cargo', 'profesion'], crear: 'manager',
     order: "CASE estado WHEN 'activo' THEN 0 WHEN 'aspirante' THEN 1 WHEN 'inactivo' THEN 2 ELSE 3 END, nombre",
@@ -63,9 +70,10 @@ export const ENTITIES = {
       fecha_ingreso: 'date', activado_at: 'date', myrotary_id: 'text', myrotary_at: 'date', tipo_membresia: TIPOS, estado: ESTADOS, cargo: 'text', cargo_desde: 'date', paga_cuota: 'bool+', notas: 'long' },
     async beforeCreate(c, row) {
       if (row.email && await one(c.env, 'SELECT 1 FROM ro_socios WHERE business_id = ? AND lower(email) = ?', c.businessId, row.email)) throw new HttpError(409, 'Ya hay un socio con ese correo');
+      await cargoValido(c, row.cargo);
       if (row.cargo && !row.cargo_desde) row.cargo_desde = today();
     },
-    beforeUpdate(c, row, before) { if ('cargo' in row && row.cargo !== before.cargo) row.cargo_desde = row.cargo ? today() : null; },
+    async beforeUpdate(c, row, before) { if ('cargo' in row && row.cargo !== before.cargo) { await cargoValido(c, row.cargo); row.cargo_desde = row.cargo ? today() : null; } },
     afterCreate: (c, id) => juntaAlEquipo(c, id),
     afterUpdate: (c, id) => juntaAlEquipo(c, id),
     async beforeDelete(c, before) {
@@ -145,6 +153,7 @@ export function routes(r) {
   // El distrito vive en su columna (con él el distrito agrupa a sus clubes); país y zona van con los demás datos en kit.club
   const datosClub = async (c) => { const r = await one(c.env, 'SELECT kit, distrito, programa FROM ro_club_config WHERE business_id = ?', c.businessId); let k = {}; try { k = JSON.parse(r?.kit || '{}').club || {}; } catch (_) { k = {}; }
     return { ...k, pais: k.pais || 'Colombia', distrito: r?.distrito === '0' ? '' : (r?.distrito || c.env.DISTRITO_DEFECTO || '4271'), programa: programa(r?.programa).id }; };
+  r.get('/api/socios/cargos', `tenant:${MOD}`, async (c) => json(await cargosDe(c.env, c.businessId)));
   r.get('/api/socios/club', `manager:${MOD}`, async (c) => json(await datosClub(c)));
   r.put('/api/socios/club', `manager:${MOD}`, async (c) => {
     const b = await readJson(c.req), d = { numero: cast('numero', 'text', b.numero), fundado: b.fundado ? cast('fundado', 'date', b.fundado) : null,

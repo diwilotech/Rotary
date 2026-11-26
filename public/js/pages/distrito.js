@@ -11,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['anio', 'metas', 'cuotas', 'bonos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
+  let tab = ['anio', 'metas', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -188,6 +188,32 @@ DW.ready.then(async (me) => {
     try { await api(r ? `/api/distrito/juegos/retos/${r.id}` : '/api/distrito/juegos/retos', { method: r ? 'PATCH' : 'POST', body: out }); toast(r ? 'Reto guardado' : 'Reto creado: ya lo ven los clubes en Juegos'); pintarJuegos(); } catch (x) { toast(x.message, false); }
   }
 
+  /* ---------- Cargos de la junta: el distrito los define y cada presidencia los asigna a sus socios ---------- */
+  async function pintarCargos() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    const d = await api('/api/distrito/cargos');
+    let items = [...d.items];
+    const dibujar = () => {
+      view.innerHTML = `<p class="small text-body-secondary">${d.origen === 'distrito' ? 'Estos son los cargos de junta que usan los clubes del distrito.' : 'Los clubes usan la lista sugerida. Cámbiala y guarda para que usen la del distrito.'} La presidencia de cada club solo puede asignar cargos de esta lista; quien tenga cargo queda en la junta del club.</p>
+        <div class="dw-card">${items.map((x, n) => `<div class="d-flex align-items-center gap-2 py-1 border-bottom"><span class="text-body-secondary small" style="width:22px">${n + 1}</span>
+          ${M ? `<input class="form-control form-control-sm" value="${esc(x)}" data-c="${n}">` : `<span class="flex-grow-1">${esc(x)}</span>`}
+          ${M ? `<div class="btn-group btn-group-sm"><button class="btn btn-light" data-up="${n}" aria-label="Subir"><i class="bi bi-arrow-up"></i></button><button class="btn btn-light" data-down="${n}" aria-label="Bajar"><i class="bi bi-arrow-down"></i></button><button class="btn btn-light" data-x="${n}" aria-label="Quitar"><i class="bi bi-x-lg"></i></button></div>` : ''}</div>`).join('')}
+        ${M ? `<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-light" data-add><i class="bi bi-plus-lg me-1"></i>Agregar cargo</button><button class="btn btn-light" data-sug>Usar la sugerida</button><button class="btn btn-primary ms-auto" data-save>Guardar</button></div>` : ''}</div>`;
+    };
+    dibujar();
+    view.oninput = (e) => { const i = e.target.dataset?.c; if (i !== undefined) items[+i] = e.target.value; };
+    view.onclick = async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.up) { const n = +b.dataset.up; if (n > 0) [items[n - 1], items[n]] = [items[n], items[n - 1]]; }
+      else if (b.dataset.down) { const n = +b.dataset.down; if (n < items.length - 1) [items[n + 1], items[n]] = [items[n], items[n + 1]]; }
+      else if (b.dataset.x) items.splice(+b.dataset.x, 1);
+      else if (b.dataset.add !== undefined) items.push('');
+      else if (b.dataset.sug !== undefined) items = [...d.sugerido];
+      else if (b.dataset.save !== undefined) { try { const r = await api('/api/distrito/cargos', { method: 'PUT', body: { items: items.map((x) => x.trim()).filter(Boolean) } }); items = r.items; d.origen = r.origen; toast('Cargos guardados: ya los ven los clubes'); } catch (x) { toast(x.message, false); } }
+      dibujar();
+    };
+  }
+
   /* ---------- Metas del año rotario (avance con lo que registran los clubes) ---------- */
   const IND = [['clubes', 'Clubes', 'bi-diagram-3', C.num], ['socios', 'Socios activos', 'bi-people-fill', C.num], ['activados', 'Socios activados', 'bi-patch-check', C.num],
     ['proyectos', 'Proyectos en curso', 'bi-globe-americas', C.num], ['beneficiados', 'Beneficiados', 'bi-heart', C.num], ['horas', 'Horas de servicio', 'bi-clock', C.num],
@@ -250,11 +276,12 @@ DW.ready.then(async (me) => {
     const ACC = { clubes: ['Solicitar club nuevo', solicitarClub], cuotas: ['Nueva cuota', () => editar(null)], bonos: ['Nuevo bono', () => editarBono(null)], metas: ['Editar metas', editarMetas] };
     acciones.innerHTML = M && ACC[tab] ? `<button class="btn btn-primary" data-nueva><i class="bi ${tab === 'metas' ? 'bi-pencil' : 'bi-plus-lg'} me-1"></i>${ACC[tab][0]}</button>` : '';
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => ACC[tab][1]());
-    view.onclick = null;
+    view.onclick = null; view.oninput = null;
     if (tab === 'orden') return pintarOrden();
     if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();
     if (tab === 'metas') return pintarMetas();
+    if (tab === 'cargos') return pintarCargos();
     if (tab === 'bonos') return pintarBonos();
     return tab === 'anio' ? pintarAnio() : pintarClubes();
   }

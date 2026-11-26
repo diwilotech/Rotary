@@ -345,6 +345,15 @@ export default async function ({ check, newBusiness, newMember }) {
   const meSa = (await A.app('/api/me')).data, meSr = (await R1.app('/api/me')).data;
   check('Siglas: RTC para Rotaract y RY para Rotary (en la barra y en la lista de a cuál entrar)', meSa.business.etiqueta.startsWith('RTC ') && meSr.business.etiqueta.startsWith('RY ') && meSa.businesses.every((b) => b.sigla && b.etiqueta), JSON.stringify(meSa.businesses));
   check('Siglas: el distrito ve sus clubes con la sigla', (await D.app('/api/distrito/tablero')).data.clubes.every((k) => k.nombre.startsWith('RTC ')) && tR.clubes.every((k) => k.nombre.startsWith('RY ')));
+  // Cargos: el distrito define la lista y el club solo asigna de ella
+  const cg = await D.app('/api/distrito/cargos', { method: 'PUT', body: { items: ['Presidente/a del club', 'Secretario/a del club', 'Tesorero/a del club', 'Coordinador/a de Juegos'] } });
+  const lc = (await A.app('/api/socios/cargos')).data;
+  check('Cargos: el distrito define la lista y sus clubes la reciben', cg.status === 200 && lc.origen === 'distrito' && lc.items.includes('Coordinador/a de Juegos'), JSON.stringify(lc));
+  const sjg = await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Socio Juegos', cargo: 'Coordinador/a de Juegos' } });
+  check('Cargos: el club asigna un cargo de la lista; uno inventado no (400)', sjg.status === 201 && (await A.app('/api/socios/socios', { method: 'POST', body: { nombre: 'Socio X', cargo: 'Rey del club' } })).status === 400);
+  check('Cargos: el club no cambia la lista (403) y la del Distrito Rotary no le llega', (await A.app('/api/distrito/cargos', { method: 'PUT', body: { items: ['x'] } })).status === 403 && (await R1.app('/api/socios/cargos')).data.origen === 'sugerido');
+  check('Cargos: la lista debe tener la presidencia (400)', (await D.app('/api/distrito/cargos', { method: 'PUT', body: { items: ['Tesorero/a del club'] } })).status === 400);
+  await D.app('/api/distrito/cargos', { method: 'PUT', body: { items: [] } });
   const E = await newBusiness('Club para quitar', { login: true });
   check('Distrito: el club nuevo aparece en su lista', (await D.app('/api/distrito/tablero')).data.clubes.some((k) => k.id === E.id));
   const qe = await D.app(`/api/distrito/clubes/${E.id}/quitar`, { method: 'POST' });
