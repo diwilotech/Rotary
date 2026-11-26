@@ -45,7 +45,7 @@ DW.ready.then(async (me) => {
       <span class="d-flex align-items-center gap-2 small mt-1">${t.responsable ? `${RO.avatar({ nombre: t.responsable }, 22)}<span class="text-truncate">${esc(t.responsable)}</span>` : '<span class="text-body-secondary">Sin responsable</span>'}
         <span class="ms-auto ${t.vencida ? 'text-danger fw-semibold' : 'text-body-secondary'}">${t.fecha_limite ? C.day(t.fecha_limite) : ''}</span></span>
       ${ck.length ? `<div class="progress mt-1" style="height:4px" title="${hechos}/${ck.length}"><div class="progress-bar" style="width:${(hechos / ck.length) * 100}%"></div></div>` : ''}
-      ${RO_APP ? '' : `<span class="d-flex d-md-none gap-1 mt-1">${i > 0 ? `<button class="btn btn-sm btn-light" data-mv="${COLS[i - 1][0]}" aria-label="Mover atrás"><i class="bi bi-arrow-left"></i></button>` : ''}${i < 2 && i >= 0 ? `<button class="btn btn-sm btn-light ms-auto" data-mv="${COLS[i + 1][0]}" aria-label="Mover adelante"><i class="bi bi-arrow-right"></i></button>` : ''}</span>`}
+      ${RO_APP ? '' : `<span class="d-flex d-md-none gap-2 mt-2">${i > 0 ? `<button class="btn btn-sm btn-light rounded-pill" data-mv="${COLS[i - 1][0]}"><i class="bi bi-arrow-left me-1"></i>${COLS[i - 1][1]}</button>` : ''}${i < 2 && i >= 0 ? `<button class="btn btn-sm btn-outline-primary rounded-pill ms-auto" data-mv="${COLS[i + 1][0]}">${COLS[i + 1][1]}<i class="bi bi-arrow-right ms-1"></i></button>` : ''}</span>`}
     </div>`;
   };
 
@@ -55,12 +55,16 @@ DW.ready.then(async (me) => {
     const base = rows.filter((t) => t.estado !== 'cancelada' && (!proy || String(t.proyecto_id || '') === proy));
     const f = base.filter((t) => (ver !== 'mias' || (yo && t.socio_id === yo.id)) && (ver !== 'vencidas' || t.vencida));
     const venc = base.filter((t) => t.vencida).length;
-    view.querySelector('[data-k]').innerHTML = `<div class="dw-kanban">${COLS.map(([k, l, ic]) => {
+    const cuenta = (k) => f.filter((t) => t.estado === k).length;
+    view.querySelector('[data-k]').innerHTML = `<div class="d-flex d-md-none gap-2 mb-2 ro-acc ro-kchips">${COLS.map(([k, l, ic], j) => `<button type="button" class="btn btn-sm ${j ? 'btn-light' : 'btn-primary'}" data-irk="${k}"><i class="bi ${ic} me-1"></i>${l} <b class="ms-1">${cuenta(k)}</b></button>`).join('')}</div><div class="dw-kanban">${COLS.map(([k, l, ic]) => {
       const todas = f.filter((t) => t.estado === k).sort(k === 'hecha' ? (a, b) => (b.completada_at || 0) - (a.completada_at || 0) : ordenar);
       const col = k === 'hecha' && !todasHechas ? todas.filter((t) => (t.completada_at || 0) > HACE30) : todas;
       const ocultas = todas.length - col.length;
       return `<div class="dw-kcol" data-col="${k}"><h3><span><i class="bi ${ic} me-1"></i>${l}</span><span class="badge text-bg-light">${todas.length}</span></h3>${k === 'hecha' && !todasHechas && todas.length ? '<div class="small text-body-secondary px-1 pb-1">Últimos 30 días</div>' : ''}${col.map(tarjeta).join('') || '<div class="small text-body-secondary p-2">Nada aquí.</div>'}${ocultas ? `<button class="btn btn-sm btn-link w-100" data-hechas>Ver las ${ocultas} anteriores</button>` : todasHechas && k === 'hecha' && todas.length ? '<button class="btn btn-sm btn-link w-100" data-hechas>Solo los últimos 30 días</button>' : ''}</div>`;
     }).join('')}</div>`;
+    // celular: los botones de arriba llevan a cada columna y se marcan al deslizar
+    const kb = view.querySelector('.dw-kanban'), chips = view.querySelectorAll('[data-irk]');
+    kb.onscroll = () => { const j = Math.round(kb.scrollLeft / (kb.querySelector('.dw-kcol').offsetWidth + 12)); chips.forEach((b, i) => { b.classList.toggle('btn-primary', i === j); b.classList.toggle('btn-light', i !== j); }); };
     view.querySelector('[data-info]').innerHTML = venc ? `<span class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>${venc} vencida${venc > 1 ? 's' : ''}</span>${M && !RO_APP ? ' <button class="btn btn-sm btn-outline-danger" data-revisar><i class="bi bi-calendar-check me-1"></i>Revisar vencidas</button>' : ''}` : '';
     const ps = [...new Map(rows.filter((t) => t.proyecto_id && t.estado !== 'cancelada').map((t) => [String(t.proyecto_id), t.proyecto || 'Proyecto'])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
     const sel = view.querySelector('[data-proy]');
@@ -94,6 +98,7 @@ DW.ready.then(async (me) => {
     <select class="form-select form-select-sm" style="max-width:260px" data-proy aria-label="Filtrar por proyecto" hidden></select><span data-info></span></div><div data-k></div>`;
   view.querySelector('[data-proy]').addEventListener('change', (e) => { proy = e.target.value; pintar(); });
   view.addEventListener('click', (e) => {
+    const irk = e.target.closest('[data-irk]'); if (irk) { const c = view.querySelector(`.dw-kanban [data-col="${irk.dataset.irk}"]`); c?.parentElement.scrollTo({ left: c.offsetLeft - c.parentElement.firstElementChild.offsetLeft, behavior: 'smooth' }); return; }
     const v = e.target.closest('[data-ver]');
     if (v) { ver = v.dataset.ver; view.querySelectorAll('[data-ver]').forEach((b) => b.classList.toggle('active', b === v)); return pintar(); }
     if (e.target.closest('[data-hechas]')) { todasHechas = !todasHechas; return pintar(); }

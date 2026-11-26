@@ -207,7 +207,7 @@ DW.ready.then(async (me) => {
     const porActivar = rows.filter((s) => !s.activado && ['activo', 'aspirante'].includes(s.estado) && (s.junta || ['socio', 'honorario', 'aspirante'].includes(s.tipo_membresia)));
     const tipoTxt = (k) => (k.tipo === 'activacion' ? 'Activación en el club' : k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}${k.cargo ? ` · ${k.cargo}` : ''}` : `Reconocimiento · ${k.titulo}`);
     const PUEDE = M && !RO_APP;
-    el.innerHTML = `<div class="d-flex flex-wrap gap-2 mb-3">
+    el.innerHTML = `<div class="d-flex flex-wrap gap-2 mb-3 ro-acc">
         ${PUEDE ? `<button class="btn btn-primary" data-cact><i class="bi bi-patch-check me-1"></i>Nueva activación</button>` : ''}
         <a class="btn btn-outline-primary" href="/api/socios/club/certificado" target="_blank" rel="noopener"><i class="bi bi-building-check me-1"></i>Certificado del club</a>
         ${PUEDE ? `<button class="btn btn-light" data-cclub><i class="bi bi-pencil me-1"></i>Datos del club</button>
@@ -254,6 +254,7 @@ DW.ready.then(async (me) => {
 
   function pintar() {
     document.querySelector('[data-h1]').textContent = tab === 'certificados' ? 'Certificados' : 'Socios';
+    if (tab === 'certificados') acciones.style.setProperty('display', 'none', 'important'); else acciones.style.removeProperty('display');   // Nuevo socio / Enlace de registro solo en Socios
     view.querySelector('[data-buscar]').hidden = tab !== 'socios';
     view.querySelector('[data-chips]').hidden = tab !== 'socios';
     (tab === 'certificados' ? pintarCertificados : pintarSocios)();

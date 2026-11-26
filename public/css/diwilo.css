@@ -342,3 +342,29 @@ body.dw-alumno .dw-main { margin-left: 0; padding: calc(var(--dw-top-h) + 20px) 
 .dw-splash__lema{color:var(--bs-secondary-color);max-width:320px;animation:dwsplash .7s .2s cubic-bezier(.2,.8,.2,1) both}
 @keyframes dwsplash{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#dw-splash{transition:none}.dw-splash__logo,.dw-splash__name,.dw-splash__lema{animation:none}}
+
+/* ---------- Celular: barras de acciones, tarjetas de tabla, kanban (2026-11-26) ---------- */
+/* btn-light en modo oscuro: superficie oscura, no blanco */
+[data-bs-theme="dark"] .btn-light { --bs-btn-bg: var(--bs-tertiary-bg); --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color);
+  --bs-btn-hover-bg: var(--bs-secondary-bg); --bs-btn-hover-color: var(--bs-body-color); --bs-btn-hover-border-color: var(--bs-border-color);
+  --bs-btn-active-bg: var(--bs-secondary-bg); --bs-btn-active-color: var(--bs-body-color); --bs-btn-disabled-bg: var(--bs-tertiary-bg); --bs-btn-disabled-color: var(--bs-secondary-color); }
+@media (max-width: 767.98px) {
+  .dw-page-head { margin-bottom: 12px; gap: 8px; }
+  .dw-page-head h1 { font-size: 1.25rem; }
+  /* acciones de la página y filas de botones (.ro-acc): una sola fila que se desliza de lado */
+  [data-acciones], .ro-acc { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 2px 16px; gap: 8px !important; max-width: none; flex-basis: calc(100% + 32px) !important; }
+  [data-acciones]::-webkit-scrollbar, .ro-acc::-webkit-scrollbar { display: none; }
+  [data-acciones]:empty { display: none; }
+  [data-acciones] > .btn, [data-acciones] > a.btn, .ro-acc > .btn, .ro-acc > a.btn { flex: none; white-space: nowrap; border-radius: 999px; padding: .4rem .9rem; font-size: .9rem; }
+  /* tablas como tarjetas: etiqueta a la izquierda y el valor (con su ícono) a la derecha, en una línea */
+  .dw-table td { display: block; text-align: right; padding: 4px 14px; overflow-wrap: anywhere; }
+  .dw-table td::before { float: left; margin-right: 12px; line-height: 1.5; }
+  .dw-table td::after { content: ""; display: table; clear: both; }
+  .dw-table td.dw-td-main { text-align: left; font-size: 1.02rem; padding-top: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--dw-borde); margin-bottom: 4px; }
+  .dw-table td.dw-td-main::before { content: none; }
+  .dw-table td[data-label=""] { padding-top: 6px; }
+  /* kanban: una columna a la vez con la siguiente asomando, se pasa deslizando */
+  .dw-kanban { grid-auto-columns: 86%; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px 6px; scroll-padding: 0 16px; scrollbar-width: none; }
+  .dw-kanban::-webkit-scrollbar { display: none; }
+  .dw-kcol { scroll-snap-align: start; }
+}
