@@ -14,10 +14,12 @@ DW.ready.then(async (me) => {
   // impacto-distrito.html: la misma página, solo con Impacto (módulo propio en el menú del distrito)
   const SOLO_IMPACTO = document.querySelector('main')?.dataset.modulo === 'impacto-distrito';
   if (!SOLO_IMPACTO && location.hash === '#impacto') { location.replace('/staff/impacto-distrito.html'); return; }
-  let tab = SOLO_IMPACTO ? 'impacto' : ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
-  if (SOLO_IMPACTO) document.querySelector('[data-h1]').textContent = `Impacto · Distrito ${me.distrito.codigo}`;
+  if (!SOLO_IMPACTO && (location.hash === '#formatos' || /^#(formato|envio)=/.test(location.hash))) { location.replace(`/staff/impacto-distrito.html${location.hash}`); return; }
+  let tab = SOLO_IMPACTO ? (location.hash === '#formatos' || /^#formato=/.test(location.hash) ? 'formatos' : 'impacto') : ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
+  if (SOLO_IMPACTO) { document.querySelector('[data-h1]').textContent = `Impacto · Distrito ${me.distrito.codigo}`;
+    RO.pills([['impacto', 'Proyectos', '#proyectos', 'bi-globe-americas'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text']], tab, (k) => { tab = k; pintar(); }); }
   else document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  if (!SOLO_IMPACTO) RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  if (!SOLO_IMPACTO) RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -404,28 +406,21 @@ DW.ready.then(async (me) => {
 
   /* ---------- Formatos: el distrito los arma, los clubes los llenan y aquí se revisan ---------- */
   const F = window.ROFmt, irH = (h) => history.replaceState(null, '', h ? `#${h}` : location.pathname);
-  let fmt = null, filtroEnv = 'enviado';
+  let fmt = null;
   async function pintarFormatos() {
     irH('formatos');
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
-    let env;
-    try { [fmt, env] = await Promise.all([api('/api/distrito/formatos'), api(`/api/distrito/envios${filtroEnv ? `?estado=${filtroEnv}` : ''}`)]); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
+    try { fmt = await api('/api/distrito/formatos'); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
     F.css();
     const filtros = [['enviado', 'Por revisar'], ['aprobado', 'Aprobados'], ['devuelto', 'Devueltos'], ['rechazado', 'No aprobados'], ['', 'Todos']];
-    view.innerHTML = `<div class="ro-h">Lo que presentan los clubes</div>
-      <div class="d-flex flex-wrap gap-1 mb-2">${filtros.map(([k, l]) => `<button type="button" class="btn btn-sm rounded-pill ${k === filtroEnv ? 'btn-primary' : 'btn-light'}" data-fenv="${k}">${l}</button>`).join('')}</div>
-      ${env.rows.length ? `<div class="dw-card p-0 mb-4">${env.rows.map((x) => `<button type="button" class="d-flex gap-3 align-items-center w-100 text-start border-0 border-bottom bg-transparent p-3 text-reset" data-envio="${x.id}">
-          <i class="bi bi-file-earmark-richtext fs-4 text-primary"></i><span class="flex-grow-1 min-w-0"><b class="d-block text-truncate">${esc(x.titulo)}</b>
-          <span class="small text-body-secondary">${esc(x.club)} · ${esc(x.formato_nombre || '')}${x.enviado_at ? ` · ${esc(F.fechaLarga(new Date(x.enviado_at).toISOString()))}` : ''}</span></span>${F.chip(x.estado)}</button>`).join('')}</div>`
-        : `<div class="dw-card mb-4 small text-body-secondary">${filtroEnv === 'enviado' ? 'No hay nada por revisar.' : 'No hay solicitudes con este estado.'}</div>`}
+    view.innerHTML = `<p class="small text-body-secondary">El formato es del distrito y lo usan todos sus clubes en <b>Impacto → Al distrito</b>. Lo que presentan, en borrador o enviado, lo revisas en la pestaña <b>Proyectos</b>.</p>
       <div class="ro-h">Formatos del distrito</div>
       ${fmt.rows.length ? `<div class="row g-2">${fmt.rows.map((f) => `<div class="col-md-6 col-xl-4"><button type="button" class="fmt-card w-100 h-100 text-start text-reset" data-formato="${f.id}"><i class="bi bi-file-earmark-text"></i>
           <span class="flex-grow-1 min-w-0"><b class="d-block">${esc(f.nombre)}</b><span class="small text-body-secondary">${f.secciones.filter((s) => s.tipo !== 'seccion' && s.tipo !== 'nota').length} preguntas · ${f.recibidos} recibidos${f.por_revisar ? ` · <b class="text-warning-emphasis">${f.por_revisar} por revisar</b>` : ''}</span>
           <span class="d-block mt-1">${f.activo ? C.chip('ok', 'Disponible') : C.chip('free', 'Oculto para los clubes')}${f.fecha_limite ? ` <span class="small text-body-secondary">hasta ${esc(F.fechaLarga(f.fecha_limite))}</span>` : ''}</span></span></button></div>`).join('')}</div>`
         : `<div class="dw-card">${window.App.empty('bi-file-earmark-text', 'Crea el formato con el que los clubes presentan sus proyectos. Puedes partir de la plantilla sugerida.')}</div>`}`;
     view.onclick = (e) => {
-      const b = e.target.closest('[data-fenv]'); if (b) { filtroEnv = b.dataset.fenv; return pintarFormatos(); }
-      const f = e.target.closest('[data-formato]'); if (f) return M ? editarFormato(fmt.rows.find((x) => x.id === Number(f.dataset.formato))) : null;
+            const f = e.target.closest('[data-formato]'); if (f) return M ? editarFormato(fmt.rows.find((x) => x.id === Number(f.dataset.formato))) : null;
       const v = e.target.closest('[data-envio]'); if (v) return verEnvio(Number(v.dataset.envio), 'formatos');
     };
   }
@@ -502,21 +497,14 @@ DW.ready.then(async (me) => {
           ${Object.keys(x.clases).length ? `<span class="d-flex flex-wrap gap-1 mt-1">${Object.entries(x.clases).map(([k, v]) => `<span class="badge rounded-pill text-bg-light border fw-normal" title="${esc(k)}">${esc(v)}</span>`).join('')}</span>` : ''}
           ${x.estado === 'borrador' ? `<span class="d-block mt-1" style="max-width:260px">${C.meter(x.avance, 100)}</span>` : ''}</span>${F.chip(x.estado)}${x.proyecto_id ? '<i class="bi bi-globe-americas text-success" title="Ya es proyecto del club"></i>' : ''}</button>`).join('')}</div>`
         : `<div class="dw-card small text-body-secondary">${d.rows.length ? 'Ningún proyecto con estos filtros.' : 'Los clubes aún no han empezado a presentar proyectos. Cuando un club abra el formato en Impacto → Al distrito, aparece aquí como borrador.'}</div>`;
-      view.querySelector('[data-ireparto]').innerHTML = d.selectores.map((s, i) => `<div class="col-md-6 col-xl-4"><div class="dw-card h-100"><div class="ro-h mt-0">${esc(s.titulo)}</div><div data-irank="${i}"></div></div></div>`).join('');
-      d.selectores.forEach((s, i) => { const el = view.querySelector(`[data-irank="${i}"]`), n = s.opciones.map((o) => ({ k: o, n: lista.filter((x) => x.clases[s.titulo] === o).length })).filter((o) => o.n);
-        if (n.length) C.rank(el, n.sort((a, b) => b.n - a.n), C.num); else el.innerHTML = '<p class="small text-body-secondary mb-0">Sin proyectos en esta vista.</p>'; });
     };
-    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-ik></div>
+    view.innerHTML = `
       <div class="dw-card mb-3"><div class="d-flex flex-wrap gap-1 mb-2" data-iest></div>
         <div class="row g-2"><div class="col-md-4 col-xl-3"><input class="form-control form-control-sm" type="search" placeholder="Buscar proyecto o club" data-iq value="${esc(imp.q)}" aria-label="Buscar"></div>
           <div class="col-md-4 col-xl-3"><select class="form-select form-select-sm" data-iclub aria-label="Club"><option value="">Todos los clubes</option>${clubes.map((k) => `<option ${k === imp.club ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
           ${d.selectores.map((s) => `<div class="col-md-4 col-xl-3"><select class="form-select form-select-sm" data-isel="${esc(s.titulo)}" aria-label="${esc(s.titulo)}"><option value="">${esc(s.titulo)}: todas</option>${s.opciones.map((o) => `<option ${imp.sel[s.titulo] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`).join('')}</div></div>
       <div class="mb-4" data-ilista></div>
-      ${d.selectores.length ? '<div class="ro-h">Para qué son los proyectos</div><div class="row g-3" data-ireparto></div>' : '<div data-ireparto></div>'}
       <div class="small text-body-secondary mt-3"><i class="bi bi-info-circle me-1"></i>Los selectores salen de las preguntas «Elegir una opción» marcadas como <b>Clasifica</b> en Formatos.</div>`;
-    const e = d.estados;
-    C.kpis(view.querySelector('[data-ik]'), [['En borrador', C.num(e.borrador), 'los clubes los están llenando', 'bi-pencil-square'], ['En revisión', C.num(e.enviado), 'esperan tu revisión', 'bi-hourglass-split'],
-      ['Sin aprobar', C.num(e.devuelto + e.rechazado), `${e.devuelto} devueltos · ${e.rechazado} no aprobados`, 'bi-arrow-return-left'], ['Aprobados', C.num(e.aprobado), `${d.rows.filter((x) => x.proyecto_id).length} ya son proyecto`, 'bi-patch-check']]);
     pintarLista();
     view.onclick = (ev) => {
       const b = ev.target.closest('[data-iestado]'); if (b) { imp.estado = b.dataset.iestado; return pintarLista(); }
