@@ -72,7 +72,7 @@ export function routes(r) {
         const ev = await all(c.env, `SELECT business_id, titulo, fecha, hora_ini, lugar FROM ro_reuniones WHERE ${EN_DISTRITO} AND tipo = 'evento' AND estado <> 'cancelada' AND fecha BETWEEN ? AND ?`, ...enDistrito(c.env, d.codigo, d.programa), desde, hasta);
         for (const e of ev) add('evento', e.fecha, e.titulo, { hora: e.hora_ini, lugar: e.lugar, club: clubes.find((k) => k.id === e.business_id)?.name, ruta: '/staff/distrito.html' });
       }
-      for (const q of await all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.clave, desde, hasta)) add('distrital', q.vence, `Vence: ${q.nombre}`, { ruta: '/staff/distrito.html#cuotas' });
+      for (const q of await all(c.env, 'SELECT nombre, vence FROM ro_cuota_distrital WHERE distrito = ? AND vence BETWEEN ? AND ?', d.clave, desde, hasta)) add('distrital', q.vence, `Vence: ${q.nombre}`, { ruta: '/staff/cobros-distrito.html#cuotas' });
       return json({ desde, hasta, distrito: d.codigo, rows: items.sort((a, b) => a.fecha.localeCompare(b.fecha)) });
     }
 

@@ -20,6 +20,9 @@
   const aInicio = () => (EMBED ? window.top : window).location.replace('/');
 
   // Módulos base (siempre activos) + los del negocio, en el orden del menú.
+  const DIST_MODS = [{ id: 'impacto-distrito', nombre: 'Impacto', icono: 'bi-globe-americas', ruta: '/staff/impacto-distrito.html' },
+    { id: 'cobros-distrito', nombre: 'Cobros', icono: 'bi-cash-stack', ruta: '/staff/cobros-distrito.html' }, { id: 'equipo-distrito', nombre: 'Equipo distrital', icono: 'bi-people', ruta: '/staff/equipo-distrito.html' },
+    { id: 'clubes-distrito', nombre: 'Para los clubes', icono: 'bi-sliders', ruta: '/staff/clubes-distrito.html' }, { id: 'juegos-distrito', nombre: 'Juegos', icono: 'bi-controller', ruta: '/staff/juegos-distrito.html' }];
   const BASE_START = [{ id: 'inicio', nombre: 'Inicio', icono: 'bi-house', ruta: '/staff/' }, { id: 'lotuyo', nombre: 'Lo tuyo', icono: 'bi-person-heart', ruta: '/staff/lotuyo.html' }];
   const BASE_END = [
     { id: 'equipo', nombre: 'Equipo', icono: 'bi-people', ruta: '/staff/equipo.html' },
@@ -52,7 +55,8 @@
     const DIST = !!me.distrito?.es_distrito;
     if (DIST) BASE_START[1] = { id: 'distrito', nombre: `Distrito ${me.distrito.codigo}`, icono: 'bi-diagram-3', ruta: '/staff/distrito.html' };
     // y su módulo Impacto: los proyectos que presentan los clubes (por estado y por clasificación), en su propia pantalla
-    if (DIST && !BASE_START.some((m) => m.id === 'impacto-distrito')) BASE_START.splice(2, 0, { id: 'impacto-distrito', nombre: 'Impacto', icono: 'bi-globe-americas', ruta: '/staff/impacto-distrito.html' });
+    // y sus módulos: cada uno su página (ver PAGINAS en pages/distrito.js)
+    if (DIST && !BASE_START.some((m) => m.id === 'impacto-distrito')) BASE_START.splice(2, 0, ...DIST_MODS);
     // «IA» va abajo, junto a Equipo; «Marca» tiene su propia pantalla en el menú (módulo central de Diwilo Modulos)
     const iaMod = me.modules.find((m) => m.id === 'ai');
     const FOOT = [...BASE_END, ...(iaMod ? [iaMod] : [])];
@@ -125,7 +129,7 @@
     }
 
     // Página de un módulo inactivo o sin permiso: no se muestra su contenido.
-    if (page.modulo && !['inicio', 'equipo', 'lotuyo', 'distrito', 'impacto-distrito'].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
+    if (page.modulo && !['inicio', 'equipo', 'lotuyo', 'distrito', ...DIST_MODS.map((m) => m.id)].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
       main.innerHTML = `<div class="dw-card">${window.App.empty('bi-slash-circle', 'Este módulo no está activo para tu negocio o tu rol no tiene acceso.', '<a class="btn btn-primary" href="/staff/">Ir al inicio</a>')}</div>`;
       if (EMBED) notificar();
       return false;

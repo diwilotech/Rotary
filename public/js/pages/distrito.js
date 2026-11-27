@@ -11,15 +11,26 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  // impacto-distrito.html: la misma página, solo con Impacto (módulo propio en el menú del distrito)
-  const SOLO_IMPACTO = document.querySelector('main')?.dataset.modulo === 'impacto-distrito';
-  if (!SOLO_IMPACTO && location.hash === '#impacto') { location.replace('/staff/impacto-distrito.html'); return; }
-  if (!SOLO_IMPACTO && (location.hash === '#formatos' || /^#(formato|envio)=/.test(location.hash))) { location.replace(`/staff/impacto-distrito.html${location.hash}`); return; }
-  let tab = SOLO_IMPACTO ? (location.hash === '#formatos' || /^#formato=/.test(location.hash) ? 'formatos' : 'impacto') : ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
-  if (SOLO_IMPACTO) { document.querySelector('[data-h1]').textContent = `Impacto · Distrito ${me.distrito.codigo}`;
-    RO.pills([['impacto', 'Proyectos', '#proyectos', 'bi-globe-americas'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text']], tab, (k) => { tab = k; pintar(); }); }
-  else document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  if (!SOLO_IMPACTO) RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  // El perfil del distrito tiene varios módulos en el menú, cada uno su página (misma lógica, distintas pestañas):
+  //   distrito.html (Clubes · Año rotario · Metas) · impacto-distrito.html (Proyectos · Formatos) · cobros-distrito.html (Cuotas · Bonos)
+  //   equipo-distrito.html (Equipo distrital) · clubes-distrito.html (Cargos de la junta · Orden del día) · juegos-distrito.html (Juegos)
+  const PAGINAS = {
+    distrito: { url: '/staff/distrito.html', tabs: [['clubes', 'Clubes', 'bi-diagram-3'], ['anio', 'Año rotario', 'bi-bar-chart'], ['metas', 'Metas', 'bi-bullseye']] },
+    'impacto-distrito': { url: '/staff/impacto-distrito.html', titulo: 'Impacto', tabs: [['impacto', 'Proyectos', 'bi-globe-americas'], ['formatos', 'Formatos', 'bi-file-earmark-text']] },
+    'cobros-distrito': { url: '/staff/cobros-distrito.html', titulo: 'Cobros a los clubes', tabs: [['cuotas', 'Cuotas', 'bi-bank'], ['bonos', 'Bonos', 'bi-ticket-perforated']] },
+    'equipo-distrito': { url: '/staff/equipo-distrito.html', titulo: 'Equipo distrital', tabs: [['equipo', 'Equipo', 'bi-people']] },
+    'clubes-distrito': { url: '/staff/clubes-distrito.html', titulo: 'Para los clubes', tabs: [['cargos', 'Cargos de la junta', 'bi-person-badge'], ['orden', 'Orden del día', 'bi-list-ol']] },
+    'juegos-distrito': { url: '/staff/juegos-distrito.html', titulo: 'Juegos del distrito', tabs: [['juegos', 'Retos y ranking', 'bi-controller']] },
+  };
+  const PAG = document.querySelector('main')?.dataset.modulo || 'distrito', P = PAGINAS[PAG] || PAGINAS.distrito, SOLO_IMPACTO = PAG === 'impacto-distrito';
+  // Enlaces viejos (#cuotas, #formato=5, #envio=3…) llevan a la página donde está ahora esa pestaña
+  const hk = location.hash.slice(1), hTab = /^(formato|envio)=/.test(hk) ? 'formatos' : hk === 'proyectos' ? 'impacto' : hk;
+  const deTab = Object.entries(PAGINAS).find(([, x]) => x.tabs.some(([k]) => k === hTab));
+  if (deTab && deTab[0] !== PAG) { location.replace(`${deTab[1].url}${location.hash}`); return; }
+  let tab = P.tabs.some(([k]) => k === hTab) ? hTab : P.tabs[0][0], anio = null, t = null;
+  const nombreD = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`.replace(/\s+/g, ' ');
+  document.querySelector('[data-h1]').textContent = P.titulo ? `${P.titulo} · Distrito ${me.distrito.codigo}` : nombreD;
+  if (P.tabs.length > 1) RO.pills(P.tabs.map(([k, l, ic]) => [k, l, `#${k === 'impacto' ? 'proyectos' : k}`, ic]), tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
