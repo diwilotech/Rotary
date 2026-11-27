@@ -102,6 +102,15 @@
         el.addEventListener('hidden.bs.modal', () => listo(ok), { once: true });
       });
     },
+    // Datos de pago que pone el distrito (QR, llave Bre-B, cuenta): tarjeta con botones de copiar. p = { qr, llave, banco, tipo_cuenta, numero, titular, documento, instrucciones }
+    fichaPago(p, { qr = null, compacta = false } = {}) {
+      if (!p) return '';
+      const img = qr || p.qr, cp = (v, l) => `<div class="ro-pago__f"><small>${l}</small><span class="d-flex align-items-center gap-1"><b class="text-break">${esc(v)}</b><button type="button" class="btn btn-sm btn-link p-0 ms-auto" data-copiar="${esc(v)}" aria-label="Copiar ${l}"><i class="bi bi-copy"></i></button></span></div>`;
+      const cuenta = [p.banco, p.tipo_cuenta].filter(Boolean).join(' · ');
+      return `<div class="ro-pago ${compacta ? 'ro-pago--c' : ''}">${img ? `<a href="${esc(img)}" target="_blank" rel="noopener" class="ro-pago__qr" title="Abrir el QR"><img src="${esc(img)}" alt="QR de pago"></a>` : ''}
+        <div class="ro-pago__d"><div class="ro-pago__t"><i class="bi bi-qr-code-scan me-1"></i>Cómo pagar</div>${p.llave ? cp(p.llave, 'Llave Bre-B') : ''}${p.numero ? cp(p.numero, cuenta ? `Cuenta ${cuenta}` : 'Número de cuenta') : cuenta ? `<div class="ro-pago__f"><small>Cuenta</small><b>${esc(cuenta)}</b></div>` : ''}
+        ${p.titular ? `<div class="ro-pago__f"><small>Titular</small><b>${esc(p.titular)}${p.documento ? ` · ${esc(p.documento)}` : ''}</b></div>` : ''}${p.instrucciones ? `<div class="small text-body-secondary mt-1" style="white-space:pre-wrap">${esc(p.instrucciones)}</div>` : ''}</div></div>`;
+    },
     elegirArchivo(accept = 'image/*,application/pdf') {
       return new Promise((ok) => { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => ok(i.files[0] || null); i.click(); });
     },
@@ -129,5 +138,19 @@
     .ro-h{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--bs-secondary-color);margin:18px 0 10px}
   `;
   document.head.appendChild(css);
+  // Copiar llave o cuenta (botones de RO.fichaPago)
+  document.addEventListener('click', async (e) => { const b = e.target.closest('[data-copiar]'); if (!b) return; try { await navigator.clipboard.writeText(b.dataset.copiar); window.App.toast('Copiado'); } catch (_) { window.App.toast(b.dataset.copiar); } });
+  document.head.insertAdjacentHTML('beforeend', `<style>.ro-pago{display:flex;gap:14px;align-items:flex-start;padding:12px;border-radius:14px;border:1px dashed rgba(var(--dw-p-rgb),.45);background:rgba(var(--dw-p-rgb),.04)}
+    .ro-pago__qr img{width:128px;height:128px;object-fit:contain;border-radius:10px;background:#fff;padding:4px;border:1px solid var(--bs-border-color)}.ro-pago--c .ro-pago__qr img{width:84px;height:84px}
+    .ro-pago__d{flex:1;min-width:0;display:grid;gap:6px}.ro-pago__t{font-weight:700;font-size:.85rem;color:var(--dw-p)}.ro-pago__f small{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--bs-secondary-color)}
+    .ro-pago__f b{font-size:.92rem}
+    .ro-cobro__i{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:1.35rem;background:rgba(var(--dw-p-rgb),.12);color:var(--dw-p);flex:none}
+    .ro-cobro__v{font-size:1.35rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+    .ro-dchip{display:inline-flex;gap:5px;align-items:center;font-size:.76rem;padding:3px 10px;border-radius:999px;background:rgba(25,135,84,.1);color:#157347;font-weight:600}
+    .ro-oferta{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:rgba(25,135,84,.1);color:#146c43;font-size:.86rem;margin-top:6px}.ro-oferta>i{font-size:1rem}
+    .ro-oferta--b{background:rgba(var(--dw-p-rgb),.08);color:inherit}
+    .ro-bonos{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ro-bonos>span{display:flex;flex-direction:column;align-items:center;font-size:.7rem;color:var(--bs-secondary-color)}
+    .ro-bonos>span b{font-size:1.05rem;color:var(--bs-body-color);font-variant-numeric:tabular-nums}.ro-bonos>span.t{padding:4px 10px;border-radius:10px;background:rgba(var(--dw-p-rgb),.1)}.ro-bonos>span.t b{color:var(--dw-p)}
+    .ro-tcobro td,.ro-tcobro th{font-size:.84rem;font-variant-numeric:tabular-nums}@media (max-width:480px){.ro-pago{flex-direction:column;align-items:stretch}.ro-pago__qr{align-self:center}}</style>`);
   window.RO = RO;
 })();

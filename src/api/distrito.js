@@ -8,6 +8,7 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
+import { cobroCuota, limpiarDescuentos, limpiarPago, pagoPublico } from '../lib/cobros.js';
 import { PAGA_CUOTA, EN_DISTRITO, enDistrito, ORDEN_DIA, ordenDelDia, distritoDe, clubesDelDistrito, anioRotarioDe, mesesDelAnio, obligacionesClub, saldos, cartera, cargoOrden, cargosDe, CARGOS_SUGERIDOS } from '../lib/rotaract.js';
 
 export async function distritoOError(c) {
@@ -106,38 +107,45 @@ export function routes(r) {
   });
 
   /* Cuota distrital */
-  const campos = (b, parcial) => {
+  const campos = (b, parcial, bid) => {
     const o = {};
     if (!parcial || 'nombre' in b) { o.nombre = cast('nombre', 'text', b.nombre); if (!o.nombre) throw new HttpError(400, 'Escribe el nombre de la cuota'); }
     if (!parcial || 'valor_socio' in b) { o.valor_socio = cast('valor_socio', 'money', b.valor_socio); if (!(o.valor_socio > 0)) throw new HttpError(400, 'El valor debe ser mayor que cero'); }
     if (!parcial || 'vence' in b) { o.vence = cast('vence', 'date', b.vence); if (!o.vence) throw new HttpError(400, 'Indica la fecha en que vence'); o.anio = anioRotarioDe(o.vence); }
     if ('notas' in b) o.notas = cast('notas', 'long', b.notas);
     if (!parcial || 'tipo' in b) o.tipo = cast('tipo', ['por_socio', 'por_club'], b.tipo);
+    if ('descuentos' in b) { const x = limpiarDescuentos(b.descuentos); o.descuentos = x ? JSON.stringify(x) : null; }
+    if ('pago' in b) o.pago = limpiarPago(b.pago, `${bid}/distrito-qr/`);
     return o;
   };
   r.get('/api/distrito/cuotas', 'tenant', async (c) => {
     const d = await distritoOError(c);
     const cuotas = await all(c.env, 'SELECT * FROM ro_cuota_distrital WHERE distrito = ? ORDER BY vence DESC', d.clave);
     const clubes = await clubesDelDistrito(c.env, d.codigo, d.programa), ids = clubes.map((x) => x.id);
-    const [pag, soc] = ids.length ? await Promise.all([
-      all(c.env, `SELECT business_id, distrital_id, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, distrital_id`, ...enDistrito(c.env, d.codigo, d.programa)),
+    const [pag, soc, planes] = ids.length ? await Promise.all([
+      all(c.env, `SELECT business_id, distrital_id, fecha, monto FROM ro_movimientos WHERE ${EN_DISTRITO} AND distrital_id IS NOT NULL AND tipo = 'egreso'`, ...enDistrito(c.env, d.codigo, d.programa)),
       all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...enDistrito(c.env, d.codigo, d.programa)),
-    ]) : [[], []];
-    return json({ codigo: d.codigo, rows: cuotas.map((q) => {
-      const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, total = q.tipo === 'por_club' ? q.valor_socio : n * q.valor_socio, pagado = pag.find((x) => x.business_id === k.id && x.distrital_id === q.id)?.total || 0;
-        return { club_id: k.id, club: k.name, socios: n, total, pagado, estado: total > 0 && pagado >= total ? 'pagada' : q.vence < today() ? 'vencida' : 'pendiente' }; });
-      return { ...q, clubes: por, total: por.reduce((t, x) => t + x.total, 0), pagado: por.reduce((t, x) => t + Math.min(x.pagado, x.total), 0), pagaron: por.filter((x) => x.estado === 'pagada').length };
+      all(c.env, 'SELECT cuota_id, club_id, cuotas, pct FROM ro_cuota_plan_club WHERE cuota_id IN (SELECT id FROM ro_cuota_distrital WHERE distrito = ?)', d.clave),
+    ]) : [[], [], []];
+    const hoy = today();
+    return json({ codigo: d.codigo, rows: cuotas.map(({ pago, ...q }) => {
+      const por = clubes.map((k) => { const n = soc.find((x) => x.business_id === k.id)?.n || 0, base = q.tipo === 'por_club' ? q.valor_socio : n * q.valor_socio;
+        const x = cobroCuota(q, base, pag.filter((p) => p.business_id === k.id && p.distrital_id === q.id), planes.find((p) => p.cuota_id === q.id && p.club_id === k.id) || null, hoy);
+        return { club_id: k.id, club: k.name, socios: n, base, total: x.total, descuento: x.descuento, motivo: x.motivo, pagado: x.pagado, saldo: x.saldo, estado: x.estado, plan: x.plan, proxima_fecha: x.proxima_fecha }; });
+      const pg = (() => { try { return JSON.parse(pago || '') || null; } catch { return null; } })();
+      return { ...q, descuentos: (() => { try { return JSON.parse(q.descuentos || '') || null; } catch { return null; } })(), pago: pagoPublico(pago, `/api/cobros/qr?cuota=${q.id}`), qr_key: pg?.qr_key || null,
+        clubes: por, base: por.reduce((t, x) => t + x.base, 0), total: por.reduce((t, x) => t + x.total, 0), pagado: por.reduce((t, x) => t + Math.min(x.pagado, x.total), 0), pagaron: por.filter((x) => x.estado === 'pagada').length };
     }) });
   });
   r.post('/api/distrito/cuotas', 'manager', async (c) => {
-    const d = await distritoOError(c), o = campos(await readJson(c.req)), t = Date.now();
-    const x = await c.env.DB.prepare('INSERT INTO ro_cuota_distrital (business_id, distrito, nombre, tipo, valor_socio, vence, anio, notas, creado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, d.clave, o.nombre, o.tipo, o.valor_socio, o.vence, o.anio, o.notas || null, c.session.user_id, t, t).run();
+    const d = await distritoOError(c), o = campos(await readJson(c.req), false, c.businessId), t = Date.now();
+    const x = await c.env.DB.prepare('INSERT INTO ro_cuota_distrital (business_id, distrito, nombre, tipo, valor_socio, vence, anio, notas, descuentos, pago, creado_por, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, d.clave, o.nombre, o.tipo, o.valor_socio, o.vence, o.anio, o.notas || null, o.descuentos || null, o.pago || null, c.session.user_id, t, t).run();
     await audit(c, `Creó la cuota distrital «${o.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...o }, 201);
   });
   r.patch('/api/distrito/cuotas/:id', 'manager', async (c) => {
-    const d = await distritoOError(c), o = campos(await readJson(c.req), true);
+    const d = await distritoOError(c), o = campos(await readJson(c.req), true, c.businessId);
     const q = await one(c.env, 'SELECT id FROM ro_cuota_distrital WHERE id = ? AND distrito = ? AND business_id = ?', Number(c.params.id), d.clave, c.businessId);
     if (!q) throw new HttpError(404, 'Cuota no encontrada');
     const ks = Object.keys(o);

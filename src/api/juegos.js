@@ -10,7 +10,7 @@
 // pasa al primer jugador conectado; al empezar solo cuentan los que están conectados. El celular guarda su sala y vuelve solo.
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today } from '../lib/crud.js';
-import { socioDeSesion, socioDeSesionOError, anioRotarioDe, distritoDe, EN_DISTRITO, enDistrito } from '../lib/rotaract.js';
+import { socioDeSesion, socioDeSesionOError, anioRotarioDe, distritoDe, EN_DISTRITO, enDistrito, conSigla } from '../lib/rotaract.js';
 import { JUEGOS } from '../lib/juegos/index.js';
 import { TIPOS, tipoDe, listar, bancoActivo, opcionesDesde } from '../lib/juegos/banco.js';
 
@@ -245,15 +245,29 @@ function rutasContenido(r) {
 // El distrito crea retos (un juego en unas fechas). Los clubes juegan salas «del reto» con el banco de la app + el del
 // distrito. Al terminar, los puntos de esas partidas suman al club. Ranking: puntos totales, y también partidas, socios
 // que jugaron y promedio por socio (para comparar clubes grandes y pequeños). Lee las salas de todos los clubes del distrito.
+// Cada reto dice cómo se gana (gana = 'puntos' totales del club o 'promedio' por socio que jugó) y puede tener premio.
 async function rankingClubes(c, d, anio, retoId) {
   const desde = `${anio}-07-01`, hasta = `${anio + 1}-07-01`;
+  const gana = retoId ? (await one(c.env, 'SELECT gana FROM ro_juego_retos WHERE id = ?', retoId))?.gana || 'puntos' : 'puntos';
   const filtro = retoId ? 'AND r.id = ?' : '';
   const rows = await all(c.env, `SELECT s.business_id id, b.name club, COUNT(DISTINCT s.id) partidas, COUNT(DISTINCT j.socio_id) socios, COALESCE(SUM(j.puntos), 0) puntos
     FROM ro_juego_salas s JOIN ro_juego_retos r ON r.id = s.reto_id AND r.distrito = ? JOIN ro_juego_jugadores j ON j.sala_id = s.id AND j.rol = 'jugador'
     JOIN businesses b ON b.id = s.business_id
     WHERE s.estado = 'terminada' AND s.datos IS NOT NULL AND r.desde >= ? AND r.desde < ? ${filtro} AND s.${EN_DISTRITO}
     GROUP BY s.business_id ORDER BY puntos DESC, partidas DESC`, d.clave, desde, hasta, ...(retoId ? [retoId] : []), ...enDistrito(c.env, d.codigo, d.programa));
-  return rows.map((x, i) => ({ ...x, puesto: i + 1, promedio: x.socios ? Math.round((x.puntos / x.socios) * 10) / 10 : 0 }));
+  const out = rows.map((x) => ({ ...x, promedio: x.socios ? Math.round((x.puntos / x.socios) * 10) / 10 : 0 }));
+  if (gana === 'promedio') out.sort((a, b) => b.promedio - a.promedio || b.puntos - a.puntos);
+  return out.map((x, i) => ({ ...x, puesto: i + 1 }));
+}
+// Mejores jugadores de un reto entre todos los clubes (nombre corto + club)
+async function jugadoresReto(c, d, retoId, n = 10) {
+  const rows = await all(c.env, `SELECT s.business_id, b.name club, COALESCE(k.programa, 'rotaract') programa, so.nombre, SUM(j.puntos) puntos, COUNT(DISTINCT s.id) partidas
+    FROM ro_juego_salas s JOIN ro_juego_retos r ON r.id = s.reto_id AND r.distrito = ? JOIN ro_juego_jugadores j ON j.sala_id = s.id AND j.rol = 'jugador'
+    JOIN ro_socios so ON so.id = j.socio_id AND so.business_id = s.business_id JOIN businesses b ON b.id = s.business_id LEFT JOIN ro_club_config k ON k.business_id = s.business_id
+    WHERE s.estado = 'terminada' AND s.datos IS NOT NULL AND r.id = ? AND s.${EN_DISTRITO}
+    GROUP BY s.business_id, j.socio_id ORDER BY puntos DESC, partidas ASC LIMIT ?`, d.clave, retoId, ...enDistrito(c.env, d.codigo, d.programa), n);
+  const corto = (x) => { const p = String(x || '').trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[1][0]}.` : p[0] || 'Socio'; };
+  return rows.map((x, i) => ({ puesto: i + 1, nombre: corto(x.nombre), club: conSigla(x.club, x.programa), mio: x.business_id === c.businessId, puntos: x.puntos, partidas: x.partidas }));
 }
 function rutasRetos(r) {
   const hoyStr = () => today();
@@ -261,9 +275,16 @@ function rutasRetos(r) {
   // Club: los retos de su distrito (abiertos, próximos y del año) y el ranking entre clubes
   r.get('/api/juegos/retos', `tenant:${MOD}`, async (c) => {
     const { codigo, clave } = await distritoDe(c.env, c.businessId), anio = anioRotarioDe(hoyStr());
-    const rows = await all(c.env, 'SELECT id, juego, nombre, descripcion, desde, hasta FROM ro_juego_retos WHERE distrito = ? AND activo = 1 AND hasta >= ? ORDER BY desde', clave, `${anio}-07-01`);
+    const dd = await distritoDe(c.env, c.businessId);
+    const rows = await all(c.env, 'SELECT id, juego, nombre, descripcion, desde, hasta, premio, gana FROM ro_juego_retos WHERE distrito = ? AND activo = 1 AND hasta >= ? ORDER BY desde', clave, `${anio}-07-01`);
     const h = hoyStr();
-    return json({ distrito: codigo, rows: rows.map((x) => ({ ...x, abierto: x.desde <= h && x.hasta >= h })) });
+    // Cada reto con su tabla: los clubes (y en qué puesto va el mío) y los mejores jugadores del distrito
+    const out = await Promise.all(rows.map(async (x) => {
+      const rk = x.desde <= h ? await rankingClubes(c, dd, anioRotarioDe(x.desde), x.id) : [];
+      return { ...x, abierto: x.desde <= h && x.hasta >= h, clubes: rk.slice(0, 5), mio: rk.find((k) => k.id === c.businessId) || null, total_clubes: rk.length,
+        jugadores: x.desde <= h ? await jugadoresReto(c, dd, x.id, 5) : [] };
+    }));
+    return json({ distrito: codigo, rows: out });
   });
   r.get('/api/juegos/ranking-clubes', `tenant:${MOD}`, async (c) => {
     const dd = await distritoDe(c.env, c.businessId), codigo = dd.codigo, anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
@@ -278,7 +299,8 @@ function rutasRetos(r) {
     return json({ distrito: d.codigo, juegos: Object.values(JUEGOS).map((j) => ({ id: j.id, nombre: j.nombre, emoji: j.emoji })), rows });
   });
   const datosReto = (b) => {
-    const x = { juego: String(b.juego || ''), nombre: String(b.nombre || '').trim().slice(0, 120), descripcion: String(b.descripcion || '').trim().slice(0, 600) || null, desde: String(b.desde || ''), hasta: String(b.hasta || '') };
+    const x = { juego: String(b.juego || ''), nombre: String(b.nombre || '').trim().slice(0, 120), descripcion: String(b.descripcion || '').trim().slice(0, 600) || null, desde: String(b.desde || ''), hasta: String(b.hasta || ''),
+      premio: String(b.premio || '').trim().slice(0, 300) || null, gana: b.gana === 'promedio' ? 'promedio' : 'puntos' };
     if (!JUEGOS[x.juego]) throw new HttpError(400, 'Elige el juego');
     if (!x.nombre) throw new HttpError(400, 'Ponle nombre al reto');
     if (!FECHA.test(x.desde) || !FECHA.test(x.hasta) || x.hasta < x.desde) throw new HttpError(400, 'Revisa las fechas del reto');
@@ -286,16 +308,16 @@ function rutasRetos(r) {
   };
   r.post('/api/distrito/juegos/retos', 'manager', async (c) => {
     const d = await esDistritoOError(c), x = datosReto(await readJson(c.req)), t = ahora();
-    const q = await c.env.DB.prepare('INSERT INTO ro_juego_retos (business_id, distrito, juego, nombre, descripcion, desde, hasta, activo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
-      .bind(c.businessId, d.clave, x.juego, x.nombre, x.descripcion, x.desde, x.hasta, t, t).run();
+    const q = await c.env.DB.prepare('INSERT INTO ro_juego_retos (business_id, distrito, juego, nombre, descripcion, desde, hasta, premio, gana, activo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
+      .bind(c.businessId, d.clave, x.juego, x.nombre, x.descripcion, x.desde, x.hasta, x.premio, x.gana, t, t).run();
     return json({ id: q.meta.last_row_id }, 201);
   });
   const retoMio = async (c) => { await esDistritoOError(c); const x = await one(c.env, 'SELECT * FROM ro_juego_retos WHERE id = ? AND business_id = ?', Number(c.params.id) || 0, c.businessId); if (!x) throw new HttpError(404, 'Reto no encontrado'); return x; };
   r.patch('/api/distrito/juegos/retos/:id', 'manager', async (c) => {
     const old = await retoMio(c), b = await readJson(c.req);
     const x = datosReto({ ...old, ...b });
-    await c.env.DB.prepare('UPDATE ro_juego_retos SET juego = ?, nombre = ?, descripcion = ?, desde = ?, hasta = ?, activo = ?, updated_at = ? WHERE id = ?')
-      .bind(x.juego, x.nombre, x.descripcion, x.desde, x.hasta, b.activo === undefined ? old.activo : (b.activo ? 1 : 0), ahora(), old.id).run();
+    await c.env.DB.prepare('UPDATE ro_juego_retos SET juego = ?, nombre = ?, descripcion = ?, desde = ?, hasta = ?, premio = ?, gana = ?, activo = ?, updated_at = ? WHERE id = ?')
+      .bind(x.juego, x.nombre, x.descripcion, x.desde, x.hasta, x.premio, x.gana, b.activo === undefined ? old.activo : (b.activo ? 1 : 0), ahora(), old.id).run();
     return json({ ok: true });
   });
   r.delete('/api/distrito/juegos/retos/:id', 'manager', async (c) => {
@@ -307,7 +329,8 @@ function rutasRetos(r) {
   });
   r.get('/api/distrito/juegos/ranking', 'tenant', async (c) => {
     const d = await esDistritoOError(c), anio = Number(c.url.searchParams.get('anio')) || anioRotarioDe(today());
-    return json({ anio, nombre: `${anio}-${anio + 1}`, distrito: d.codigo, rows: await rankingClubes(c, d, anio, Number(c.url.searchParams.get('reto')) || null) });
+    const reto = Number(c.url.searchParams.get('reto')) || null;
+    return json({ anio, nombre: `${anio}-${anio + 1}`, distrito: d.codigo, rows: await rankingClubes(c, d, anio, reto), jugadores: reto ? await jugadoresReto(c, d, reto) : [] });
   });
 }
 

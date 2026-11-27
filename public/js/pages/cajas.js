@@ -102,6 +102,7 @@ DW.ready.then(async (me) => {
       ${C.meter(p.pagado, p.total_obligaciones || 1)}
       <div class="small mt-1">Por pagar <b>${C.money(p.por_pagar)}</b> · en caja ${C.money(p.saldo)} · ${p.falta ? `<b class="text-danger">faltan ${C.money(p.falta)}</b>` : '<b class="text-success">alcanza</b>'}</div>
       ${p.cuota_mes ? `<div class="small text-body-secondary">Cuotas de socios proyectadas: ${C.money(p.cuota_mes)} al mes${p.meses_para_cubrir ? ` · cubren lo que falta en ${p.meses_para_cubrir} ${p.meses_para_cubrir === 1 ? 'mes' : 'meses'}` : ''}</div>` : ''}
+      ${delDistrito(p)}
       <div class="ro-h">Inversión del club</div>`;
     lista.innerHTML = `<div class="ro-rubros">${p.rubros.map((r) => `<div class="ro-rubro">
         <div class="d-flex align-items-center gap-2"><b class="flex-grow-1 text-truncate small" title="${esc(r.categoria)}">${esc(r.categoria)}</b>${C.chip(...OEST[r.estado])}</div>
@@ -110,6 +111,43 @@ DW.ready.then(async (me) => {
         ${W ? `<div class="d-flex gap-1 mt-1"><button class="btn btn-sm btn-primary py-0" data-rpagar="${esc(r.categoria)}"><i class="bi bi-cash me-1"></i>Pagar</button>
           <button class="btn btn-sm btn-light py-0" data-reditar="${esc(r.categoria)}"><i class="bi bi-pencil me-1"></i>Editar valor</button></div>` : ''}</div>`).join('')}</div>
       ${W ? '<button class="btn btn-sm btn-link px-0" data-ragregar><i class="bi bi-plus-lg me-1"></i>Otra obligación</button>' : ''}`;
+  }
+  /* ---------- Del distrito: cuota distrital (descuentos, plan de cuotas) y bonos, con sus datos de pago ---------- */
+  const DEST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
+  const cuotasD = (p) => p.rubros.flatMap((r) => r.cuotas_distritales || []), bonosD = (p) => p.rubros.flatMap((r) => r.bonos || []);
+  function delDistrito(p) {
+    const cs = cuotasD(p), bs = bonosD(p);
+    if (!cs.length && !bs.length) return '';
+    const cuota = (q) => `<div class="ro-dist">
+        <div class="d-flex align-items-start gap-2"><span class="ro-cobro__i" style="width:36px;height:36px;font-size:1.05rem"><i class="bi bi-bank"></i></span><div class="flex-grow-1 min-w-0"><b class="d-block">${esc(q.nombre)}</b>
+          <span class="small text-body-secondary">${q.tipo === 'por_club' ? 'Por club' : `${C.money(q.valor_socio)} × ${q.socios} socios`} · ${q.cuotas_plan ? `próxima cuota ${C.day(q.proxima_fecha)}` : `vence ${C.day(q.vence)}`}</span></div>${C.chip(...DEST[q.estado])}</div>
+        <div class="d-flex align-items-baseline gap-2 mt-1 flex-wrap"><span class="ro-cobro__v">${C.money(q.total)}</span>${q.descuento ? `<s class="small text-body-secondary">${C.money(q.base)}</s><span class="ro-dchip">−${C.money(q.descuento)}</span>` : ''}<span class="small text-body-secondary ms-auto">pagado ${C.money(q.pagado)}</span></div>
+        ${C.meter(q.pagado, q.total || 1)}
+        ${q.oferta ? `<div class="ro-oferta"><i class="bi bi-lightning-charge-fill"></i><span>Paga <b>${C.money(Math.max(0, q.oferta.monto - q.pagado))}</b> antes del ${C.day(q.oferta.hasta)} y ahorras <b>${C.money(q.oferta.ahorro)}</b>. Después se cobra completo (${C.money(q.base)}).</span></div>` : ''}
+        ${q.planes?.length && q.estado !== 'pagada' ? `<div class="small fw-semibold mt-2">¿Cómo vas a pagar?</div><div class="d-flex flex-wrap gap-1 mt-1">${[{ cuotas: 1, pct: 0 }, ...q.planes].map((pl) => { const on = (q.plan?.cuotas || 1) === pl.cuotas;
+          return `<button type="button" class="btn btn-sm rounded-pill ${on ? 'btn-primary' : 'btn-outline-secondary'}" ${W && !on ? `data-dplan="${q.id}" data-n="${pl.cuotas}"` : 'disabled'}>${pl.cuotas === 1 ? 'De contado' : `${pl.cuotas} cuotas`}${pl.pct ? ` · −${pl.pct}%` : ''}</button>`; }).join('')}</div>` : ''}
+        ${q.cuotas_plan ? `<div class="ro-plan mt-2">${q.cuotas_plan.map((c) => `<span class="${c.pagada ? 'ok' : c.fecha < C.todayCo() ? 'bad' : ''}"><b>${c.n}</b>${C.day(c.fecha)}<small>${C.money(c.monto)}</small>${c.pagada ? '<i class="bi bi-check-circle-fill"></i>' : ''}</span>`).join('')}</div>` : ''}
+        ${q.pago ? `<div class="mt-2">${RO.fichaPago(q.pago, { compacta: true })}</div>` : ''}
+        ${W && q.estado !== 'pagada' ? `<button class="btn btn-primary btn-sm mt-2" data-dpagar="${q.id}"><i class="bi bi-cash me-1"></i>Registrar pago${q.a_pagar ? ` · ${C.money(q.oferta ? Math.max(0, q.oferta.monto - q.pagado) : q.a_pagar)}` : ''}</button>` : ''}</div>`;
+    const bono = (b) => `<div class="ro-dist">
+        <div class="d-flex align-items-start gap-2"><span class="ro-cobro__i" style="width:36px;height:36px;font-size:1.05rem"><i class="bi bi-ticket-perforated"></i></span><div class="flex-grow-1 min-w-0"><b class="d-block">${esc(b.nombre)}</b>
+          <span class="small text-body-secondary">${b.reparto === 'por_socio' ? `${b.cantidad} por socio · ${b.socios} socios` : b.reparto === 'por_club' ? `${b.cantidad} para el club` : 'asignados por el distrito'}${b.vence ? ` · hasta ${C.day(b.vence)}` : ''}</span></div>${C.chip(...DEST[b.estado])}</div>
+        <div class="ro-bonos mt-2"><span><b>${C.num(b.asignados)}</b>bonos</span><span>×</span><span><b>${C.money(b.valor)}</b>cada uno</span><span>=</span><span class="t"><b>${C.money(b.total)}</b>total</span></div>
+        <div class="small d-flex justify-content-between mt-2"><span>Pagado ${C.money(b.pagado)}</span><span>${C.num(b.vendidos)} vendidos</span></div>${C.meter(b.pagado, b.total || 1)}
+        ${b.pago ? `<div class="mt-2">${RO.fichaPago(b.pago, { compacta: true })}</div>` : ''}
+        ${W && b.estado !== 'pagada' ? `<button class="btn btn-primary btn-sm mt-2" data-bpagar="${b.id}"><i class="bi bi-cash me-1"></i>Registrar pago · ${C.money(b.saldo)}</button>` : ''}</div>`;
+    return `<div class="ro-h"><i class="bi bi-diagram-3 me-1"></i>Del distrito</div><div class="d-grid gap-2">${cs.map(cuota).join('')}${bs.map(bono).join('')}</div>`;
+  }
+  async function pagarDistrito(url, titulo, monto) {
+    const out = await C.form({ title: titulo, fields: [{ k: 'monto', label: 'Monto', type: 'money', required: true }, { k: 'fecha', label: 'Fecha del pago', type: 'date', required: true }], values: { monto, fecha: C.todayCo() }, okText: 'Registrar pago' });
+    if (!out) return;
+    let id;
+    try { id = (await api(url, { method: 'POST', body: out })).id; } catch (x) { return toast(x.message, false); }
+    await cargar();
+    if (await window.App.confirm({ title: 'Pago registrado', text: 'Salió de la Caja menor y quedó en Movimientos. ¿Subes el comprobante?', ok: 'Subir comprobante' })) {
+      const f = await RO.elegirArchivo(); if (!f) return;
+      try { await RO.subir(`/api/cajas/movimientos/${id}/comprobante`, f); toast('Comprobante adjunto'); tabla?.load(); } catch (x) { toast(x.message, false); }
+    }
   }
   const rub = (cat) => pro.rubros.find((r) => r.categoria === cat);
   async function editarValor(cat) {
@@ -183,6 +221,10 @@ DW.ready.then(async (me) => {
   view.innerHTML = `<style>.ro-modo-cajita>:not([data-cajita]):not(style){display:none!important}.ro-cajas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-bottom:16px}
     .ro-caja{display:grid;gap:4px;text-align:left;padding:16px;border-radius:16px;border:2px solid var(--bs-border-color);background:var(--bs-body-bg);color:inherit}
     .ro-caja.on{border-color:var(--dw-p);background:linear-gradient(160deg,rgba(var(--dw-p-rgb),.12),var(--bs-body-bg) 70%)}.ro-caja.on i{color:var(--dw-p)}.ro-saldo{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+    .ro-dist{padding:12px;border-radius:14px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg)}
+    .ro-plan{display:flex;gap:6px;overflow-x:auto}.ro-plan>span{flex:none;display:flex;flex-direction:column;align-items:center;min-width:74px;padding:6px;border-radius:10px;border:1px solid var(--bs-border-color);font-size:.72rem;position:relative}
+    .ro-plan>span b{font-size:.95rem}.ro-plan>span small{font-weight:600}.ro-plan>span.ok{border-color:#198754;background:rgba(25,135,84,.08)}.ro-plan>span.bad{border-color:#dc3545;background:rgba(220,53,69,.06)}
+    .ro-plan>span i{position:absolute;top:3px;right:5px;color:#198754}
     .ro-rubros{display:grid;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px}.ro-rubro{padding:8px 10px;border-radius:12px;border:1px solid var(--bs-border-color);background:rgba(var(--dw-p-rgb),.03)}
     .ro-ob{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ro-ob>div{flex:1;min-width:120px;padding:10px 12px;border-radius:12px;background:rgba(var(--dw-p-rgb),.06)}.ro-ob>i{color:var(--bs-secondary-color)}
     .ro-ob span{display:block;font-size:.75rem;color:var(--bs-secondary-color)}.ro-ob b{font-size:1.25rem;font-variant-numeric:tabular-nums}
@@ -191,9 +233,12 @@ DW.ready.then(async (me) => {
     <div class="row g-3 mb-3"><div class="col-md-7"><div class="dw-card h-100"><div class="d-flex align-items-center gap-2 mb-2" data-flujo-t></div><div data-flujo></div><div class="small text-body-secondary mt-1" data-tot></div></div></div>
       <div class="col-md-5"><div class="dw-card h-100 d-flex flex-column"><div data-otop></div><div class="ro-h mt-0" data-cats-t>Inversión del club · año rotario</div><div data-cats></div><div data-olista></div></div></div></div>
     <h2 class="h6 mb-2" data-tit></h2><div data-movs></div><div data-cajita></div>`;
-  view.addEventListener('click', (e) => {
+  view.addEventListener('click', async (e) => {
     const y = e.target.closest('[data-ay]'); if (y) { anio += Number(y.dataset.ay); return resumen(); }
     const rp = e.target.closest('[data-rpagar]'); if (rp) return pagarRubro(rp.dataset.rpagar);
+    const dp = e.target.closest('[data-dpagar]'); if (dp) { const q = cuotasD(pro).find((x) => String(x.id) === dp.dataset.dpagar); return pagarDistrito(`/api/cajas/distrital/${q.id}/pagar`, `Pagar: ${q.nombre}`, q.oferta ? Math.max(0, q.oferta.monto - q.pagado) : q.a_pagar || q.saldo); }
+    const bp = e.target.closest('[data-bpagar]'); if (bp) { const b = bonosD(pro).find((x) => String(x.id) === bp.dataset.bpagar); return pagarDistrito(`/api/cajas/bonos/${b.id}/pagar`, `Pagar: ${b.nombre}`, b.saldo); }
+    const pl = e.target.closest('[data-dplan]'); if (pl) { try { await api(`/api/cajas/distrital/${pl.dataset.dplan}/plan`, { method: 'POST', body: { cuotas: Number(pl.dataset.n) } }); toast(Number(pl.dataset.n) > 1 ? `Plan de ${pl.dataset.n} cuotas elegido` : 'Pagarás de contado'); await cargar(); } catch (x) { toast(x.message, false); } return; }
     const re = e.target.closest('[data-reditar]'); if (re) return editarValor(re.dataset.reditar);
     if (e.target.closest('[data-ragregar]')) return agregar();
     const b = e.target.closest('[data-caja]'); if (!b || b.dataset.caja === caja) return;

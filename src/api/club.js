@@ -5,7 +5,7 @@
 import { json, HttpError } from '../lib/http.js';
 import { all, one, today } from '../lib/crud.js';
 import { visibleModules } from '../lib/modules.js';
-import { distritoDe, clubesDelDistrito, EN_DISTRITO, enDistrito, cartera, saldos } from '../lib/rotaract.js';
+import { distritoDe, clubesDelDistrito, EN_DISTRITO, enDistrito, cartera, saldos, bonosClub } from '../lib/rotaract.js';
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -52,9 +52,8 @@ export function routes(r) {
     }
     // Bonos que el distrito le asignó al club y aún no paga completos
     const { clave: codigo } = await distritoDe(c.env, bid);
-    const bn = await one(c.env, `SELECT SUM(x.asignados * b.valor - x.pagado) saldo, COUNT(*) n FROM ro_bonos_clubes x JOIN ro_bonos b ON b.id = x.bono_id
-      WHERE x.club_id = ? AND b.distrito = ? AND x.asignados * b.valor > x.pagado`, bid, codigo);
-    if (bn?.n) alerta(`Bonos del distrito: ${bn.n} por pagar ($${Number(bn.saldo).toLocaleString('es-CO')})`, '#bonos', 'info');
+    const bn = (await bonosClub(c.env, bid)).filter((b) => b.saldo > 0);
+    if (bn.length) alerta(`Bonos del distrito: ${bn.length} por pagar ($${bn.reduce((t, b) => t + b.saldo, 0).toLocaleString('es-CO')})`, '/staff/cajas.html#menor', 'info');
     if (mods.has('reuniones')) {
       out.proxima = await one(c.env, "SELECT id, titulo, tipo, fecha, hora_ini FROM ro_reuniones WHERE business_id = ? AND fecha >= ? AND estado <> 'cancelada' ORDER BY fecha, hora_ini LIMIT 1", bid, hoy) || null;
     }

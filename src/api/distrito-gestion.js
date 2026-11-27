@@ -9,7 +9,8 @@
 import { json, readJson, HttpError } from '../lib/http.js';
 import { all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
-import { distritoDe, clubesDelDistrito, anioRotarioDe, PROGRAMAS } from '../lib/rotaract.js';
+import { distritoDe, clubesDelDistrito, anioRotarioDe, PROGRAMAS, EN_DISTRITO, enDistrito, PAGA_CUOTA, bonosClub } from '../lib/rotaract.js';
+import { asignadosBono, limpiarPago, pagoPublico } from '../lib/cobros.js';
 import { distritoOError, clubDelDistrito } from './distrito.js';
 
 const DIWILO_WA = '573053840193';
@@ -60,34 +61,43 @@ export function routes(r) {
   });
 
   /* ---------- Bonos por club ---------- */
-  const camposBono = (b, parcial) => {
+  const camposBono = (b, parcial, bid) => {
     const o = {};
     if (!parcial || 'nombre' in b) { o.nombre = cast('nombre', 'text', b.nombre); if (!o.nombre) throw new HttpError(400, 'Escribe el nombre del bono'); }
     if (!parcial || 'valor' in b) { o.valor = cast('valor', 'money', b.valor); if (!(o.valor > 0)) throw new HttpError(400, 'El valor de cada bono debe ser mayor que cero'); }
     if ('vence' in b) o.vence = b.vence ? cast('vence', 'date', b.vence) : null;
     if ('notas' in b) o.notas = cast('notas', 'long', b.notas);
+    if (!parcial || 'reparto' in b) o.reparto = ['por_socio', 'por_club'].includes(b.reparto) ? b.reparto : 'manual';
+    if (!parcial || 'cantidad' in b) { o.cantidad = Math.max(0, Math.round(Number(b.cantidad) || 0)); if (o.reparto !== 'manual' && !o.cantidad) throw new HttpError(400, 'Indica cuántos bonos le tocan a cada socio o a cada club'); }
+    if ('pago' in b) o.pago = limpiarPago(b.pago, `${bid}/distrito-qr/`);
     return o;
   };
   r.get('/api/distrito/bonos', 'tenant', async (c) => {
     const d = await distritoOError(c);
     const [bonos, clubes] = await Promise.all([all(c.env, 'SELECT * FROM ro_bonos WHERE distrito = ? AND business_id = ? ORDER BY created_at DESC', d.clave, c.businessId), clubesDelDistrito(c.env, d.codigo, d.programa)]);
-    const asig = bonos.length ? await all(c.env, `SELECT * FROM ro_bonos_clubes WHERE bono_id IN (SELECT id FROM ro_bonos WHERE distrito = ? AND business_id = ?)`, d.clave, c.businessId) : [];
-    return json({ rows: bonos.map((b) => {
-      const por = clubes.map((k) => { const a = asig.find((x) => x.bono_id === b.id && x.club_id === k.id) || {}; const asignados = a.asignados || 0, total = asignados * b.valor;
-        return { club_id: k.id, club: k.name, asignados, vendidos: a.vendidos || 0, pagado: a.pagado || 0, total, saldo: Math.max(0, total - (a.pagado || 0)) }; });
-      const s = (k) => por.reduce((t, x) => t + x[k], 0);
-      return { ...b, clubes: por, asignados: s('asignados'), vendidos: s('vendidos'), total: s('total'), pagado: s('pagado') };
+    const P = enDistrito(c.env, d.codigo, d.programa);
+    const [asig, soc, movs] = bonos.length ? await Promise.all([
+      all(c.env, `SELECT * FROM ro_bonos_clubes WHERE bono_id IN (SELECT id FROM ro_bonos WHERE distrito = ? AND business_id = ?)`, d.clave, c.businessId),
+      all(c.env, `SELECT business_id, COUNT(*) n FROM ro_socios WHERE ${EN_DISTRITO} AND ${PAGA_CUOTA} GROUP BY business_id`, ...P),
+      all(c.env, `SELECT business_id, bono_id, SUM(monto) total FROM ro_movimientos WHERE ${EN_DISTRITO} AND bono_id IS NOT NULL AND tipo = 'egreso' GROUP BY business_id, bono_id`, ...P),
+    ]) : [[], [], []];
+    return json({ rows: bonos.map(({ pago, ...b }) => {
+      const por = clubes.map((k) => { const a = asig.find((x) => x.bono_id === b.id && x.club_id === k.id) || {}, socios = soc.find((x) => x.business_id === k.id)?.n || 0;
+        const asignados = asignadosBono(b, socios, a.asignados), total = asignados * b.valor, caja = movs.find((x) => x.business_id === k.id && x.bono_id === b.id)?.total || 0, pagado = (a.pagado || 0) + caja;
+        return { club_id: k.id, club: k.name, socios, asignados, vendidos: a.vendidos || 0, pagado, pagado_distrito: a.pagado || 0, pagado_caja: caja, total, saldo: Math.max(0, total - pagado) }; });
+      const s = (k) => por.reduce((t, x) => t + x[k], 0), pg = (() => { try { return JSON.parse(pago || '') || null; } catch { return null; } })();
+      return { ...b, pago: pagoPublico(pago, `/api/cobros/qr?bono=${b.id}`), qr_key: pg?.qr_key || null, clubes: por, asignados: s('asignados'), vendidos: s('vendidos'), total: s('total'), pagado: s('pagado') };
     }) });
   });
   r.post('/api/distrito/bonos', 'manager', async (c) => {
-    const d = await distritoOError(c), o = camposBono(await readJson(c.req)), t = Date.now();
-    const x = await c.env.DB.prepare('INSERT INTO ro_bonos (business_id, distrito, nombre, valor, vence, notas, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(c.businessId, d.clave, o.nombre, o.valor, o.vence || null, o.notas || null, t, t).run();
+    const d = await distritoOError(c), o = camposBono(await readJson(c.req), false, c.businessId), t = Date.now();
+    const x = await c.env.DB.prepare('INSERT INTO ro_bonos (business_id, distrito, nombre, valor, vence, notas, reparto, cantidad, pago, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(c.businessId, d.clave, o.nombre, o.valor, o.vence || null, o.notas || null, o.reparto, o.cantidad, o.pago || null, t, t).run();
     await audit(c, `Creó el bono «${o.nombre}»`, { modulo: 'distrito' });
     return json({ id: x.meta.last_row_id, ...o }, 201);
   });
   r.patch('/api/distrito/bonos/:id', 'manager', async (c) => {
-    const d = await distritoOError(c), b = await bonoOr404(c, d, c.params.id), o = camposBono(await readJson(c.req), true), ks = Object.keys(o);
+    const d = await distritoOError(c), b = await bonoOr404(c, d, c.params.id), o = camposBono(await readJson(c.req), true, c.businessId), ks = Object.keys(o);
     if (ks.length) await c.env.DB.prepare(`UPDATE ro_bonos SET ${ks.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).bind(...ks.map((k) => o[k]), Date.now(), b.id).run();
     return json({ ok: true });
   });
@@ -109,12 +119,7 @@ export function routes(r) {
     return json({ ok: true });
   });
   // Lado del club: sus bonos (solo lectura; los registra el distrito)
-  r.get('/api/club/bonos', 'tenant', async (c) => {
-    const { clave: codigo } = await distritoDe(c.env, c.businessId);
-    const rows = await all(c.env, `SELECT b.id, b.nombre, b.valor, b.vence, b.notas, x.asignados, x.vendidos, x.pagado FROM ro_bonos_clubes x JOIN ro_bonos b ON b.id = x.bono_id
-      WHERE x.club_id = ? AND b.distrito = ? AND x.asignados > 0 ORDER BY b.created_at DESC`, c.businessId, codigo);
-    return json({ rows: rows.map((b) => ({ ...b, total: b.asignados * b.valor, saldo: Math.max(0, b.asignados * b.valor - b.pagado) })) });
-  });
+  r.get('/api/club/bonos', 'tenant', async (c) => json({ rows: await bonosClub(c.env, c.businessId) }));
 
   /* ---------- Metas del año rotario ---------- */
   r.get('/api/distrito/metas', 'tenant', async (c) => {

@@ -76,32 +76,172 @@ DW.ready.then(async (me) => {
     if (!t.categorias.length) view.querySelector('[data-g4]').innerHTML = '<p class="small text-body-secondary mb-0">Sin inversiones registrados este año.</p>';
   }
 
+  /* ---------- Cobros del distrito (cuotas y bonos): tarjeta visual por cobro, todos los clubes y ficha de pago ---------- */
+  const pct = (n) => `${n}%`;
+  const chipsDesc = (ds) => [...(ds?.pronto || []).map((x) => `<span class="ro-dchip"><i class="bi bi-lightning-charge"></i>${pct(x.pct)} si paga todo antes del ${C.day(x.hasta)}</span>`),
+    ...(ds?.planes || []).map((x) => `<span class="ro-dchip"><i class="bi bi-calendar3"></i>${x.cuotas} cuotas${x.pct ? ` · ${pct(x.pct)} menos` : ''}</span>`)].join('');
+  const kpiCobros = (el, rows, tit) => { const tot = rows.reduce((t, q) => t + q.total, 0), pag = rows.reduce((t, q) => t + q.pagado, 0), cl = rows.flatMap((q) => q.clubes);
+    C.kpis(el, [[`${tit}: a recaudar`, C.money(tot), `${rows.length} ${rows.length === 1 ? 'cobro' : 'cobros'}`, 'bi-cash-stack'], ['Recaudado', C.money(pag), tot ? `${Math.round((pag / tot) * 100)}% del total` : '—', 'bi-check2-circle'],
+      ['Por recaudar', C.money(Math.max(0, tot - pag)), `${cl.filter((x) => x.estado === 'vencida').length} cobros vencidos en clubes`, 'bi-hourglass-split'], ['Clubes', C.num(t.clubes.length), `Distrito ${esc(t.codigo)}`, 'bi-diagram-3']]); };
   async function pintarCuotas() {
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     const d = await api('/api/distrito/cuotas');
-    view.innerHTML = `<p class="small text-body-secondary">Dos tipos: <b>por socio</b> (cuota distrital: valor × socios activos del club) y <b>por club</b> (cuota de representación: el mismo valor fijo para cada club). A cada club le llega como obligación en <b>Finanzas → Proyectado</b> y desde ahí la paga.</p>
-      ${d.rows.length ? d.rows.map((q) => `<div class="dw-card mb-3"><div class="d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-bank fs-4" style="color:var(--dw-p)"></i>
-          <div class="flex-grow-1"><b>${esc(q.nombre)}</b><div class="small text-body-secondary">${q.tipo === 'por_club' ? `<span class="badge text-bg-light me-1">Representación</span>${C.money(q.valor_socio)} por club` : `${C.money(q.valor_socio)} por socio`} · vence ${C.day(q.vence)} · año ${q.anio}-${q.anio + 1}${q.notas ? ` · ${esc(q.notas)}` : ''}</div></div>
-          <div class="text-end"><b>${C.money(q.pagado)}</b> <span class="small text-body-secondary">de ${C.money(q.total)}</span><div class="small">${q.pagaron}/${q.clubes.length} clubes pagaron</div></div>
-          ${M ? `<button class="btn btn-sm btn-light" data-ed="${q.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-del="${q.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>
-        ${C.meter(q.pagado, q.total)}
-        <details class="mt-2"><summary class="small">Ver por club</summary>${window.App.table([{ label: 'Club', main: true, html: (x) => esc(x.club) }, { label: 'Socios', cls: 'text-end', html: (x) => x.socios },
-          { label: 'Le toca', cls: 'text-end', html: (x) => C.money(x.total) }, { label: 'Pagado', cls: 'text-end', html: (x) => C.money(x.pagado) }, { label: 'Estado', html: (x) => C.chip(...EST[x.estado]) }], q.clubes)}</details></div>`).join('')
-      : window.App.empty('bi-bank', 'Aún no hay cuotas distritales.')}`;
-    view.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => editar(d.rows.find((q) => String(q.id) === b.dataset.ed))));
+    cobrosCache.cuotas = d.rows;
+    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div>
+      <p class="small text-body-secondary"><b>Por socio</b> (valor × socios activos que pagan cuota) o <b>por club</b> (valor fijo, p. ej. representación). Puedes dar <b>descuento por pronto pago</b> (si el club paga todo antes de una fecha; pasada la fecha se cobra completo) y <b>planes de pago en cuotas</b>. A cada club le llega en <b>Finanzas → Caja menor → Obligaciones</b>, con tus datos de pago, y la paga desde ahí.</p>
+      ${d.rows.length ? d.rows.map((q) => `<div class="dw-card mb-3 ro-cobro">
+        <div class="d-flex align-items-start gap-3 flex-wrap"><span class="ro-cobro__i"><i class="bi bi-bank"></i></span>
+          <div class="flex-grow-1 min-w-0"><div class="d-flex align-items-center gap-2 flex-wrap"><b class="fs-6">${esc(q.nombre)}</b>${q.tipo === 'por_club' ? '<span class="badge text-bg-light border">Por club</span>' : '<span class="badge text-bg-light border">Por socio</span>'}</div>
+            <div class="small text-body-secondary">${C.money(q.valor_socio)} ${q.tipo === 'por_club' ? 'por club' : 'por socio'} · vence ${C.day(q.vence)} · año ${q.anio}-${q.anio + 1}${q.notas ? ` · ${esc(q.notas)}` : ''}</div>
+            ${chipsDesc(q.descuentos) ? `<div class="d-flex flex-wrap gap-1 mt-2">${chipsDesc(q.descuentos)}</div>` : ''}</div>
+          <div class="text-end"><div class="ro-cobro__v">${C.money(q.pagado)}</div><div class="small text-body-secondary">de ${C.money(q.total)}${q.base > q.total ? ` <s>${C.money(q.base)}</s>` : ''}</div><div class="small"><b>${q.pagaron}</b>/${q.clubes.length} clubes pagaron</div></div>
+          ${M ? `<div class="d-flex gap-1"><button class="btn btn-sm btn-light" data-ed="${q.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-del="${q.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button></div>` : ''}</div>
+        <div class="mt-2">${C.meter(q.pagado, q.total)}</div>
+        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="table-responsive"><table class="table table-sm align-middle mb-0 ro-tcobro"><thead><tr><th>Club</th><th class="text-end">Socios</th><th class="text-end">Valor</th><th class="text-end">A pagar</th><th class="text-end">Pagado</th><th>Plan</th><th>Estado</th></tr></thead>
+          <tbody>${q.clubes.map((x) => `<tr><td class="fw-semibold">${esc(x.club)}</td><td class="text-end">${q.tipo === 'por_club' ? '—' : x.socios}</td><td class="text-end">${C.money(x.base)}</td>
+            <td class="text-end">${C.money(x.total)}${x.descuento ? `<div class="small text-success" title="${esc(x.motivo || '')}">−${C.money(x.descuento)}</div>` : ''}</td><td class="text-end">${C.money(x.pagado)}${x.total ? `<div style="min-width:70px">${C.meter(x.pagado, x.total)}</div>` : ''}</td>
+            <td class="small">${x.plan ? `${x.plan.cuotas} cuotas` : 'Contado'}</td><td>${C.chip(...EST[x.estado])}</td></tr>`).join('') || '<tr><td colspan="7" class="small text-body-secondary">Aún no hay clubes en el distrito.</td></tr>'}</tbody></table></div></div>
+          <div class="col-xl-4">${q.pago ? RO.fichaPago(q.pago, { compacta: true }) : `<div class="ro-pago small text-body-secondary"><i class="bi bi-exclamation-circle me-1"></i>Sin datos de pago: ${M ? 'edita la cuota y agrega el QR, la llave o la cuenta.' : 'el distrito aún no los pone.'}</div>`}</div></div></div>`).join('')
+      : `<div class="dw-card">${window.App.empty('bi-bank', 'Aún no hay cuotas distritales.')}</div>`}`;
+    if (d.rows.length) kpiCobros(view.querySelector('[data-k]'), d.rows, 'Cuotas');
+    view.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => editarCobro('cuota', d.rows.find((q) => String(q.id) === b.dataset.ed))));
     view.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
       if (!(await window.App.confirm({ title: '¿Borrar esta cuota?', text: 'Deja de aparecer en las finanzas de los clubes.', ok: 'Borrar' }))) return;
       try { await api(`/api/distrito/cuotas/${b.dataset.del}`, { method: 'DELETE' }); toast('Borrada'); pintarCuotas(); } catch (x) { toast(x.message, false); }
     }));
   }
-  async function editar(q) {
-    const out = await C.form({ title: q ? 'Editar cuota' : 'Nueva cuota', fields: [{ k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true },
-      { k: 'tipo', label: 'Tipo', type: 'select', options: [['por_socio', 'Por socio activo (cuota distrital)'], ['por_club', 'Fija por club (cuota de representación)']] }, { k: 'valor_socio', label: 'Valor (por socio o por club, según el tipo)', type: 'money', required: true }, { k: 'vence', label: 'Vence', type: 'date', required: true }, { k: 'notas', label: 'Notas', type: 'long' }],
-      values: q || { nombre: `Cuota distrital ${t.nombre_anio}`, tipo: 'por_socio' }, okText: 'Guardar' });
-    if (!out) return;
-    try { await api(q ? `/api/distrito/cuotas/${q.id}` : '/api/distrito/cuotas', { method: q ? 'PATCH' : 'POST', body: out }); toast('Guardada: ya la ven los clubes'); await cargar(); } catch (x) { toast(x.message, false); }
-  }
+  const editar = (q) => editarCobro('cuota', q);
+  const cobrosCache = { cuotas: [], bonos: [] };
 
+  // Editor en la página (cuota o bono): datos, descuentos (solo cuota), reparto (solo bono) y datos de pago con QR; vista previa de cómo le llega al club
+  async function editarCobro(kind, x, guardado = null) {
+    const cuota = kind === 'cuota';
+    if (!cobrosCache.cuotas.length && !cobrosCache.bonos.length) { [cobrosCache.cuotas, cobrosCache.bonos] = await Promise.all([api('/api/distrito/cuotas').then((r) => r.rows).catch(() => []), api('/api/distrito/bonos').then((r) => r.rows).catch(() => [])]); }
+    const previo = [...cobrosCache.cuotas, ...cobrosCache.bonos].filter((y) => y.pago).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))[0];
+    const pagoDe = (y) => (y?.pago ? { ...y.pago, qr_key: y.qr_key || '', qr_ver: y.pago.qr || '' } : null);
+    const st = guardado || (cuota ? { nombre: x?.nombre || `Cuota distrital ${t.nombre_anio}`, tipo: x?.tipo || 'por_socio', valor_socio: x?.valor_socio || '', vence: x?.vence || '', notas: x?.notas || '',
+      pronto: (x?.descuentos?.pronto || []).map((y) => ({ ...y })), planes: (x?.descuentos?.planes || []).map((y) => ({ ...y })) }
+      : { nombre: x?.nombre || '', valor: x?.valor || '', vence: x?.vence || '', notas: x?.notas || '', reparto: x?.reparto || 'por_club', cantidad: x?.cantidad || 6 });
+    if (!guardado) st.pago = pagoDe(x) || (x ? {} : { ...(pagoDe(previo) || {}) });
+    const ejemplo = Math.max(1, Math.round((t.totales?.socios || 20) / Math.max(1, t.clubes.length || 1))) || 20;
+    acciones.innerHTML = ''; view.onclick = null; view.oninput = null; view.onchange = null;
+    const salir = () => { view.onclick = null; view.oninput = null; view.onchange = null; tab = cuota ? 'cuotas' : 'bonos'; pintar(); };
+    const fila = (k, i, a, b) => `<div class="d-flex gap-2 align-items-center mb-1" data-fila="${k}" data-i="${i}">${a}${b}<button type="button" class="btn btn-sm btn-light" data-qfila="${k}" data-i="${i}" aria-label="Quitar"><i class="bi bi-x-lg"></i></button></div>`;
+    const inp = (k, v, attrs) => `<input class="form-control form-control-sm" data-c="${k}" value="${esc(v ?? '')}" ${attrs}>`;
+    const descHtml = () => `<div class="ro-h">Descuentos</div>
+      <div class="small fw-semibold mb-1"><i class="bi bi-lightning-charge me-1"></i>Pronto pago</div><div class="small text-body-secondary mb-1">Si el club paga TODO antes de la fecha, tiene el descuento. Pasada la fecha, se cobra completo.</div>
+      ${st.pronto.map((y, i) => fila('pronto', i, `<span class="small text-nowrap">Hasta</span>${inp('hasta', y.hasta, 'type="date" style="max-width:170px"')}`, `${inp('pct', y.pct, 'type="number" min="1" max="90" style="max-width:80px" aria-label="Porcentaje"')}<span class="small">%</span>`)).join('')}
+      <button type="button" class="btn btn-sm btn-link px-0" data-afila="pronto"><i class="bi bi-plus-lg me-1"></i>Fecha de pronto pago</button>
+      <div class="small fw-semibold mb-1 mt-2"><i class="bi bi-calendar3 me-1"></i>Pagar en cuotas</div><div class="small text-body-secondary mb-1">El club elige el plan; las cuotas son mensuales y la última cae en la fecha de vencimiento.</div>
+      ${st.planes.map((y, i) => fila('planes', i, `${inp('cuotas', y.cuotas, 'type="number" min="2" max="12" style="max-width:80px" aria-label="Número de cuotas"')}<span class="small text-nowrap">cuotas con</span>`, `${inp('pct', y.pct, 'type="number" min="0" max="90" style="max-width:80px" aria-label="Porcentaje"')}<span class="small text-nowrap">% menos</span>`)).join('')}
+      <button type="button" class="btn btn-sm btn-link px-0" data-afila="planes"><i class="bi bi-plus-lg me-1"></i>Plan de cuotas</button>`;
+    const P = (k, l, ph = '') => `<div class="col-sm-6"><label class="form-label small mb-1">${l}</label><input class="form-control form-control-sm" data-p="${k}" value="${esc(st.pago[k] || '')}" placeholder="${ph}"></div>`;
+    view.innerHTML = `<div class="d-flex align-items-center gap-2 mb-3"><button type="button" class="btn btn-light btn-sm rounded-circle" data-volver aria-label="Volver"><i class="bi bi-arrow-left"></i></button>
+        <h2 class="h5 mb-0">${x ? 'Editar' : 'Nuevo'} ${cuota ? 'cuota' : 'bono'}</h2><button type="button" class="btn btn-primary ms-auto" data-guardar><i class="bi bi-check-lg me-1"></i>Guardar</button></div>
+      <div class="row g-3"><div class="col-lg-7"><div class="dw-card">
+        <div class="row g-2"><div class="col-12"><label class="form-label small mb-1" for="cb_n">Nombre</label><input class="form-control" id="cb_n" data-s="nombre" value="${esc(st.nombre)}" placeholder="${cuota ? 'Cuota distrital' : 'Rifa conferencia distrital'}"></div>
+          ${cuota ? `<div class="col-sm-6"><label class="form-label small mb-1" for="cb_t">Tipo</label><select class="form-select" id="cb_t" data-s="tipo"><option value="por_socio" ${st.tipo === 'por_socio' ? 'selected' : ''}>Por socio activo</option><option value="por_club" ${st.tipo === 'por_club' ? 'selected' : ''}>Fija por club</option></select></div>
+            <div class="col-sm-6"><label class="form-label small mb-1" for="cb_v">Valor ${st.tipo === 'por_club' ? 'por club' : 'por socio'}</label><input class="form-control" id="cb_v" type="number" min="0" step="1000" data-s="valor_socio" value="${esc(st.valor_socio)}"></div>`
+          : `<div class="col-sm-6"><label class="form-label small mb-1" for="cb_r">Cómo se reparten</label><select class="form-select" id="cb_r" data-s="reparto"><option value="por_club" ${st.reparto === 'por_club' ? 'selected' : ''}>Los mismos a cada club</option><option value="por_socio" ${st.reparto === 'por_socio' ? 'selected' : ''}>Por cada socio del club</option><option value="manual" ${st.reparto === 'manual' ? 'selected' : ''}>Los asigno a mano</option></select></div>
+            <div class="col-sm-3"><label class="form-label small mb-1" for="cb_c">Bonos ${st.reparto === 'por_socio' ? 'por socio' : 'por club'}</label><input class="form-control" id="cb_c" type="number" min="0" data-s="cantidad" value="${esc(st.cantidad)}" ${st.reparto === 'manual' ? 'disabled' : ''}></div>
+            <div class="col-sm-3"><label class="form-label small mb-1" for="cb_v">Valor de cada bono</label><input class="form-control" id="cb_v" type="number" min="0" step="500" data-s="valor" value="${esc(st.valor)}"></div>`}
+          <div class="col-sm-6"><label class="form-label small mb-1" for="cb_f">${cuota ? 'Vence' : 'Fecha límite'}</label><input class="form-control" id="cb_f" type="date" data-s="vence" value="${esc(st.vence)}"></div>
+          <div class="col-12"><label class="form-label small mb-1" for="cb_o">Notas para los clubes</label><textarea class="form-control" id="cb_o" rows="2" data-s="notas">${esc(st.notas)}</textarea></div></div>
+        ${cuota ? descHtml() : ''}
+        <div class="ro-h">Datos de pago</div><div class="small text-body-secondary mb-2">Los ve cada club junto al cobro, con botón de copiar.${!x && previo ? ' Se copiaron los del último cobro: cámbialos si este va a otra cuenta o llave.' : ''}</div>
+        <div class="row g-2">${P('llave', 'Llave Bre-B', '@llave, celular o correo')}${P('titular', 'Titular', 'Distrito 4271')}${P('banco', 'Banco')}${P('tipo_cuenta', 'Tipo de cuenta', 'Ahorros / Corriente')}${P('numero', 'Número de cuenta')}${P('documento', 'NIT o documento')}
+          <div class="col-12"><label class="form-label small mb-1">Instrucciones</label><textarea class="form-control form-control-sm" rows="2" data-p="instrucciones" placeholder="p. ej. Envía el comprobante al tesorero distrital">${esc(st.pago.instrucciones || '')}</textarea></div>
+          <div class="col-12 d-flex gap-2 align-items-center"><button type="button" class="btn btn-outline-primary btn-sm" data-qr><i class="bi bi-qr-code me-1"></i>${st.pago.qr_key ? 'Cambiar QR' : 'Subir QR'}</button>${st.pago.qr_key ? '<button type="button" class="btn btn-light btn-sm" data-qrq>Quitar QR</button>' : ''}<span class="small text-body-secondary">Imagen del QR de tu banco o Bre-B</span></div></div>
+        <div class="small text-danger mt-2" data-err></div></div></div>
+        <div class="col-lg-5"><div style="position:sticky;top:76px"><div class="small text-body-secondary mb-1"><i class="bi bi-eye me-1"></i>Así le llega a un club${cuota && st.tipo === 'por_socio' ? ` de ${ejemplo} socios` : ''}</div><div class="dw-card" data-prev></div></div></div></div>`;
+    const prev = view.querySelector('[data-prev]');
+    const pintarPrev = () => {
+      const pago = { ...st.pago, qr: st.pago.qr_ver || null };
+      const tienePago = ['llave', 'numero', 'banco', 'titular', 'instrucciones', 'qr_key'].some((k) => st.pago[k]);
+      if (cuota) {
+        const base = (Number(st.valor_socio) || 0) * (st.tipo === 'por_socio' ? ejemplo : 1), rd = (n) => Math.round(n / 100) * 100;
+        prev.innerHTML = `<div class="d-flex align-items-center gap-2"><i class="bi bi-bank fs-4" style="color:var(--dw-p)"></i><b class="flex-grow-1">${esc(st.nombre || 'Cuota')}</b>${st.vence ? `<span class="small text-body-secondary">vence ${C.day(st.vence)}</span>` : ''}</div>
+          <div class="ro-cobro__v mt-1">${C.money(base)}</div><div class="small text-body-secondary mb-2">${st.tipo === 'por_socio' ? `${C.money(Number(st.valor_socio) || 0)} × ${ejemplo} socios` : 'valor fijo por club'}</div>
+          ${st.pronto.filter((y) => y.hasta && y.pct).map((y) => `<div class="ro-oferta"><i class="bi bi-lightning-charge-fill"></i><span>Paga <b>${C.money(rd(base * (1 - y.pct / 100)))}</b> antes del ${C.day(y.hasta)} y ahorra ${C.money(base - rd(base * (1 - y.pct / 100)))}</span></div>`).join('')}
+          ${st.planes.filter((y) => y.cuotas >= 2).map((y) => `<div class="ro-oferta ro-oferta--b"><i class="bi bi-calendar3"></i><span>O en <b>${y.cuotas} cuotas de ${C.money(rd(rd(base * (1 - (y.pct || 0) / 100)) / y.cuotas))}</b>${y.pct ? ` (${y.pct}% menos)` : ''}</span></div>`).join('')}
+          <div class="mt-2">${tienePago ? RO.fichaPago(pago, { compacta: true }) : '<div class="small text-body-secondary">Sin datos de pago.</div>'}</div>`;
+      } else {
+        const n = st.reparto === 'por_socio' ? (Number(st.cantidad) || 0) * ejemplo : st.reparto === 'por_club' ? Number(st.cantidad) || 0 : 0, v = Number(st.valor) || 0;
+        prev.innerHTML = `<div class="d-flex align-items-center gap-2"><i class="bi bi-ticket-perforated fs-4" style="color:var(--dw-p)"></i><b class="flex-grow-1">${esc(st.nombre || 'Bono')}</b>${st.vence ? `<span class="small text-body-secondary">hasta ${C.day(st.vence)}</span>` : ''}</div>
+          ${st.reparto === 'manual' ? '<div class="small text-body-secondary mt-2">Asignas a cada club cuántos le tocan, en la lista de Bonos.</div>'
+            : `<div class="ro-bonos mt-2"><span><b>${C.num(n)}</b>bonos${st.reparto === 'por_socio' ? ` (${st.cantidad} × ${ejemplo} socios)` : ''}</span><span>×</span><span><b>${C.money(v)}</b>cada uno</span><span>=</span><span class="t"><b>${C.money(n * v)}</b>total</span></div>`}
+          <div class="mt-2">${tienePago ? RO.fichaPago(pago, { compacta: true }) : '<div class="small text-body-secondary">Sin datos de pago.</div>'}</div>`;
+      }
+    };
+    pintarPrev();
+    view.oninput = (ev) => {
+      const s = ev.target.dataset.s, p = ev.target.dataset.p, cc = ev.target.dataset.c;
+      if (s) st[s] = ev.target.value;
+      else if (p) st.pago[p] = ev.target.value;
+      else if (cc) { const f = ev.target.closest('[data-fila]'); st[f.dataset.fila][+f.dataset.i][cc] = ev.target.type === 'number' ? Number(ev.target.value) : ev.target.value; }
+      pintarPrev();
+    };
+    view.onchange = (ev) => { if (['tipo', 'reparto'].includes(ev.target.dataset.s)) { st[ev.target.dataset.s] = ev.target.value; rehacer(); } };
+    const rehacer = () => editarCobro(kind, x, st);
+    view.onclick = async (ev) => {
+      const b = ev.target.closest('button'); if (!b) return;
+      if (b.dataset.volver != null) return salir();
+      if (b.dataset.afila) { st[b.dataset.afila].push(b.dataset.afila === 'pronto' ? { hasta: '', pct: 10 } : { cuotas: 3, pct: 0 }); return rehacer(); }
+      if (b.dataset.qfila) { st[b.dataset.qfila].splice(+b.dataset.i, 1); return rehacer(); }
+      if (b.dataset.qrq != null) { st.pago.qr_key = ''; st.pago.qr_ver = ''; return rehacer(); }
+      if (b.dataset.qr != null) {
+        const f = await RO.elegirArchivo('image/png,image/jpeg,image/webp'); if (!f) return;
+        try { st.pago.qr_key = (await RO.subir('/api/distrito/cobros/qr', f)).key; st.pago.qr_ver = URL.createObjectURL(f); toast('QR listo: guarda para que lo vean los clubes'); rehacer(); } catch (er) { toast(er.message, false); }
+        return;
+      }
+      if (b.dataset.guardar != null) {
+        const { qr_ver, ...pago } = st.pago;
+        const body = cuota ? { nombre: st.nombre, tipo: st.tipo, valor_socio: Number(st.valor_socio) || 0, vence: st.vence, notas: st.notas, descuentos: { pronto: st.pronto, planes: st.planes }, pago }
+          : { nombre: st.nombre, valor: Number(st.valor) || 0, vence: st.vence || null, notas: st.notas, reparto: st.reparto, cantidad: Number(st.cantidad) || 0, pago };
+        b.disabled = true;
+        try {
+          await api(cuota ? (x ? `/api/distrito/cuotas/${x.id}` : '/api/distrito/cuotas') : (x ? `/api/distrito/bonos/${x.id}` : '/api/distrito/bonos'), { method: x ? 'PATCH' : 'POST', body });
+          toast(cuota ? 'Cuota guardada: ya la ven los clubes en su Caja menor' : 'Bono guardado: ya lo ven los clubes'); cobrosCache.cuotas = []; cobrosCache.bonos = [];
+          if (cuota) await cargar(); else salir();
+        } catch (er) { view.querySelector('[data-err]').textContent = er.message; toast(er.message, false); b.disabled = false; }
+      }
+    };
+  }
+  async function pintarBonos() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    bonos = (await api('/api/distrito/bonos')).rows;
+    cobrosCache.bonos = bonos;
+    const REP = (b) => (b.reparto === 'por_socio' ? `${b.cantidad} por socio` : b.reparto === 'por_club' ? `${b.cantidad} por club` : 'asignados a mano');
+    view.innerHTML = `<div class="dw-grid dw-grid--kpi mb-3" data-k></div>
+      <p class="small text-body-secondary">Bonos o boletas del distrito (rifas, eventos, campañas): <b>los mismos a cada club</b>, <b>por cada socio</b> o asignados a mano, a un valor por bono. Cada club los ve en su <b>Caja menor → Obligaciones</b> con tus datos de pago y los paga desde ahí (lo que pague se suma solo).</p>
+      ${bonos.length ? bonos.map((b) => `<div class="dw-card mb-3 ro-cobro"><div class="d-flex align-items-start gap-3 flex-wrap"><span class="ro-cobro__i"><i class="bi bi-ticket-perforated"></i></span>
+          <div class="flex-grow-1 min-w-0"><b class="fs-6">${esc(b.nombre)}</b><div class="small text-body-secondary">${C.money(b.valor)} cada uno · ${esc(REP(b))}${b.vence ? ` · hasta ${C.day(b.vence)}` : ''}${b.notas ? ` · ${esc(b.notas)}` : ''}</div>
+            <div class="ro-bonos mt-2"><span><b>${C.num(b.asignados)}</b>bonos</span><span>×</span><span><b>${C.money(b.valor)}</b>cada uno</span><span>=</span><span class="t"><b>${C.money(b.total)}</b>total</span></div></div>
+          <div class="text-end"><div class="ro-cobro__v">${C.money(b.pagado)}</div><div class="small text-body-secondary">de ${C.money(b.total)}</div><div class="small">${C.num(b.vendidos)}/${C.num(b.asignados)} vendidos</div></div>
+          ${M ? `<div class="d-flex gap-1"><button class="btn btn-sm btn-light" data-bed="${b.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-bdel="${b.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button></div>` : ''}</div>
+        <div class="mt-2">${C.meter(b.pagado, b.total)}</div>
+        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="table-responsive"><table class="table table-sm align-middle mb-0 ro-tcobro"><thead><tr><th>Club</th><th class="text-end">Bonos</th><th class="text-end">Vendidos</th><th class="text-end">Total</th><th class="text-end">Pagado</th><th></th></tr></thead>
+          <tbody>${b.clubes.map((x) => `<tr><td class="fw-semibold">${esc(x.club)}</td><td class="text-end">${C.num(x.asignados)}${b.reparto === 'por_socio' ? `<div class="small text-body-secondary">${x.socios} socios</div>` : ''}</td><td class="text-end">${C.num(x.vendidos)}</td><td class="text-end">${C.money(x.total)}</td>
+            <td class="text-end">${C.money(x.pagado)}${x.total ? `<div style="min-width:70px">${C.meter(x.pagado, x.total)}</div>` : ''}</td><td class="text-end">${M ? `<button class="btn btn-sm btn-light" data-basig="${b.id}" data-bclub="${esc(x.club_id)}" aria-label="Registrar"><i class="bi bi-pencil"></i></button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>
+          <div class="col-xl-4">${b.pago ? RO.fichaPago(b.pago, { compacta: true }) : '<div class="ro-pago small text-body-secondary"><i class="bi bi-exclamation-circle me-1"></i>Sin datos de pago.</div>'}</div></div></div>`).join('')
+      : `<div class="dw-card">${window.App.empty('bi-ticket-perforated', 'Aún no hay bonos del distrito.')}</div>`}`;
+    if (bonos.length) kpiCobros(view.querySelector('[data-k]'), bonos.map((b) => ({ ...b, clubes: b.clubes.map((x) => ({ ...x, estado: x.saldo > 0 && b.vence && b.vence < C.todayCo() ? 'vencida' : '' })) })), 'Bonos');
+    view.querySelectorAll('[data-bed]').forEach((x) => (x.onclick = () => editarBono(bonos.find((b) => String(b.id) === x.dataset.bed))));
+    view.querySelectorAll('[data-bdel]').forEach((x) => (x.onclick = async () => {
+      if (!(await window.App.confirm({ title: '¿Borrar este bono?', text: 'Deja de aparecer en los clubes.', ok: 'Borrar' }))) return;
+      try { await api(`/api/distrito/bonos/${x.dataset.bdel}`, { method: 'DELETE' }); toast('Borrado'); pintarBonos(); } catch (e) { toast(e.message, false); }
+    }));
+    view.querySelectorAll('[data-basig]').forEach((x) => (x.onclick = async (e) => {
+      e.stopPropagation();
+      const b = bonos.find((y) => String(y.id) === x.dataset.basig), k = b.clubes.find((y) => y.club_id === x.dataset.bclub);
+      const out = await C.form({ title: `${b.nombre} · ${k.club}`, fields: [...(b.reparto === 'manual' ? [{ k: 'asignados', label: 'Asignados', type: 'int' }] : []), { k: 'vendidos', label: 'Vendidos', type: 'int' },
+        { k: 'pagado', label: 'Pagado al distrito (fuera de la app)', type: 'money', hint: k.pagado_caja ? `Aparte, el club ya registró ${C.money(k.pagado_caja)} desde su caja.` : 'Lo que el club pague desde su Caja menor se suma solo.' }],
+      values: { ...k, pagado: k.pagado_distrito }, okText: 'Guardar' });
+      if (!out) return;
+      try { await api(`/api/distrito/bonos/${b.id}/clubes/${encodeURIComponent(k.club_id)}`, { method: 'PUT', body: { asignados: k.asignados, ...out } }); toast('Guardado'); pintarBonos(); } catch (er) { toast(er.message, false); }
+    }));
+  }
+  const editarBono = (b) => editarCobro('bono', b);
   async function detalle(id) {
     const { el } = modal('<div class="modal-body p-4 text-body-secondary">Cargando…</div>', { size: 'modal-lg' });
     let d; try { d = await api(`/api/distrito/clubes/${encodeURIComponent(id)}`); } catch (x) { el.querySelector('.modal-body').textContent = x.message; return; }
@@ -164,11 +304,12 @@ DW.ready.then(async (me) => {
         ${rk.rows.length ? window.App.table([{ label: '#', html: (x) => ['🥇', '🥈', '🥉'][x.puesto - 1] || x.puesto }, { label: 'Club', main: true, html: (x) => esc(x.club) }, { label: 'Puntos', cls: 'text-end', html: (x) => `<b>${x.puntos}</b>` },
             { label: 'Partidas', cls: 'text-end', html: (x) => x.partidas }, { label: 'Socios', cls: 'text-end', html: (x) => x.socios }, { label: 'Promedio', cls: 'text-end', html: (x) => x.promedio }], rk.rows)
           : window.App.empty('bi-trophy', 'Aún ningún club ha terminado una partida de un reto. Crea un reto y los clubes lo verán en Juegos.')}
+        ${rk.jugadores?.length ? `<div class="ro-h">Mejores jugadores del reto</div>${rk.jugadores.map((j) => `<div class="d-flex gap-2 align-items-center py-1 border-bottom small"><b style="width:22px">${['🥇', '🥈', '🥉'][j.puesto - 1] || j.puesto}</b><span class="flex-grow-1">${esc(j.nombre)} <span class="text-body-secondary">· ${esc(j.club)}</span></span><b>${j.puntos} pts</b></div>`).join('')}` : ''}
         <div class="small text-body-secondary mt-2">Suman las partidas terminadas «del reto» en cada club. Promedio = puntos por socio que jugó (para comparar clubes grandes y pequeños).</div></div></div>
       <div class="col-lg-5"><div class="dw-card h-100"><div class="ro-h mt-0">Preguntas y palabras del distrito</div><p class="small text-body-secondary">Lo que añadas aquí llega a todos los clubes del distrito y es lo que se usa en los retos (junto con el banco de la app). Cada presidencia puede apagarlo en su club, pero no en los retos.</p>
         <div class="d-grid gap-2">${CONT.map(([k, l]) => `<button class="btn btn-outline-primary text-start" data-cont="${k}">${J[k]?.emoji || '🎮'} ${l}</button>`).join('')}</div></div></div>
       <div class="col-12"><div class="dw-card"><div class="ro-h mt-0">Retos del distrito</div>
-        ${rt.rows.length ? window.App.table([{ label: 'Reto', main: true, html: (r) => `${J[r.juego]?.emoji || ''} <b>${esc(r.nombre)}</b><div class="small text-body-secondary fw-normal">${esc(J[r.juego]?.nombre || r.juego)}${r.descripcion ? ` · ${esc(r.descripcion)}` : ''}</div>` },
+        ${rt.rows.length ? window.App.table([{ label: 'Reto', main: true, html: (r) => `${J[r.juego]?.emoji || ''} <b>${esc(r.nombre)}</b><div class="small text-body-secondary fw-normal">${esc(J[r.juego]?.nombre || r.juego)} · gana ${r.gana === 'promedio' ? 'el mejor promedio por socio' : 'el club con más puntos'}${r.premio ? ` · 🏆 ${esc(r.premio)}` : ''}${r.descripcion ? ` · ${esc(r.descripcion)}` : ''}</div>` },
             { label: 'Fechas', html: (r) => `${C.day(r.desde)} → ${C.day(r.hasta)}` }, { label: 'Estado', html: (r) => C.chip(...estado(r)) }, { label: 'Partidas', cls: 'text-end', html: (r) => r.partidas },
             { label: '', cls: 'text-end text-nowrap', html: (r) => (M ? `<button class="btn btn-sm btn-light" data-reditar="${r.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-light" data-ronoff="${r.id}">${r.activo ? 'Desactivar' : 'Activar'}</button>${r.partidas ? '' : ` <button class="btn btn-sm btn-light" data-rborrar="${r.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>`}` : '') }], rt.rows)
           : window.App.empty('bi-calendar-event', 'Aún no hay retos. Un reto es un juego en unas fechas: los clubes lo juegan y suman puntos al ranking.')}</div></div></div>`;
@@ -183,7 +324,9 @@ DW.ready.then(async (me) => {
   async function editarReto(r, juegos) {
     const out = await C.form({ title: r ? 'Editar reto' : 'Nuevo reto del distrito', fields: [{ k: 'nombre', label: 'Nombre del reto', type: 'text', required: true, full: true, placeholder: 'Trivia distrital de diciembre' },
       { k: 'juego', label: 'Juego', type: 'select', options: juegos.map((j) => [j.id, `${j.emoji} ${j.nombre}`]), required: true }, { k: 'desde', label: 'Desde', type: 'date', required: true }, { k: 'hasta', label: 'Hasta', type: 'date', required: true },
-      { k: 'descripcion', label: 'Indicaciones para los clubes', type: 'long' }], values: r || { juego: 'trivia', desde: C.todayCo() }, okText: r ? 'Guardar' : 'Crear reto' });
+      { k: 'gana', label: 'Gana el club con', type: 'select', options: [['puntos', 'Más puntos en total'], ['promedio', 'Mejor promedio por socio (justo con clubes pequeños)']] },
+      { k: 'premio', label: 'Premio', type: 'text', placeholder: 'p. ej. Reconocimiento en la conferencia distrital' },
+      { k: 'descripcion', label: 'Indicaciones para los clubes', type: 'long' }], values: r || { juego: 'trivia', desde: C.todayCo(), gana: 'puntos' }, okText: r ? 'Guardar' : 'Crear reto' });
     if (!out) return;
     try { await api(r ? `/api/distrito/juegos/retos/${r.id}` : '/api/distrito/juegos/retos', { method: r ? 'PATCH' : 'POST', body: out }); toast(r ? 'Reto guardado' : 'Reto creado: ya lo ven los clubes en Juegos'); pintarJuegos(); } catch (x) { toast(x.message, false); }
   }
@@ -239,38 +382,7 @@ DW.ready.then(async (me) => {
 
   /* ---------- Bonos por club: el distrito asigna, registra lo vendido y lo pagado ---------- */
   let bonos = [];
-  async function pintarBonos() {
-    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
-    bonos = (await api('/api/distrito/bonos')).rows;
-    view.innerHTML = `<p class="small text-body-secondary">Bonos o boletas del distrito (rifas, eventos, campañas): asigna cuántos le tocan a cada club y registra lo vendido y lo pagado. Cada club los ve en su Inicio.</p>
-      ${bonos.length ? bonos.map((b) => `<div class="dw-card mb-3"><div class="d-flex align-items-center gap-2 flex-wrap"><i class="bi bi-ticket-perforated fs-4" style="color:var(--dw-p)"></i>
-          <div class="flex-grow-1"><b>${esc(b.nombre)}</b><div class="small text-body-secondary">${C.money(b.valor)} cada uno${b.vence ? ` · vence ${C.day(b.vence)}` : ''}${b.notas ? ` · ${esc(b.notas)}` : ''}</div></div>
-          <div class="text-end"><b>${C.money(b.pagado)}</b> <span class="small text-body-secondary">de ${C.money(b.total)}</span><div class="small">${C.num(b.vendidos)}/${C.num(b.asignados)} vendidos</div></div>
-          ${M ? `<button class="btn btn-sm btn-light" data-bed="${b.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-bdel="${b.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>
-        ${C.meter(b.pagado, b.total)}
-        <details class="mt-2" ${b.asignados ? '' : 'open'}><summary class="small">Por club</summary>${window.App.table([{ label: 'Club', main: true, html: (x) => esc(x.club) }, { label: 'Asignados', cls: 'text-end', html: (x) => C.num(x.asignados) },
-          { label: 'Vendidos', cls: 'text-end', html: (x) => C.num(x.vendidos) }, { label: 'Pagado', cls: 'text-end', html: (x) => `${C.money(x.pagado)} <span class="text-body-secondary">/ ${C.money(x.total)}</span>` },
-          { label: '', html: (x) => (M ? `<button class="btn btn-sm btn-light" data-basig="${b.id}" data-bclub="${esc(x.club_id)}"><i class="bi bi-pencil"></i></button>` : '') }], b.clubes)}</details></div>`).join('')
-      : window.App.empty('bi-ticket-perforated', 'Aún no hay bonos del distrito.')}`;
-    view.querySelectorAll('[data-bed]').forEach((x) => (x.onclick = () => editarBono(bonos.find((b) => String(b.id) === x.dataset.bed))));
-    view.querySelectorAll('[data-bdel]').forEach((x) => (x.onclick = async () => {
-      if (!(await window.App.confirm({ title: '¿Borrar este bono?', text: 'Deja de aparecer en los clubes.', ok: 'Borrar' }))) return;
-      try { await api(`/api/distrito/bonos/${x.dataset.bdel}`, { method: 'DELETE' }); toast('Borrado'); pintarBonos(); } catch (e) { toast(e.message, false); }
-    }));
-    view.querySelectorAll('[data-basig]').forEach((x) => (x.onclick = async (e) => {
-      e.stopPropagation();
-      const b = bonos.find((y) => String(y.id) === x.dataset.basig), k = b.clubes.find((y) => y.club_id === x.dataset.bclub);
-      const out = await C.form({ title: `${b.nombre} · ${k.club}`, fields: [{ k: 'asignados', label: 'Asignados', type: 'int' }, { k: 'vendidos', label: 'Vendidos', type: 'int' }, { k: 'pagado', label: 'Pagado al distrito', type: 'money' }], values: k, okText: 'Guardar' });
-      if (!out) return;
-      try { await api(`/api/distrito/bonos/${b.id}/clubes/${encodeURIComponent(k.club_id)}`, { method: 'PUT', body: out }); toast('Guardado'); pintarBonos(); } catch (er) { toast(er.message, false); }
-    }));
-  }
-  async function editarBono(b) {
-    const out = await C.form({ title: b ? 'Editar bono' : 'Nuevo bono', fields: [{ k: 'nombre', label: 'Nombre', type: 'text', required: true, full: true, placeholder: 'Rifa conferencia distrital' },
-      { k: 'valor', label: 'Valor de cada bono', type: 'money', required: true }, { k: 'vence', label: 'Fecha límite', type: 'date' }, { k: 'notas', label: 'Notas', type: 'long' }], values: b || {}, okText: 'Guardar' });
-    if (!out) return;
-    try { await api(b ? `/api/distrito/bonos/${b.id}` : '/api/distrito/bonos', { method: b ? 'PATCH' : 'POST', body: out }); toast(b ? 'Bono guardado' : 'Bono creado: ahora asígnalo a los clubes'); pintarBonos(); } catch (x) { toast(x.message, false); }
-  }
+
 
   /* ---------- Formatos: el distrito los arma, los clubes los llenan y aquí se revisan ---------- */
   const F = window.ROFmt, irH = (h) => history.replaceState(null, '', h ? `#${h}` : location.pathname);

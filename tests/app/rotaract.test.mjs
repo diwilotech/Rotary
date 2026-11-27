@@ -327,6 +327,34 @@ export default async function ({ check, newBusiness, newMember }) {
     && (await D.app(`/api/distrito/bonos/${bo.data.id}/clubes/${B.id}`, { method: 'PUT', body: { asignados: 1 } })).status === 404);
   check('Inicio del club: aviso de bonos por pagar', (await A.app('/api/club/resumen')).data.alertas.some((a) => a.texto.startsWith('Bonos del distrito')));
   check('Distrito: no se borra un bono ya vendido (409)', (await D.app(`/api/distrito/bonos/${bo.data.id}`, { method: 'DELETE' })).status === 409);
+  // Cobros: descuentos por pronto pago y planes en cuotas, datos de pago, bonos por socio y pagos desde la Caja menor
+  const manana = new Date(Date.now() + 864e5).toISOString().slice(0, 10), vd = 30000 + Math.floor(Math.random() * 900) * 100;
+  check('Cobros: un QR que no es del distrito se rechaza (400)', (await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'x', valor_socio: vd, vence, pago: { qr_key: 'otro/qr.png' } } })).status === 400);
+  const qx = await D.app('/api/distrito/cuotas', { method: 'POST', body: { nombre: 'Cuota con descuento', tipo: 'por_club', valor_socio: vd, vence,
+    descuentos: { pronto: [{ hasta: manana, pct: 10 }], planes: [{ cuotas: 3, pct: 5 }, { cuotas: 1, pct: 50 }] }, pago: { llave: '@distrito4271', banco: 'Bancolombia', numero: '123-456' } } });
+  const obx = () => A.app('/api/cajas/proyectado').then((r) => r.data.rubros.find((x) => x.categoria === 'Obligaciones RI y Distrito').cuotas_distritales.find((o) => o.id === qx.data.id));
+  let ox = await obx();
+  check('Cobros: con pronto pago vigente el club ve el precio con descuento, la oferta y los datos de pago', qx.status === 201 && ox?.base === vd && ox.total === Math.round(vd * 0.9 / 100) * 100 && ox.oferta?.pct === 10
+    && ox.pago?.llave === '@distrito4271' && ox.planes.length === 1, JSON.stringify(ox));
+  check('Cobros: un plan que el distrito no ofrece no (400); otro distrito no (404)', (await A.app(`/api/cajas/distrital/${qx.data.id}/plan`, { method: 'POST', body: { cuotas: 7 } })).status === 400
+    && (await B.app(`/api/cajas/distrital/${qx.data.id}/plan`, { method: 'POST', body: { cuotas: 3 } })).status === 404);
+  await A.app(`/api/cajas/distrital/${qx.data.id}/plan`, { method: 'POST', body: { cuotas: 3 } });
+  ox = await obx();
+  const cqx = (await D.app('/api/distrito/cuotas')).data.rows.find((q) => q.id === qx.data.id);
+  check('Cobros: el club elige 3 cuotas (fechas mensuales hasta el vencimiento); se cobra el menor valor; el distrito ve el plan', ox.plan?.cuotas === 3 && ox.cuotas_plan?.length === 3 && ox.cuotas_plan[2].fecha === vence
+    && ox.total === Math.round(vd * 0.9 / 100) * 100 && cqx.clubes.find((x) => x.club_id === A.id)?.plan?.cuotas === 3 && cqx.pago?.banco === 'Bancolombia', JSON.stringify(ox));
+  sql(`UPDATE ro_cuota_distrital SET descuentos = '{"pronto":[{"hasta":"2000-01-01","pct":10}],"planes":[{"cuotas":3,"pct":5}]}' WHERE id = ${qx.data.id}`);
+  ox = await obx();
+  check('Cobros: pasada la fecha de pronto pago sin pagar, queda el plan (5%) y ya no hay oferta', ox.total === Math.round(vd * 0.95 / 100) * 100 && !ox.oferta && ox.a_pagar > 0, JSON.stringify(ox));
+  const bs = await D.app('/api/distrito/bonos', { method: 'POST', body: { nombre: 'Bono por socio', valor: 5000, reparto: 'por_socio', cantidad: 6, pago: { llave: '@bonos4271' } } });
+  const bsA = (await A.app('/api/club/bonos')).data.rows.find((x) => x.id === bs.data.id);
+  check('Bonos: 6 por socio × valor = total del club, con su propia llave', bs.status === 201 && bsA?.asignados === 6 * bsA.socios && bsA.total === bsA.asignados * 5000 && bsA.pago?.llave === '@bonos4271', JSON.stringify(bsA));
+  check('Bonos: por socio sin cantidad no (400)', (await D.app('/api/distrito/bonos', { method: 'POST', body: { nombre: 'x', valor: 1000, reparto: 'por_socio' } })).status === 400);
+  const pb = await A.app(`/api/cajas/bonos/${bs.data.id}/pagar`, { method: 'POST', body: { monto: 5000 } });
+  const rb = (await A.app('/api/cajas/proyectado')).data.rubros.find((x) => x.categoria === 'Bonos distritales');
+  const bsD = (await D.app('/api/distrito/bonos')).data.rows.find((x) => x.id === bs.data.id)?.clubes.find((x) => x.club_id === A.id);
+  check('Bonos: el club los paga desde la Caja menor; salen en sus obligaciones y el distrito lo ve', pb.status === 201 && rb?.bonos.some((x) => x.id === bs.data.id && x.pagado === 5000) && rb.valor_distrito >= bsA.total && bsD?.pagado_caja === 5000, JSON.stringify(rb));
+  check('Bonos: otro distrito no lo paga (404)', (await B.app(`/api/cajas/bonos/${bs.data.id}/pagar`, { method: 'POST', body: { monto: 5000 } })).status === 404);
   const mt = await D.app('/api/distrito/metas', { method: 'PUT', body: { anio: tab2.anio, metas: { socios: 500, clubes: 40, horas: '' } } });
   const mg = (await D.app(`/api/distrito/metas?anio=${tab2.anio}`)).data.metas;
   check('Distrito: metas del año rotario', mt.status === 200 && mg.socios === 500 && mg.clubes === 40 && !('horas' in mg), JSON.stringify(mg));
@@ -476,7 +504,7 @@ export default async function ({ check, newBusiness, newMember }) {
 
   // Retos del distrito y ranking entre clubes
   const retoMal = await A.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: 'x', desde: hoy, hasta: hoy } });
-  const reto = await D.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: `Bingo distrital ${vs}`, desde: hoy, hasta: vence } });
+  const reto = await D.app('/api/distrito/juegos/retos', { method: 'POST', body: { juego: 'bingo', nombre: `Bingo distrital ${vs}`, desde: hoy, hasta: vence, premio: 'Reconocimiento en la conferencia', gana: 'promedio' } });
   const retosA = (await A.app('/api/juegos/retos')).data, retosB = (await B.app('/api/juegos/retos')).data;
   check('Retos: solo el distrito los crea; los ven sus clubes y no los de otro distrito', retoMal.status === 403 && reto.status === 201 && retosA.rows.some((r) => r.id === reto.data.id && r.abierto) && !retosB.rows.some((r) => r.id === reto.data.id));
   const otroJuego = await A.app('/api/juegos/salas', { method: 'POST', body: { juego: 'trivia', reto_id: reto.data.id } });
@@ -487,6 +515,9 @@ export default async function ({ check, newBusiness, newMember }) {
   const rkD = (await D.app(`/api/distrito/juegos/ranking?reto=${reto.data.id}`)).data, rkA = (await A.app(`/api/juegos/ranking-clubes?reto=${reto.data.id}`)).data;
   const filaA = rkD.rows?.find((x) => x.id === A.id);
   check('Retos: las partidas del reto suman al ranking entre clubes (lo ven el distrito y el club)', otroJuego.status === 400 && sr.sala.reto?.id === reto.data.id && finR.sala.estado === 'terminada' && filaA?.partidas === 1 && filaA.puntos === Object.values(finR.puntos).reduce((t, n) => t + n, 0) && rkA.rows.some((x) => x.id === A.id) && rkA.mio === A.id, JSON.stringify(rkD.rows));
+  const rtA = (await A.app('/api/juegos/retos')).data.rows.find((r) => r.id === reto.data.id);
+  check('Retos: premio, forma de ganar, puesto de mi club y mejores jugadores del distrito', rtA?.premio === 'Reconocimiento en la conferencia' && rtA.gana === 'promedio' && rtA.mio?.puesto >= 1
+    && rtA.jugadores.length >= 1 && rtA.jugadores[0].club.startsWith('RTC ') && rkD.jugadores?.length >= 1, JSON.stringify(rtA));
   check('Retos: un reto con partidas no se borra (se desactiva)', (await D.app(`/api/distrito/juegos/retos/${reto.data.id}`, { method: 'DELETE' })).status === 409 && (await D.app(`/api/distrito/juegos/retos/${reto.data.id}`, { method: 'PATCH', body: { activo: false } })).status === 200);
 
   // Conexión: si quien creó la sala se desconecta, la sala pasa a un jugador conectado; al volver, sigue en su sala

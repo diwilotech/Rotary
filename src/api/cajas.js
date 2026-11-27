@@ -12,7 +12,7 @@ import { crud, all, one, today, cast } from '../lib/crud.js';
 import { audit } from '../lib/audit.js';
 import { recalcularAporte } from './impacto.js';
 import { guardarArchivo, servirArchivo, borrarArchivo } from '../lib/archivos.js';
-import { CAJAS, CATEGORIAS, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe, RUBROS, RUBRO_DISTRITO, finDeAnio, obligacionesClub } from '../lib/rotaract.js';
+import { CAJAS, CATEGORIAS, saldos, anioRotarioDe, mesesDelAnio, proyeccion, distritoDe, RUBROS, RUBRO_DISTRITO, RUBRO_BONOS, finDeAnio, obligacionesClub, bonosClub } from '../lib/rotaract.js';
 
 const MOD = 'cajas';
 
@@ -124,6 +124,7 @@ export function routes(r) {
     let valor = cast('valor', 'money', b.valor) || 0;
     // En el rubro del distrito el valor incluye la cuota distrital: el club solo guarda lo que agrega encima
     if (categoria === RUBRO_DISTRITO) valor = Math.max(0, valor - (await obligacionesClub(c.env, c.businessId, { anio })).reduce((t, o) => t + o.total, 0));
+    if (categoria === RUBRO_BONOS) valor = Math.max(0, valor - (await bonosClub(c.env, c.businessId, { anio })).reduce((t, o) => t + o.total, 0));
     const fin = finDeAnio(anio), t = Date.now();
     const ya = await one(c.env, 'SELECT id FROM ro_obligaciones WHERE business_id = ? AND categoria = ? AND vence = ?', c.businessId, categoria, fin);
     if (ya) await c.env.DB.prepare('UPDATE ro_obligaciones SET monto = ?, updated_at = ? WHERE id = ?').bind(valor, t, ya.id).run();
@@ -140,9 +141,11 @@ export function routes(r) {
       const pend = (await obligacionesClub(c.env, c.businessId)).filter((o) => o.estado !== 'pagada');
       distrital = (pend.find((o) => o.saldo === monto) || pend[0])?.id || null;
     }
+    let bono = null;
+    if (categoria === RUBRO_BONOS) { const pend = (await bonosClub(c.env, c.businessId)).filter((o) => o.estado !== 'pagada'); bono = (pend.find((o) => o.saldo === monto) || pend[0])?.id || null; }
     const t = Date.now();
-    const x = await c.env.DB.prepare(`INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, distrital_id, registrado_por, created_at, updated_at)
-      VALUES (?, 'menor', 'egreso', ?, ?, ?, ?, ?, ?, ?, ?)`).bind(c.businessId, fecha, concepto, categoria, monto, distrital, c.session.user_id, t, t).run();
+    const x = await c.env.DB.prepare(`INSERT INTO ro_movimientos (business_id, caja, tipo, fecha, concepto, categoria, monto, distrital_id, bono_id, registrado_por, created_at, updated_at)
+      VALUES (?, 'menor', 'egreso', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(c.businessId, fecha, concepto, categoria, monto, distrital, bono, c.session.user_id, t, t).run();
     await audit(c, `Pagó ${monto} de «${categoria}»`, { modulo: MOD });
     return json({ id: x.meta.last_row_id }, 201);
   });

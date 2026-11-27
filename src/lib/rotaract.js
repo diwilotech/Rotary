@@ -2,6 +2,7 @@
 // saldos de las dos cajas y el certificado de activación (HTML listo para imprimir o guardar como PDF).
 import { HttpError } from './http.js';
 import { all, one, today } from './crud.js';
+import { cobroCuota, pagoPublico, asignadosBono } from './cobros.js';
 
 export const CAJAS = { menor: 'Caja menor (Club)', mayor: 'Caja mayor (Obras)' };
 // Categorías sugeridas por caja: cada caja tiene su flujo (se puede escribir otra).
@@ -189,17 +190,41 @@ export async function ordenDelDia(env, bid) {
 // Socios que cuentan para la cuota distrital: activos y que pagan cuota.
 export const sociosQueCuentan = async (env, bid) => (await one(env, `SELECT COUNT(*) n FROM ro_socios WHERE business_id = ? AND ${PAGA_CUOTA}`, bid))?.n || 0;
 // Cuotas distritales del club con lo que le toca (valor × socios) y lo que ya pagó.
+// Con descuentos (pronto pago / plan en cuotas, ver lib/cobros.js) y los datos de pago que puso el distrito.
 export async function obligacionesClub(env, bid, { anio = null } = {}) {
   const { clave: codigo } = await distritoDe(env, bid);
-  const [cuotas, n, pagos] = await Promise.all([
-    all(env, `SELECT id, nombre, tipo, valor_socio, vence, anio, notas FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
+  const [cuotas, n, pagos, planes] = await Promise.all([
+    all(env, `SELECT id, nombre, tipo, valor_socio, vence, anio, notas, descuentos, pago FROM ro_cuota_distrital WHERE distrito = ? ${anio ? 'AND anio = ?' : ''} ORDER BY vence`, codigo, ...(anio ? [anio] : [])),
     sociosQueCuentan(env, bid),
-    all(env, "SELECT distrital_id, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND distrital_id IS NOT NULL AND tipo = 'egreso' GROUP BY distrital_id", bid),
+    all(env, "SELECT distrital_id, fecha, monto FROM ro_movimientos WHERE business_id = ? AND distrital_id IS NOT NULL AND tipo = 'egreso'", bid),
+    all(env, 'SELECT cuota_id, cuotas, pct FROM ro_cuota_plan_club WHERE club_id = ?', bid),
   ]);
-  return cuotas.map((q) => {
-    const total = q.tipo === 'por_club' ? q.valor_socio : q.valor_socio * n, pagado = pagos.find((p) => p.distrital_id === q.id)?.total || 0;
-    return { ...q, socios: n, total, pagado, saldo: Math.max(0, total - pagado), estado: pagado >= total && total > 0 ? 'pagada' : q.vence < today() ? 'vencida' : 'pendiente' };
+  const hoy = today();
+  return cuotas.map(({ descuentos, pago, ...q }) => {
+    const base = q.tipo === 'por_club' ? q.valor_socio : q.valor_socio * n;
+    const c = cobroCuota({ ...q, descuentos }, base, pagos.filter((p) => p.distrital_id === q.id), planes.find((p) => p.cuota_id === q.id) || null, hoy);
+    return { ...q, socios: n, ...c, pago: pagoPublico(pago, `/api/cobros/qr?cuota=${q.id}`) };
   });
+}
+// Bonos del distrito que le tocan al club (por socio, por club o a mano) con lo pagado: lo que registra el distrito + lo que
+// el club pagó desde su Caja menor (movimientos con bono_id). anio = año rotario por la fecha límite (o la de creación).
+export async function bonosClub(env, bid, { anio = null } = {}) {
+  const { clave } = await distritoDe(env, bid);
+  const [bonos, n, asig, movs] = await Promise.all([
+    all(env, 'SELECT * FROM ro_bonos WHERE distrito = ? ORDER BY created_at DESC', clave),
+    sociosQueCuentan(env, bid),
+    all(env, 'SELECT bono_id, asignados, vendidos, pagado FROM ro_bonos_clubes WHERE club_id = ?', bid),
+    all(env, "SELECT bono_id, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND bono_id IS NOT NULL AND tipo = 'egreso' GROUP BY bono_id", bid),
+  ]);
+  const hoy = today();
+  return bonos.map((b) => {
+    const a = asig.find((x) => x.bono_id === b.id) || {}, asignados = asignadosBono(b, n, a.asignados), total = asignados * b.valor;
+    const pagado = (a.pagado || 0) + (movs.find((x) => x.bono_id === b.id)?.total || 0);
+    const anioB = anioRotarioDe(b.vence || new Date(b.created_at || Date.now()).toISOString().slice(0, 10));
+    return { id: b.id, nombre: b.nombre, valor: b.valor, vence: b.vence, notas: b.notas, reparto: b.reparto, cantidad: b.cantidad, socios: n, anio: anioB,
+      asignados, vendidos: a.vendidos || 0, total, pagado, saldo: Math.max(0, total - pagado),
+      estado: total > 0 && pagado >= total ? 'pagada' : b.vence && b.vence < hoy ? 'vencida' : 'pendiente', pago: pagoPublico(b.pago, `/api/cobros/qr?bono=${b.id}`) };
+  }).filter((b) => b.asignados > 0 && (!anio || b.anio === anio));
 }
 
 // Tipos de obligación del club (la cuota distrital llega sola desde el distrito como «Obligaciones distritales»)
@@ -208,23 +233,25 @@ export async function obligacionesClub(env, bid, { anio = null } = {}) {
 // y lo PAGADO (los egresos de esa categoría en el año). La cuota distrital suma sola al valor de «Obligaciones RI y Distrito».
 // El valor propio del club se guarda en ro_obligaciones (una fila por categoría y año: vence = 30 de junio del cierre).
 export const RUBRO_DISTRITO = 'Obligaciones RI y Distrito';
+export const RUBRO_BONOS = 'Bonos distritales';
 export const RUBROS = () => CATEGORIAS.menor.egreso.filter((x) => x !== 'Traslado');
 export const finDeAnio = (anio) => `${anio + 1}-06-30`;
 export async function rubros(env, bid, anio) {
   const rango = [`${anio}-07-01`, `${anio + 1}-07-01`];
-  const [gasto, valores, dist] = await Promise.all([
+  const [gasto, valores, dist, bonos] = await Promise.all([
     all(env, "SELECT COALESCE(categoria, 'Otros gastos') categoria, SUM(monto) total FROM ro_movimientos WHERE business_id = ? AND caja = 'menor' AND tipo = 'egreso' AND traslado IS NULL AND fecha >= ? AND fecha < ? GROUP BY 1", bid, ...rango),
     all(env, 'SELECT categoria, monto FROM ro_obligaciones WHERE business_id = ? AND vence = ?', bid, finDeAnio(anio)),
     obligacionesClub(env, bid, { anio }),
+    bonosClub(env, bid, { anio }),
   ]);
-  const distTotal = dist.reduce((t, o) => t + o.total, 0);
+  const distTotal = dist.reduce((t, o) => t + o.total, 0), bonosTotal = bonos.reduce((t, o) => t + o.total, 0);
   const cats = [...new Set([...RUBROS(), ...gasto.map((g) => g.categoria).filter((c) => c !== 'Traslado')])];
   return cats.map((categoria) => {
-    const club = valores.find((v) => v.categoria === categoria)?.monto || 0, distrito = categoria === RUBRO_DISTRITO ? distTotal : 0;
+    const club = valores.find((v) => v.categoria === categoria)?.monto || 0, distrito = categoria === RUBRO_DISTRITO ? distTotal : categoria === RUBRO_BONOS ? bonosTotal : 0;
     const valor = club + distrito, pagado = gasto.find((g) => g.categoria === categoria)?.total || 0;
     return { categoria, valor, valor_club: club, valor_distrito: distrito, pagado, saldo: Math.max(0, valor - pagado),
-      estado: !valor ? 'sin_valor' : pagado >= valor ? 'pagada' : 'pendiente', cuotas_distritales: categoria === RUBRO_DISTRITO ? dist : undefined };
-  }).filter((r) => r.valor || r.pagado || r.categoria === RUBRO_DISTRITO)
+      estado: !valor ? 'sin_valor' : pagado >= valor ? 'pagada' : 'pendiente', cuotas_distritales: categoria === RUBRO_DISTRITO ? dist : undefined, bonos: categoria === RUBRO_BONOS ? bonos : undefined };
+  }).filter((r) => r.valor || r.pagado || r.categoria === RUBRO_DISTRITO || (r.categoria === RUBRO_BONOS && r.bonos.length))
     .sort((a, b) => b.valor - a.valor || b.pagado - a.pagado);
 }
 
@@ -252,7 +279,7 @@ export async function proyeccion(env, bid, anio) {
     const r = reales.find((x) => x.mes === mes) || { ingresos: 0, egresos: 0, cuotas: 0 };
     const futuro = mes >= mesHoy, per = periodos.find((p) => p.mes === mes);
     const cuotas_proy = futuro ? Math.max(0, (per ? per.monto * quienes(mes) : 0) - (mes === mesHoy ? r.cuotas : 0)) : 0;
-    const distMes = futuro ? distPend.filter((o) => o.vence.slice(0, 7) === mes || (mes === mesHoy && o.vence.slice(0, 7) < mesHoy)).reduce((t, o) => t + o.saldo, 0) : 0;
+    const distMes = futuro ? distPend.filter((o) => (o.proxima_fecha || o.vence).slice(0, 7) === mes || (mes === mesHoy && (o.proxima_fecha || o.vence).slice(0, 7) < mesHoy)).reduce((t, o) => t + o.saldo, 0) : 0;
     const oblig_proy = futuro ? distMes + Math.round(resto / (futuros.length || 1)) : 0;
     if (futuro) saldo += cuotas_proy - oblig_proy;
     return { mes, ingresos: r.ingresos, egresos: r.egresos, proyectado: futuro, cuotas_proy, oblig_proy, saldo_proy: futuro ? saldo : null };
