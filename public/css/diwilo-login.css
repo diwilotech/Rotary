@@ -56,3 +56,12 @@
   .dl-m{display:inline}
   .dl-side{padding:32px 22px 26px}
 }
+
+/* CD Rotary: la rueda de Rotary arriba y en la tarjeta; Diwilo en una franja pequeña abajo a la izquierda del panel */
+.dl-logo--rot img{width:44px;height:44px;filter:drop-shadow(0 0 14px rgba(212,19,103,.45))}
+.dl-icon--rueda{background:#fff;border:1px solid rgba(212,19,103,.18);box-shadow:0 12px 28px -10px rgba(212,19,103,.55)}.dl-icon--rueda img{width:74%;height:74%}
+.dl-franja{position:absolute!important;left:0;bottom:0;display:inline-flex;align-items:center;gap:7px;padding:7px 16px 7px 14px;border-top-right-radius:12px;background:rgba(255,255,255,.07);
+  border-top:1px solid rgba(255,255,255,.1);border-right:1px solid rgba(255,255,255,.1);color:#e9ddff;text-decoration:none;font:500 12px Inter,system-ui,sans-serif}
+.dl-franja svg{width:18px;height:18px}.dl-franja b{font-weight:600;color:#fff}.dl-franja span{color:#a99bc7}.dl-franja:hover{background:rgba(255,255,255,.12);color:#fff}
+.dl-brand{padding-bottom:58px}
+@media (max-width:820px){.dl-brand{padding-bottom:16px}.dl-franja{position:static!important;margin-left:auto;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06)}.dl-franja span{display:none}.dl-logo--rot img{width:30px;height:30px}}
