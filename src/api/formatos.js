@@ -15,9 +15,11 @@ import { distritoDe, conSigla, PROGRAMAS, EN_DISTRITO, enDistrito } from '../lib
 import { distritoOError } from './distrito.js';
 
 const MOD = 'impacto';
-export const TIPOS_SECCION = ['seccion', 'texto', 'parrafo', 'numero', 'dinero', 'fecha', 'opciones', 'si_no'];
+// seccion = título de sección; nota = texto libre del distrito (instrucciones, aclaraciones): ninguna de las dos se responde
+export const TIPOS_SECCION = ['seccion', 'nota', 'texto', 'parrafo', 'numero', 'dinero', 'fecha', 'opciones', 'si_no'];
 const ESTADOS = ['borrador', 'enviado', 'aprobado', 'devuelto', 'rechazado'];
 const EDITABLE = ['borrador', 'devuelto'];
+const esPregunta = (s) => s.tipo !== 'seccion' && s.tipo !== 'nota';
 
 // Plantilla sugerida para presentar proyectos (las 7 áreas de interés de Rotary)
 // Las preguntas de «opciones» con clasifica = true separan los proyectos en Distrito → Impacto (filtros y conteos).
@@ -53,9 +55,9 @@ function limpiarSecciones(v) {
     let id = String(s?.id || '').replace(/[^\w-]/g, '').slice(0, 20) || `s${i + 1}`;
     while (ids.has(id)) id = `${id}x`;
     ids.add(id);
-    const titulo = String(s?.titulo || '').trim().slice(0, 200);
-    if (!titulo) throw new HttpError(400, `La sección ${i + 1} no tiene título`);
-    const o = { id, tipo, titulo, ayuda: String(s?.ayuda || '').trim().slice(0, 500), requerido: tipo !== 'seccion' && !!s?.requerido };
+    const titulo = String(s?.titulo || '').trim().slice(0, tipo === 'nota' ? 3000 : 200);
+    if (!titulo) throw new HttpError(400, tipo === 'nota' ? `La nota ${i + 1} está vacía` : `La pregunta o sección ${i + 1} no tiene título`);
+    const o = { id, tipo, titulo, ayuda: tipo === 'nota' ? '' : String(s?.ayuda || '').trim().slice(0, 500), requerido: esPregunta({ tipo }) && !!s?.requerido };
     if (tipo === 'opciones') {
       o.opciones = (Array.isArray(s.opciones) ? s.opciones : String(s.opciones || '').split('\n')).map((x) => String(x).trim().slice(0, 150)).filter(Boolean).slice(0, 30);
       if (!o.opciones.length) throw new HttpError(400, `Escribe las opciones de «${titulo}»`);
@@ -63,14 +65,14 @@ function limpiarSecciones(v) {
     }
     return o;
   });
-  if (!out.some((s) => s.tipo !== 'seccion')) throw new HttpError(400, 'El formato necesita al menos una pregunta');
+  if (!out.some(esPregunta)) throw new HttpError(400, 'El formato necesita al menos una pregunta');
   return out;
 }
 
 function limpiarRespuestas(secciones, v) {
   const r = typeof v === 'object' && v ? v : {}, out = {};
   for (const s of secciones) {
-    if (s.tipo === 'seccion' || r[s.id] == null || r[s.id] === '') continue;
+    if (!esPregunta(s) || r[s.id] == null || r[s.id] === '') continue;
     let x = String(r[s.id]).slice(0, s.tipo === 'parrafo' ? 20000 : 500);
     if (s.tipo === 'opciones' && !s.opciones.includes(x)) continue;
     if (s.tipo === 'si_no' && !['si', 'no'].includes(x)) continue;
@@ -133,6 +135,7 @@ function proyectoDesde(e) {
   const bloques = [{ tipo: 'destacado', texto: `Presentado al distrito con el formato «${e.formato_nombre}» y aprobado.${e.comentario ? ` Comentario del distrito: ${e.comentario}` : ''}` }];
   for (const s of S) {
     if (s.tipo === 'seccion') { bloques.push({ tipo: 'titulo', texto: s.titulo }); continue; }
+    if (s.tipo === 'nota') continue;
     const v = val(s); if (!v) continue;
     const t = s.tipo === 'dinero' ? `$ ${Number(v).toLocaleString('es-CO')}` : s.tipo === 'si_no' ? (v === 'si' ? 'Sí' : 'No') : v;
     bloques.push({ tipo: 'subtitulo', texto: s.titulo }, { tipo: 'texto', texto: t });
@@ -203,7 +206,7 @@ export function routes(r) {
     const sumar = (secs) => secs.filter((s) => s.clasifica).forEach((s) => { const o = sel.get(s.titulo) || new Set(); s.opciones.forEach((x) => o.add(x)); sel.set(s.titulo, o); });
     fmts.forEach((f) => sumar(leer(f.secciones, [])));
     const out = rows.map((x) => {
-      const secs = leer(x.secciones, []), resp = leer(x.respuestas, {}), preg = secs.filter((s) => s.tipo !== 'seccion');
+      const secs = leer(x.secciones, []), resp = leer(x.respuestas, {}), preg = secs.filter(esPregunta);
       sumar(secs);
       return { id: x.id, business_id: x.business_id, club: conSigla(x.club, x.programa), titulo: x.titulo, formato_nombre: x.formato_nombre, estado: x.estado, comentario: x.comentario,
         enviado_at: x.enviado_at, revisado_at: x.revisado_at, updated_at: x.updated_at, proyecto_id: x.proyecto_id,
@@ -233,7 +236,7 @@ export function routes(r) {
         WHERE f.distrito = ? AND f.activo = 1 AND b.archived_at IS NULL ORDER BY f.updated_at DESC`, d.clave),
       all(c.env, 'SELECT id, formato_id, formato_nombre, titulo, estado, comentario, enviado_at, revisado_at, proyecto_id, updated_at FROM ro_formato_envios WHERE business_id = ? ORDER BY updated_at DESC LIMIT 200', c.businessId),
     ]);
-    return json({ es_distrito: d.es_distrito, formatos: formatos.map((f) => ({ ...f, preguntas: leer(f.secciones, []).filter((s) => s.tipo !== 'seccion').length, secciones: undefined })), envios });
+    return json({ es_distrito: d.es_distrito, formatos: formatos.map((f) => ({ ...f, preguntas: leer(f.secciones, []).filter(esPregunta).length, secciones: undefined })), envios });
   });
   r.get('/api/formatos/encabezado', 'tenant', async (c) => {
     const { d, distritoId } = await negocioDistrito(c.env, c.businessId);

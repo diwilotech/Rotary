@@ -388,6 +388,11 @@ export default async function ({ check, newBusiness, newMember }) {
   const fm = await D.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'Presentación de proyectos', descripcion: 'Formato oficial', secciones: fpl.plantilla } });
   check('Formatos: el distrito ya trae el formato oficial con selectores que clasifican', fpl.rows.some((f) => f.nombre === 'Presentación de proyectos' && f.secciones.filter((s) => s.clasifica).length === 3));
   check('Formatos: el distrito crea un formato desde la plantilla', fm.status === 201 && fpl.plantilla.some((s) => s.tipo === 'opciones'));
+  const fnota = await D.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'Formato con nota', secciones: [{ tipo: 'nota', titulo: 'Lee esto antes de llenar', requerido: true }, { tipo: 'texto', titulo: 'Nombre', requerido: true }] } });
+  const fnl = (await D.app('/api/distrito/formatos')).data.rows.find((f) => f.id === fnota.data.id);
+  check('Formatos: notas de texto libre (no se responden ni son obligatorias); solo notas no basta (400)', fnota.status === 201 && fnl.secciones[0].tipo === 'nota' && !fnl.secciones[0].requerido
+    && (await D.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'x', secciones: [{ tipo: 'nota', titulo: 'Solo nota' }] } })).status === 400);
+  await D.app(`/api/distrito/formatos/${fnota.data.id}`, { method: 'DELETE' });
   check('Formatos: un club no crea formatos (403) ni ve lo del distrito', (await A.app('/api/distrito/formatos', { method: 'POST', body: { nombre: 'x', secciones: fpl.plantilla } })).status === 403 && (await A.app('/api/distrito/envios')).status === 403);
   const lfA = (await A.app('/api/formatos')).data, lfR = (await R1.app('/api/formatos')).data;
   check('Formatos: le llega al club de su programa y no al de otro programa', lfA.formatos.some((f) => f.id === fm.data.id) && !lfR.formatos.some((f) => f.id === fm.data.id));

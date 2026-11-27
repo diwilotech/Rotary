@@ -3,7 +3,8 @@
 window.ROFmt = (function () {
   const { api, esc } = window.App;
   const TIPOS = [['parrafo', 'Párrafo (texto largo)', 'bi-text-paragraph'], ['texto', 'Respuesta corta', 'bi-input-cursor-text'], ['numero', 'Número', 'bi-123'], ['dinero', 'Dinero', 'bi-cash'],
-    ['fecha', 'Fecha', 'bi-calendar-event'], ['opciones', 'Elegir una opción', 'bi-ui-radios'], ['si_no', 'Sí / No', 'bi-toggle-on'], ['seccion', 'Título de sección', 'bi-type-h2']];
+    ['fecha', 'Fecha', 'bi-calendar-event'], ['opciones', 'Elegir una opción', 'bi-ui-radios'], ['si_no', 'Sí / No', 'bi-toggle-on'], ['seccion', 'Título de sección', 'bi-type-h2'], ['nota', 'Nota (texto libre)', 'bi-sticky']];
+  const esPregunta = (s) => s.tipo !== 'seccion' && s.tipo !== 'nota';
   const EST = { borrador: ['free', 'Borrador'], enviado: ['soon', 'En revisión'], aprobado: ['ok', 'Aprobado'], devuelto: ['bad', 'Devuelto para corregir'], rechazado: ['bad', 'No aprobado'] };
   const chip = (e) => window.App.Crud.chip(...(EST[e] || EST.borrador));
   const money = (n) => `$ ${Number(n || 0).toLocaleString('es-CO')}`;
@@ -40,6 +41,25 @@ window.ROFmt = (function () {
       .fmt-pie{margin-top:40px;padding-top:10px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;gap:12px;font-size:.72rem;color:#6b7280}
       .fmt-firma{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:46px}.fmt-firma div{border-top:1px solid #6b7280;padding-top:4px;font-size:.78rem;color:#4b5563;text-align:center}
       .fmt-aviso{max-width:860px;margin:0 auto 14px}
+      .fmt-nota{margin:0 0 18px;padding:10px 14px;border-left:4px solid var(--oro);background:#fffbeb;color:#4b5563;font-size:.9rem;white-space:pre-wrap;border-radius:0 6px 6px 0}
+      .fmt-hoja--ed [contenteditable]{outline:none;border-radius:4px;cursor:text}.fmt-hoja--ed [contenteditable]:hover{background:rgba(23,69,143,.05)}
+      .fmt-hoja--ed [contenteditable]:focus{background:rgba(23,69,143,.07);box-shadow:0 0 0 2px rgba(23,69,143,.25)}
+      .fmt-hoja--ed [contenteditable]:empty::before{content:attr(data-ph);color:#9ca3af;font-style:italic;font-weight:400}
+      .fmt-hoja--ed .fmt-sec [contenteditable]:empty::before{color:rgba(255,255,255,.7)}
+      .fmt-b{position:relative;border-radius:8px;margin:0 -10px;padding:6px 10px;border:1px dashed transparent}.fmt-b:hover,.fmt-b:focus-within{border-color:#c7d2fe}
+      .fmt-b.on{border-color:#6366f1;background:rgba(99,102,241,.03)}
+      .fmt-bar{position:absolute;top:-16px;right:8px;display:none;gap:4px;align-items:center;background:#fff;border:1px solid #d1d5db;border-radius:999px;padding:2px 6px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:3;font-size:.78rem;color:#374151}
+      .fmt-b:hover .fmt-bar,.fmt-b:focus-within .fmt-bar,.fmt-b.on .fmt-bar{display:flex}
+      .fmt-bar select{border:0;background:transparent;font-size:.78rem;padding:0 2px;color:#111827;max-width:150px}.fmt-bar button{border:0;background:transparent;padding:2px 5px;border-radius:6px;color:#374151;line-height:1}
+      .fmt-bar button:hover{background:#eef2ff}.fmt-bar button.act{background:#e0e7ff;color:#3730a3;font-weight:600}.fmt-bar .sep{width:1px;height:14px;background:#e5e7eb}
+      .fmt-ins{height:14px;margin:2px 0;position:relative;display:flex;justify-content:center;opacity:0;transition:opacity .15s}.fmt-ins:hover,.fmt-ins:focus-within{opacity:1}
+      .fmt-ins::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px dashed #a5b4fc}.fmt-ins span{position:relative;display:flex;gap:4px;background:#fff;padding:0 6px;top:-5px}
+      .fmt-ins button,.fmt-add button{border:1px solid #c7d2fe;background:#fff;color:#3730a3;border-radius:999px;font-size:.72rem;padding:1px 9px}.fmt-ins button:hover,.fmt-add button:hover{background:#eef2ff}
+      .fmt-add{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:18px 0 6px;padding:12px;border:1px dashed #c7d2fe;border-radius:8px}.fmt-add button{font-size:.82rem;padding:4px 12px}
+      .fmt-op{display:inline-flex;align-items:center;gap:4px;border:1px solid #d1d5db;border-radius:999px;padding:3px 6px 3px 12px;font-size:.88rem;background:#fff}
+      .fmt-op [contenteditable]{min-width:40px}.fmt-op button{border:0;background:transparent;color:#9ca3af;padding:0 3px;line-height:1}.fmt-op button:hover{color:#b91c1c}
+      .fmt-prev{pointer-events:none;opacity:.75}.fmt-hoja--ed .fmt-q .l{display:flex;gap:2px;align-items:baseline;font-weight:700}.fmt-hoja--ed .fmt-q .l [contenteditable]{flex:1}
+      .fmt-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg);max-width:860px;margin:0 auto 14px}
       .fmt-card{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;border:1px solid var(--bs-border-color);background:var(--bs-body-bg)}
       .fmt-card>i{font-size:1.6rem;color:var(--dw-p)}
       .fmt-ed{display:grid;gap:8px}.fmt-ed-s{border:1px solid var(--bs-border-color);border-radius:12px;padding:10px;background:var(--bs-body-bg)}.fmt-ed-s.sec{border-left:5px solid var(--dw-p)}
@@ -57,6 +77,7 @@ window.ROFmt = (function () {
     let n = 0;
     const q = (s) => {
       if (s.tipo === 'seccion') return `<div class="fmt-sec">${esc(s.titulo)}</div>`;
+      if (s.tipo === 'nota') return `<div class="fmt-nota">${esc(s.titulo)}</div>`;
       n += 1;
       const v = R[s.id] ?? '', id = `fq_${s.id}`, nm = `r_${s.id}`;
       const lab = `<span class="n">${n}.</span>${esc(s.titulo)}${s.requerido && L ? '<span class="req" title="Obligatorio">*</span>' : ''}`;
@@ -91,7 +112,7 @@ window.ROFmt = (function () {
   function leer(root, secciones) {
     const out = {};
     for (const s of secciones) {
-      if (s.tipo === 'seccion') continue;
+      if (!esPregunta(s)) continue;
       const els = root.querySelectorAll(`[name="r_${s.id}"]`);
       const v = (s.tipo === 'opciones' || s.tipo === 'si_no') ? ([...els].find((x) => x.checked)?.value || '') : (els[0]?.value || '').trim();
       if (v) out[s.id] = v;
@@ -100,66 +121,110 @@ window.ROFmt = (function () {
   }
   const autoAlto = (root) => root.querySelectorAll('textarea').forEach((t) => { const f = () => { t.style.height = 'auto'; t.style.height = `${Math.max(110, t.scrollHeight + 4)}px`; }; f(); t.addEventListener('input', f); });
 
-  // Constructor del formato (distrito). f = formato o null; plantilla = secciones sugeridas. Pinta en «el»; cb: guardar(body), borrar(), volver()
+  // Constructor del formato (distrito), en la MISMA hoja que verán los clubes, como un documento (al estilo del editor de Material):
+  // se escribe el título, las instrucciones, las secciones, las notas y cada pregunta directo sobre la hoja; la barrita de cada bloque
+  // cambia el tipo, obligatoria, clasifica, mover, duplicar y quitar. f = formato o null; cb: guardar(body), borrar(), volver()
   async function constructor(el, f, { plantilla, guardar, borrar, volver }) {
     css();
     const e = await encabezado();
     const st = { nombre: f?.nombre || '', descripcion: f?.descripcion || '', fecha_limite: f?.fecha_limite || '', activo: f ? !!f.activo : true,
       secciones: JSON.parse(JSON.stringify(f?.secciones || plantilla || [])) };
-    let sig = st.secciones.length + 1;
+    let sig = st.secciones.length + 1, foco = null;
     const nuevoId = () => { let id; do { id = `s${sig++}`; } while (st.secciones.some((s) => s.id === id)); return id; };
-    const opTipos = (t) => TIPOS.map(([k, l]) => `<option value="${k}" ${k === t ? 'selected' : ''}>${l}</option>`).join('');
-    const filaHtml = (s, i) => `<div class="fmt-ed-s ${s.tipo === 'seccion' ? 'sec' : ''}" data-i="${i}">
-        <div class="d-flex gap-2 align-items-center mb-2"><select class="form-select form-select-sm w-auto" data-k="tipo" aria-label="Tipo">${opTipos(s.tipo)}</select>
-          ${s.tipo === 'seccion' ? '' : `<div class="form-check form-switch small mb-0"><input class="form-check-input" type="checkbox" data-k="requerido" id="rq${i}" ${s.requerido ? 'checked' : ''}><label class="form-check-label" for="rq${i}">Obligatoria</label></div>`}
-          ${s.tipo === 'opciones' ? `<div class="form-check form-switch small mb-0" title="Sus opciones separan los proyectos en Distrito → Impacto"><input class="form-check-input" type="checkbox" data-k="clasifica" id="cl${i}" ${s.clasifica ? 'checked' : ''}><label class="form-check-label" for="cl${i}">Clasifica</label></div>` : ''}
-          <span class="ms-auto btn-group btn-group-sm"><button type="button" class="btn btn-light" data-mv="-1" aria-label="Subir" ${i ? '' : 'disabled'}><i class="bi bi-arrow-up"></i></button><button type="button" class="btn btn-light" data-mv="1" aria-label="Bajar" ${i < st.secciones.length - 1 ? '' : 'disabled'}><i class="bi bi-arrow-down"></i></button><button type="button" class="btn btn-light text-danger" data-quitar aria-label="Quitar"><i class="bi bi-trash"></i></button></span></div>
-        <input class="form-control form-control-sm ${s.tipo === 'seccion' ? 'fw-bold' : 'fw-semibold'} mb-1" data-k="titulo" value="${esc(s.titulo)}" placeholder="${s.tipo === 'seccion' ? 'Título de la sección' : 'Pregunta'}" aria-label="Título">
-        ${s.tipo === 'seccion' ? '' : `<input class="form-control form-control-sm" data-k="ayuda" value="${esc(s.ayuda || '')}" placeholder="Ayuda para el club (opcional)" aria-label="Ayuda">`}
-        ${s.tipo === 'opciones' ? `<textarea class="form-control form-control-sm mt-1" data-k="opciones" rows="3" placeholder="Una opción por línea" aria-label="Opciones">${esc((s.opciones || []).join('\n'))}</textarea>` : ''}</div>`;
-    el.innerHTML = `<div class="d-flex align-items-center gap-2 mb-3"><button type="button" class="btn btn-light btn-sm rounded-circle" data-volver aria-label="Volver"><i class="bi bi-arrow-left"></i></button>
-        <h2 class="h5 mb-0">${f ? 'Editar formato' : 'Nuevo formato'}</h2><span class="ms-auto d-flex gap-2">${f && borrar ? '<button type="button" class="btn btn-outline-danger btn-sm" data-borrar><i class="bi bi-trash me-1"></i>Borrar</button>' : ''}<button type="button" class="btn btn-primary" data-guardar><i class="bi bi-check-lg me-1"></i>Guardar formato</button></span></div>
-      <div class="row g-3"><div class="col-lg-5"><div class="dw-card">
-          <label class="form-label small fw-semibold mb-1" for="fm_n">Nombre del formato</label><input class="form-control mb-2" id="fm_n" data-g="nombre" value="${esc(st.nombre)}" placeholder="p. ej. Presentación de proyectos de servicio">
-          <label class="form-label small fw-semibold mb-1" for="fm_d">Instrucciones para los clubes</label><textarea class="form-control mb-2" id="fm_d" data-g="descripcion" rows="2" placeholder="Qué deben presentar y cómo se revisa">${esc(st.descripcion)}</textarea>
-          <div class="row g-2 align-items-end mb-1"><div class="col-6"><label class="form-label small fw-semibold mb-1" for="fm_f">Fecha límite (opcional)</label><input type="date" class="form-control" id="fm_f" data-g="fecha_limite" value="${esc(st.fecha_limite)}"></div>
-            <div class="col-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="fm_a" data-g="activo" ${st.activo ? 'checked' : ''}><label class="form-check-label small" for="fm_a">Disponible para los clubes</label></div></div></div>
-          <div class="small text-danger" data-err></div></div>
-        <div class="d-flex align-items-center gap-2 mt-3 mb-2"><b class="small text-uppercase text-body-secondary">Secciones y preguntas</b><span class="ms-auto d-flex gap-1">
-          ${plantilla ? '<button type="button" class="btn btn-sm btn-light" data-plantilla title="Reemplaza las preguntas por la plantilla sugerida"><i class="bi bi-magic me-1"></i>Sugerida</button>' : ''}</span></div>
-        <div class="fmt-ed" data-lista></div>
-        <div class="d-flex gap-2 mt-2"><button type="button" class="btn btn-outline-primary btn-sm" data-add="parrafo"><i class="bi bi-plus-lg me-1"></i>Pregunta</button><button type="button" class="btn btn-outline-secondary btn-sm" data-add="seccion"><i class="bi bi-type-h2 me-1"></i>Sección</button></div></div>
-        <div class="col-lg-7"><div class="small text-body-secondary mb-1"><i class="bi bi-eye me-1"></i>Así lo verán los clubes</div><div class="fmt-fondo" style="position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto" data-prev></div></div></div>`;
-    const lista = el.querySelector('[data-lista]'), prev = el.querySelector('[data-prev]');
-    const pintarPrev = () => { prev.innerHTML = hoja(e, { formato_nombre: st.nombre || 'Nombre del formato', descripcion: st.descripcion, secciones: st.secciones.filter((s) => s.titulo), fecha_limite: st.fecha_limite, club: 'Club de ejemplo' }, 'llenar'); prev.querySelectorAll('input,textarea,select').forEach((x) => { x.tabIndex = -1; }); };
-    const pintarLista = () => { lista.innerHTML = st.secciones.length ? st.secciones.map(filaHtml).join('') : '<div class="small text-body-secondary">Agrega preguntas o usa la plantilla sugerida.</div>'; pintarPrev(); };
-    pintarLista();
-    el.oninput = (ev) => {
-      const g = ev.target.dataset.g; if (g) { st[g] = ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value; return pintarPrev(); }
-      const fila = ev.target.closest('[data-i]'), k = ev.target.dataset.k; if (!fila || !k || k === 'tipo') return;
-      const s = st.secciones[+fila.dataset.i];
-      s[k] = ev.target.type === 'checkbox' ? ev.target.checked : k === 'opciones' ? ev.target.value.split('\n') : ev.target.value;
-      pintarPrev();
+    const ce = (k, v, ph, extra = '') => `<span contenteditable="true" data-k="${k}" data-ph="${esc(ph)}" spellcheck="true" ${extra}>${esc(v || '')}</span>`;
+    const insertar = (i) => `<div class="fmt-ins"><span><button type="button" data-add="parrafo" data-en="${i}">+ Pregunta</button><button type="button" data-add="seccion" data-en="${i}">+ Sección</button><button type="button" data-add="nota" data-en="${i}">+ Nota</button></span></div>`;
+    const previa = (s) => {
+      if (s.tipo === 'parrafo') return '<textarea class="form-control fmt-prev" rows="3" tabindex="-1" aria-hidden="true"></textarea>';
+      if (s.tipo === 'si_no') return '<div class="fmt-ops fmt-prev"><label><input type="radio" tabindex="-1">Sí</label><label><input type="radio" tabindex="-1">No</label></div>';
+      if (s.tipo === 'opciones') return `<div class="fmt-ops">${(s.opciones || []).map((o, j) => `<span class="fmt-op"><span contenteditable="true" data-op="${j}" data-ph="Opción">${esc(o)}</span><button type="button" data-qop="${j}" aria-label="Quitar opción">×</button></span>`).join('')}<button type="button" class="btn btn-sm btn-link p-0 ms-1" data-aop>+ opción</button></div>`;
+      const type = { fecha: 'date', numero: 'number', dinero: 'number' }[s.tipo] || 'text';
+      return `<input class="form-control fmt-prev" type="${type}" tabindex="-1" aria-hidden="true" ${s.tipo === 'dinero' ? 'placeholder="$"' : ''}>`;
     };
+    const barra = (s, i) => `<div class="fmt-bar" contenteditable="false"><select data-tipo aria-label="Tipo de bloque">${TIPOS.map(([k, l]) => `<option value="${k}" ${k === s.tipo ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${esPregunta(s) ? `<span class="sep"></span><button type="button" data-tg="requerido" class="${s.requerido ? 'act' : ''}" title="El club no puede enviar sin responderla">Obligatoria</button>` : ''}
+        ${s.tipo === 'opciones' ? `<button type="button" data-tg="clasifica" class="${s.clasifica ? 'act' : ''}" title="Sus opciones separan los proyectos en Distrito → Impacto">Clasifica</button>` : ''}
+        <span class="sep"></span><button type="button" data-mv="-1" aria-label="Subir" ${i ? '' : 'disabled'}><i class="bi bi-arrow-up"></i></button><button type="button" data-mv="1" aria-label="Bajar" ${i < st.secciones.length - 1 ? '' : 'disabled'}><i class="bi bi-arrow-down"></i></button>
+        <button type="button" data-dup aria-label="Duplicar"><i class="bi bi-copy"></i></button><button type="button" data-quitar aria-label="Quitar" class="text-danger"><i class="bi bi-trash"></i></button></div>`;
+    const bloque = (s, i, n) => {
+      let cuerpo;
+      if (s.tipo === 'seccion') cuerpo = `<div class="fmt-sec">${ce('titulo', s.titulo, 'Título de la sección')}</div>`;
+      else if (s.tipo === 'nota') cuerpo = `<div class="fmt-nota">${ce('titulo', s.titulo, 'Escribe una nota para los clubes: instrucciones, aclaraciones, ejemplos…', 'data-multi="1"')}</div>`;
+      else cuerpo = `<div class="fmt-q mb-0"><div class="l"><span class="n">${n}.</span>${ce('titulo', s.titulo, 'Escribe la pregunta')}${s.requerido ? '<span class="req">*</span>' : ''}</div>
+        <span class="a">${ce('ayuda', s.ayuda, 'Ayuda para el club (opcional)')}</span>${previa(s)}</div>`;
+      return `${insertar(i)}<div class="fmt-b ${foco === i ? 'on' : ''}" data-i="${i}">${barra(s, i)}${cuerpo}</div>`;
+    };
+    const pintar = () => {
+      let n = 0;
+      const bloques = st.secciones.map((s, i) => bloque(s, i, esPregunta(s) ? ++n : n)).join('');
+      el.innerHTML = `<div class="d-flex align-items-center gap-2 mb-3"><button type="button" class="btn btn-light btn-sm rounded-circle" data-volver aria-label="Volver"><i class="bi bi-arrow-left"></i></button>
+          <h2 class="h5 mb-0">${f ? 'Editar formato' : 'Nuevo formato'}</h2><span class="small text-body-secondary d-none d-md-inline ms-2">Escribe directo en la hoja: así la verán los clubes</span>
+          <span class="ms-auto d-flex gap-2">${f && borrar ? '<button type="button" class="btn btn-outline-danger btn-sm" data-borrar><i class="bi bi-trash me-1"></i>Borrar</button>' : ''}<button type="button" class="btn btn-primary" data-guardar><i class="bi bi-check-lg me-1"></i>Guardar</button></span></div>
+        <div class="fmt-ctl"><label class="small fw-semibold mb-0" for="fm_f">Fecha límite</label><input type="date" class="form-control form-control-sm w-auto" id="fm_f" data-g="fecha_limite" value="${esc(st.fecha_limite)}">
+          <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="fm_a" data-g="activo" ${st.activo ? 'checked' : ''}><label class="form-check-label small" for="fm_a">Disponible para los clubes</label></div>
+          <span class="ms-auto d-flex gap-1">${plantilla ? '<button type="button" class="btn btn-sm btn-light" data-plantilla title="Reemplaza las preguntas por la plantilla sugerida"><i class="bi bi-magic me-1"></i>Plantilla sugerida</button>' : ''}</span>
+          <div class="small text-danger w-100" data-err></div></div>
+        <div class="fmt-fondo"><div class="fmt-hoja fmt-hoja--ed"><div class="fmt-cab">${logoHtml(e)}<div class="fmt-cab-t"><div class="d">${esc(e.distrito)}</div><div class="p">${esc(e.programa)}${e.programa ? ' · ' : ''}Formato oficial</div></div></div>
+          <h2 class="fmt-tit"><span contenteditable="true" data-g="nombre" data-ph="Nombre del formato">${esc(st.nombre)}</span></h2>
+          <p class="fmt-desc"><span contenteditable="true" data-g="descripcion" data-multi="1" data-ph="Instrucciones para los clubes (opcional): qué deben presentar y cómo se revisa">${esc(st.descripcion)}</span></p>
+          <div class="fmt-datos fmt-prev"><div><small>Club</small><b>Nombre del club</b></div><div style="grid-column:span 2"><small>Nombre del proyecto</small><b>Lo escribe el club</b></div><div><small>Fecha</small><b>${esc(fechaLarga(new Date().toISOString()))}</b></div></div>
+          ${bloques}
+          <div class="fmt-add"><span class="small text-body-secondary w-100 text-center">Agregar al final</span><button type="button" data-add="parrafo" data-en="${st.secciones.length}"><i class="bi bi-plus-lg me-1"></i>Pregunta</button><button type="button" data-add="seccion" data-en="${st.secciones.length}"><i class="bi bi-type-h2 me-1"></i>Sección</button><button type="button" data-add="nota" data-en="${st.secciones.length}"><i class="bi bi-sticky me-1"></i>Nota</button><button type="button" data-add="opciones" data-en="${st.secciones.length}"><i class="bi bi-ui-radios me-1"></i>Elegir una opción</button></div>
+          <div class="fmt-firma fmt-prev"><div>Presidencia del club</div><div>Responsable del proyecto</div></div>
+          <div class="fmt-pie"><span>${esc(e.distrito)}</span><span>${esc(st.nombre || '')}</span><span>CD Rotary</span></div></div></div>`;
+    };
+    const enfocar = (i, k = 'titulo') => { const x = el.querySelector(`[data-i="${i}"] [data-k="${k}"]`); if (x) { x.focus(); const r = document.createRange(); r.selectNodeContents(x); r.collapse(false); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); } };
+    pintar();
+    const texto = (x) => (x.dataset.multi ? x.innerText.replace(/\n{3,}/g, '\n\n') : x.innerText.replace(/\s*\n\s*/g, ' ')).trim();
+    el.oninput = (ev) => {
+      const x = ev.target;
+      if (x.dataset.g) { st[x.dataset.g] = x.type === 'checkbox' ? x.checked : x.isContentEditable ? texto(x) : x.value; if (x.dataset.g === 'nombre') { const pie = el.querySelector('.fmt-pie span:nth-child(2)'); if (pie) pie.textContent = st.nombre; } return; }
+      const b = x.closest('[data-i]'); if (!b) return;
+      const s = st.secciones[+b.dataset.i];
+      if (x.dataset.k) s[x.dataset.k] = texto(x);
+      else if (x.dataset.op != null) s.opciones[+x.dataset.op] = texto(x);
+    };
+    // Un solo juego de oyentes por contenedor (se reemplazan al volver a abrir el constructor)
+    if (el._fmtOff) el._fmtOff();
+    const onFocus = (ev) => { const b = ev.target.closest?.('[data-i]'); const i = b ? +b.dataset.i : null; if (i === foco) return; el.querySelectorAll('.fmt-b.on').forEach((y) => y.classList.remove('on')); foco = i; b?.classList.add('on'); };
+    el.onkeydown = (ev) => {
+      const x = ev.target; if (!x.isContentEditable || ev.key !== 'Enter' || x.dataset.multi) return;
+      ev.preventDefault();
+      const b = x.closest('[data-i]');
+      if (x.dataset.op != null) { const s = st.secciones[+b.dataset.i]; s.opciones.splice(+x.dataset.op + 1, 0, ''); pintar(); el.querySelector(`[data-i="${b.dataset.i}"] [data-op="${+x.dataset.op + 1}"]`)?.focus(); return; }
+      if (x.dataset.k === 'titulo' && b && esPregunta(st.secciones[+b.dataset.i])) return enfocar(+b.dataset.i, 'ayuda');
+      if (b) { const i = +b.dataset.i + 1; st.secciones.splice(i, 0, { id: nuevoId(), tipo: 'parrafo', titulo: '', ayuda: '', requerido: false }); foco = i; pintar(); enfocar(i); }
+    };
+    const onPaste = (ev) => { if (!ev.target.isContentEditable) return; ev.preventDefault(); document.execCommand('insertText', false, (ev.clipboardData || window.clipboardData).getData('text/plain')); };
+    el.addEventListener('focusin', onFocus); el.addEventListener('paste', onPaste);
+    el._fmtOff = () => { el.removeEventListener('focusin', onFocus); el.removeEventListener('paste', onPaste); el.onkeydown = null; el._fmtOff = null; };
     el.onchange = (ev) => {
-      if (ev.target.dataset.k !== 'tipo') return;
+      if (ev.target.dataset.tipo == null) return;
       const s = st.secciones[+ev.target.closest('[data-i]').dataset.i]; s.tipo = ev.target.value;
       if (s.tipo === 'opciones' && !s.opciones?.length) s.opciones = ['Opción 1', 'Opción 2'];
-      if (s.tipo === 'seccion') s.requerido = false;
-      pintarLista();
+      if (!esPregunta(s)) { s.requerido = false; s.ayuda = ''; }
+      if (s.tipo !== 'opciones') delete s.clasifica;
+      pintar();
     };
     el.onclick = async (ev) => {
       const b = ev.target.closest('button'); if (!b) return;
       if (b.dataset.volver != null) return volver();
-      if (b.dataset.add) { st.secciones.push({ id: nuevoId(), tipo: b.dataset.add, titulo: '', ayuda: '', requerido: false }); pintarLista(); lista.lastElementChild?.querySelector('[data-k="titulo"]')?.focus(); return; }
-      if (b.dataset.plantilla != null) { if (st.secciones.length && !(await window.App.confirm({ title: '¿Usar la plantilla sugerida?', text: 'Reemplaza las preguntas que tienes ahora.', ok: 'Usar' }))) return; st.secciones = JSON.parse(JSON.stringify(plantilla)); sig = st.secciones.length + 1; return pintarLista(); }
-      const fila = b.closest('[data-i]');
-      if (fila && b.dataset.mv) { const i = +fila.dataset.i, j = i + Number(b.dataset.mv); [st.secciones[i], st.secciones[j]] = [st.secciones[j], st.secciones[i]]; return pintarLista(); }
-      if (fila && b.dataset.quitar != null) { st.secciones.splice(+fila.dataset.i, 1); return pintarLista(); }
+      const fila = b.closest('[data-i]'), i = fila ? +fila.dataset.i : null, s = fila ? st.secciones[i] : null;
+      if (b.dataset.add) {
+        const en = Number(b.dataset.en), tipo = b.dataset.add;
+        st.secciones.splice(en, 0, { id: nuevoId(), tipo, titulo: '', ayuda: '', requerido: false, ...(tipo === 'opciones' ? { opciones: ['Opción 1', 'Opción 2'] } : {}) });
+        foco = en; pintar(); enfocar(en); return;
+      }
+      if (b.dataset.plantilla != null) { if (st.secciones.length && !(await window.App.confirm({ title: '¿Usar la plantilla sugerida?', text: 'Reemplaza las preguntas que tienes ahora.', ok: 'Usar' }))) return; st.secciones = JSON.parse(JSON.stringify(plantilla)); sig = st.secciones.length + 1; return pintar(); }
+      if (s && b.dataset.tg) { s[b.dataset.tg] = !s[b.dataset.tg]; return pintar(); }
+      if (s && b.dataset.mv) { const j = i + Number(b.dataset.mv); [st.secciones[i], st.secciones[j]] = [st.secciones[j], st.secciones[i]]; foco = j; return pintar(); }
+      if (s && b.dataset.dup != null) { st.secciones.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(s)), id: nuevoId() }); foco = i + 1; return pintar(); }
+      if (s && b.dataset.quitar != null) { st.secciones.splice(i, 1); foco = null; return pintar(); }
+      if (s && b.dataset.aop != null) { s.opciones.push(''); pintar(); el.querySelector(`[data-i="${i}"] [data-op="${s.opciones.length - 1}"]`)?.focus(); return; }
+      if (s && b.dataset.qop != null) { s.opciones.splice(+b.dataset.qop, 1); return pintar(); }
       if (b.dataset.borrar != null) { if (!(await window.App.confirm({ title: '¿Borrar este formato?', ok: 'Borrar' }))) return; try { await borrar(); } catch (x) { el.querySelector('[data-err]').textContent = x.message; } return; }
       if (b.dataset.guardar != null) {
         b.disabled = true;
-        try { await guardar({ nombre: st.nombre.trim(), descripcion: st.descripcion.trim(), fecha_limite: st.fecha_limite || null, activo: st.activo, secciones: st.secciones.map((s) => ({ ...s, opciones: Array.isArray(s.opciones) ? s.opciones.map((o) => o.trim()).filter(Boolean) : s.opciones })) }); }
+        try { await guardar({ nombre: st.nombre.trim(), descripcion: st.descripcion.trim(), fecha_limite: st.fecha_limite || null, activo: st.activo, secciones: st.secciones.map((x) => ({ ...x, opciones: Array.isArray(x.opciones) ? x.opciones.map((o) => o.trim()).filter(Boolean) : x.opciones })) }); }
         catch (x) { el.querySelector('[data-err]').textContent = x.message; window.App.toast(x.message, false); } finally { b.disabled = false; }
       }
     };

@@ -402,7 +402,7 @@ DW.ready.then(async (me) => {
         : `<div class="dw-card mb-4 small text-body-secondary">${filtroEnv === 'enviado' ? 'No hay nada por revisar.' : 'No hay solicitudes con este estado.'}</div>`}
       <div class="ro-h">Formatos del distrito</div>
       ${fmt.rows.length ? `<div class="row g-2">${fmt.rows.map((f) => `<div class="col-md-6 col-xl-4"><button type="button" class="fmt-card w-100 h-100 text-start text-reset" data-formato="${f.id}"><i class="bi bi-file-earmark-text"></i>
-          <span class="flex-grow-1 min-w-0"><b class="d-block">${esc(f.nombre)}</b><span class="small text-body-secondary">${f.secciones.filter((s) => s.tipo !== 'seccion').length} preguntas · ${f.recibidos} recibidos${f.por_revisar ? ` · <b class="text-warning-emphasis">${f.por_revisar} por revisar</b>` : ''}</span>
+          <span class="flex-grow-1 min-w-0"><b class="d-block">${esc(f.nombre)}</b><span class="small text-body-secondary">${f.secciones.filter((s) => s.tipo !== 'seccion' && s.tipo !== 'nota').length} preguntas · ${f.recibidos} recibidos${f.por_revisar ? ` · <b class="text-warning-emphasis">${f.por_revisar} por revisar</b>` : ''}</span>
           <span class="d-block mt-1">${f.activo ? C.chip('ok', 'Disponible') : C.chip('free', 'Oculto para los clubes')}${f.fecha_limite ? ` <span class="small text-body-secondary">hasta ${esc(F.fechaLarga(f.fecha_limite))}</span>` : ''}</span></span></button></div>`).join('')}</div>`
         : `<div class="dw-card">${window.App.empty('bi-file-earmark-text', 'Crea el formato con el que los clubes presentan sus proyectos. Puedes partir de la plantilla sugerida.')}</div>`}`;
     view.onclick = (e) => {
@@ -459,7 +459,7 @@ DW.ready.then(async (me) => {
     if (!fmt) fmt = await api('/api/distrito/formatos');
     acciones.innerHTML = ''; view.onclick = null;
     irH(f ? `formato=${f.id}` : 'formato=nuevo');
-    const salir = () => { view.onclick = null; view.oninput = null; view.onchange = null; tab = 'formatos'; pintar(); };
+    const salir = () => { view._fmtOff?.(); view.onclick = null; view.oninput = null; view.onchange = null; tab = 'formatos'; pintar(); };
     await F.constructor(view, f, { plantilla: fmt.plantilla,
       guardar: async (body) => { await api(f ? `/api/distrito/formatos/${f.id}` : '/api/distrito/formatos', { method: f ? 'PATCH' : 'POST', body }); toast('Formato guardado'); salir(); },
       borrar: f ? async () => { await api(`/api/distrito/formatos/${f.id}`, { method: 'DELETE' }); toast('Formato borrado'); salir(); } : null,
@@ -497,7 +497,7 @@ DW.ready.then(async (me) => {
     const ACC = { clubes: ['Solicitar club nuevo', solicitarClub], formatos: ['Nuevo formato', () => editarFormato(null)], cuotas: ['Nueva cuota', () => editar(null)], bonos: ['Nuevo bono', () => editarBono(null)], metas: ['Editar metas', editarMetas] };
     acciones.innerHTML = M && ACC[tab] ? `<button class="btn btn-primary" data-nueva><i class="bi ${tab === 'metas' ? 'bi-pencil' : 'bi-plus-lg'} me-1"></i>${ACC[tab][0]}</button>` : '';
     acciones.querySelector('[data-nueva]')?.addEventListener('click', () => ACC[tab][1]());
-    view.onclick = null; view.oninput = null; view.onchange = null; acciones.onclick = null;
+    view._fmtOff?.(); view.onclick = null; view.oninput = null; view.onchange = null; acciones.onclick = null;
     if (tab === 'formatos') return pintarFormatos();
     if (tab === 'impacto') return pintarImpacto();
     if (tab === 'orden') return pintarOrden();
