@@ -11,9 +11,9 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
+  let tab = ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
   document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['impacto', 'Impacto', '#impacto', 'bi-globe-americas'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['cargos', 'Cargos', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['impacto', 'Impacto', '#impacto', 'bi-globe-americas'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -411,6 +411,58 @@ DW.ready.then(async (me) => {
       const v = e.target.closest('[data-envio]'); if (v) return verEnvio(Number(v.dataset.envio), 'formatos');
     };
   }
+  /* ---------- Equipo distrital del año rotario y sus certificados (le llegan a cada persona en «Lo tuyo») ---------- */
+  let eqAnio = null, personas = null;
+  async function pintarEquipo() {
+    view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
+    const d = await api(`/api/distrito/equipo${eqAnio ? `?anio=${eqAnio}` : ''}`); eqAnio = d.anio;
+    acciones.innerHTML = M ? `<button class="btn btn-primary" data-eqnuevo><i class="bi bi-person-plus me-1"></i>Agregar al equipo</button>
+      <button class="btn btn-outline-primary" data-eqrec><i class="bi bi-award me-1"></i>Reconocimiento</button>${d.rows.some((m) => !m.certificado) ? '<button class="btn btn-outline-primary" data-eqtodos><i class="bi bi-patch-check me-1"></i>Certificados a todo el equipo</button>' : ''}` : '';
+    const ic = (c) => (/representante|rdr|gobern/i.test(c) ? 'bi-star-fill' : /secretar/i.test(c) ? 'bi-journal-text' : /tesor/i.test(c) ? 'bi-cash-coin' : /coordin|comit/i.test(c) ? 'bi-diagram-3' : 'bi-person-badge');
+    view.innerHTML = `<div class="dw-card mb-3 d-flex align-items-center gap-2 flex-wrap"><b>Equipo distrital ${esc(d.nombre_anio)}</b><span class="small text-body-secondary">${d.rows.length} ${d.rows.length === 1 ? 'persona' : 'personas'} · sus certificados les salen en «Lo tuyo» (por su correo)</span>
+        <div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-eqa="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button><span class="btn btn-light disabled text-body fw-semibold">${esc(d.nombre_anio)}</span><button class="btn btn-light" data-eqa="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div></div>
+      ${d.rows.length ? `<div class="ro-junta mb-4">${d.rows.map((m) => `<div class="ro-jcard"><span class="ro-av" style="width:58px;height:58px;font-size:20px">${esc(RO.initials(m.nombre))}</span>
+          <span class="cargo"><i class="bi ${ic(m.cargo)} me-1"></i>${esc(m.cargo)}</span><b>${esc(m.nombre)}</b><span class="small text-body-secondary">${esc(m.club || 'Sin club')}${m.correo ? `<br>${esc(m.correo)}` : ''}</span>
+          <div class="d-flex flex-wrap gap-1 justify-content-center mt-1">${m.certificado ? `<a class="btn btn-sm btn-light" href="/api/distrito/certificados/${m.certificado}" target="_blank" rel="noopener"><i class="bi bi-patch-check-fill text-success me-1"></i>Certificado</a>` : M ? `<button class="btn btn-sm btn-outline-primary" data-eqcert="${m.id}"><i class="bi bi-patch-check me-1"></i>Expedir certificado</button>` : ''}
+            ${M ? `<button class="btn btn-sm btn-light" data-eqed="${m.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-eqdel="${m.id}" aria-label="Quitar"><i class="bi bi-trash"></i></button>` : ''}</div></div>`).join('')}</div>`
+        : `<div class="dw-card mb-4">${window.App.empty('bi-people', `Arma el equipo distrital ${esc(d.nombre_anio)}: representación, secretaría, tesorería y coordinaciones. Elige a cada persona entre los socios de tus clubes.`)}</div>`}
+      <div class="ro-h">Certificados del distrito · ${esc(d.nombre_anio)}</div>
+      ${d.certificados.length ? `<div class="dw-card p-0">${d.certificados.map((k) => `<div class="d-flex gap-3 align-items-center p-3 border-bottom"><i class="bi ${k.tipo === 'servicio' ? 'bi-patch-check-fill' : 'bi-award-fill'} fs-4" style="color:${k.tipo === 'servicio' ? '#17458f' : '#D41367'}"></i>
+          <div class="flex-grow-1 min-w-0"><b>${esc(k.nombre)}</b><div class="small text-body-secondary">${k.tipo === 'servicio' ? `Servicio · ${esc(k.cargo || '')}` : `Reconocimiento · ${esc(k.titulo || '')}`}${k.club ? ` · ${esc(k.club)}` : ''} · ${C.day(k.fecha)}${k.correo ? '' : ' · <span class="text-warning-emphasis">sin correo: no le saldrá en «Lo tuyo»</span>'}</div></div>
+          <a class="btn btn-sm btn-light" href="/api/distrito/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Ver / PDF</a>${M ? `<button class="btn btn-sm btn-light" data-kdel="${k.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button>` : ''}</div>`).join('')}</div>`
+        : '<div class="dw-card small text-body-secondary">Aún no hay certificados este año.</div>'}`;
+    const optsPersonas = async () => { personas ||= (await api('/api/distrito/personas')).rows; return [['', 'Otra persona (escribir abajo)'], ...personas.map((p) => [p.id, `${p.nombre}${p.cargo ? ` · ${p.cargo}` : ''}`, p.club])]; };
+    const editarMiembro = async (m) => {
+      const cargos = d.cargos.includes(m?.cargo) || !m ? d.cargos : [m.cargo, ...d.cargos];
+      const out = await C.form({ title: m ? 'Editar en el equipo' : `Agregar al equipo ${d.nombre_anio}`, fields: [{ k: 'cargo', label: 'Cargo distrital', type: 'select', options: [...cargos.map((x) => [x, x]), ['__otro', 'Otro cargo…']] },
+        { k: 'cargo_otro', label: 'Otro cargo (si no está en la lista)', type: 'text' }, { k: 'socio_id', label: 'Socio de un club del distrito', type: 'select', options: await optsPersonas(), full: true },
+        { k: 'nombre', label: 'Nombre (si no es socio de un club)', type: 'text' }, { k: 'club', label: 'Club', type: 'text' }, { k: 'correo', label: 'Correo (con él le llegan sus certificados)', type: 'email' }],
+      values: m ? { cargo: m.cargo, socio_id: m.socio_id || '', nombre: m.socio_id ? '' : m.nombre, club: m.socio_id ? '' : m.club, correo: m.socio_id ? '' : m.correo } : { cargo: d.cargos[0] }, okText: 'Guardar' });
+      if (!out) return;
+      const body = { anio: d.anio, cargo: out.cargo === '__otro' ? out.cargo_otro : out.cargo, ...(out.socio_id ? { socio_id: Number(out.socio_id), correo: out.correo } : { nombre: out.nombre, club: out.club, correo: out.correo }) };
+      try { await api(m ? `/api/distrito/equipo/${m.id}` : '/api/distrito/equipo', { method: m ? 'PATCH' : 'POST', body }); toast('Equipo actualizado'); pintarEquipo(); } catch (x) { toast(x.message, false); }
+    };
+    const reconocer = async () => {
+      const out = await C.form({ title: 'Reconocimiento del distrito', fields: [{ k: 'titulo', label: 'Motivo', type: 'text', required: true, full: true, placeholder: 'Mejor proyecto de servicio del año' },
+        { k: 'socio_id', label: 'A quién (socio de un club del distrito)', type: 'select', options: await optsPersonas(), full: true }, { k: 'nombre', label: 'Nombre (si no es socio)', type: 'text' }, { k: 'club', label: 'Club', type: 'text' },
+        { k: 'correo', label: 'Correo', type: 'email' }, { k: 'fecha', label: 'Fecha', type: 'date', required: true }, { k: 'texto', label: 'Texto del certificado', type: 'long', full: true }], values: { fecha: C.todayCo() }, okText: 'Expedir' });
+      if (!out) return;
+      try { const r = await api('/api/distrito/certificados', { method: 'POST', body: { ...out, tipo: 'reconocimiento', socio_id: out.socio_id ? Number(out.socio_id) : undefined } }); toast('Reconocimiento expedido'); window.open(`/api/distrito/certificados/${r.id}`, '_blank', 'noopener'); pintarEquipo(); } catch (x) { toast(x.message, false); }
+    };
+    acciones.onclick = async (e) => {
+      if (e.target.closest('[data-eqnuevo]')) return editarMiembro(null);
+      if (e.target.closest('[data-eqrec]')) return reconocer();
+      if (e.target.closest('[data-eqtodos]')) { try { const r = await api('/api/distrito/certificados/equipo', { method: 'POST', body: { anio: d.anio } }); toast(`${r.creados} certificados expedidos`); pintarEquipo(); } catch (x) { toast(x.message, false); } }
+    };
+    view.onclick = async (e) => {
+      const a = e.target.closest('[data-eqa]'); if (a) { eqAnio = d.anio + Number(a.dataset.eqa); return pintarEquipo(); }
+      const ed = e.target.closest('[data-eqed]'); if (ed) return editarMiembro(d.rows.find((m) => String(m.id) === ed.dataset.eqed));
+      const de = e.target.closest('[data-eqdel]'); if (de) { if (!(await window.App.confirm({ title: '¿Quitar del equipo?', text: 'Los certificados ya expedidos se conservan.', ok: 'Quitar' }))) return; try { await api(`/api/distrito/equipo/${de.dataset.eqdel}`, { method: 'DELETE' }); pintarEquipo(); } catch (x) { toast(x.message, false); } return; }
+      const ce = e.target.closest('[data-eqcert]'); if (ce) { try { const r = await api('/api/distrito/certificados', { method: 'POST', body: { miembro_id: Number(ce.dataset.eqcert), tipo: 'servicio' } }); toast('Certificado expedido'); window.open(`/api/distrito/certificados/${r.id}`, '_blank', 'noopener'); pintarEquipo(); } catch (x) { toast(x.message, false); } return; }
+      const kd = e.target.closest('[data-kdel]'); if (kd) { if (!(await window.App.confirm({ title: '¿Borrar este certificado?', text: 'Deja de salirle a la persona en «Lo tuyo».', ok: 'Borrar' }))) return; try { await api(`/api/distrito/certificados/${kd.dataset.kdel}`, { method: 'DELETE' }); pintarEquipo(); } catch (x) { toast(x.message, false); } }
+    };
+  }
+
   /* ---------- Impacto: todos los proyectos que presentan los clubes, por estado y por clasificación ---------- */
   const IMP_EST = [['', 'Todos'], ['borrador', 'Borradores'], ['enviado', 'En revisión'], ['devuelto', 'Devueltos'], ['rechazado', 'No aprobados'], ['aprobado', 'Aprobados']];
   const imp = { estado: '', club: '', sel: {}, q: '' };
@@ -500,6 +552,7 @@ DW.ready.then(async (me) => {
     view._fmtOff?.(); view.onclick = null; view.oninput = null; view.onchange = null; acciones.onclick = null;
     if (tab === 'formatos') return pintarFormatos();
     if (tab === 'impacto') return pintarImpacto();
+    if (tab === 'equipo') return pintarEquipo();
     if (tab === 'orden') return pintarOrden();
     if (tab === 'juegos') return pintarJuegos();
     if (tab === 'cuotas') return pintarCuotas();

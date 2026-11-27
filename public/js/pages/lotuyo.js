@@ -22,7 +22,8 @@ DW.ready.then(async (me) => {
   }
 
   async function cargar() {
-    const d = await api('/api/lotuyo');
+    const [d, mc] = await Promise.all([api('/api/lotuyo'), api('/api/lotuyo/mis-certificados').catch(() => ({ rows: [] }))]);
+    const certs = mc.rows, CERT = { activacion: ['bi-patch-check-fill', '#17458f'], junta: ['bi-people-fill', '#F7A81B'], distrital: ['bi-star-fill', '#0067c8'], reconocimiento: ['bi-award-fill', '#D41367'] };
     if (!d.socio) {
       view.innerHTML = `<div class="dw-card">${window.App.empty('bi-person-badge', 'Tu usuario aún no está enlazado a una ficha de socio. Pídele a la junta que te dé acceso desde Socios con tu mismo correo.')}</div>`;
       return;
@@ -66,9 +67,11 @@ DW.ready.then(async (me) => {
           <div class="flex-grow-1"><b>Mi firma para los certificados</b><div class="small text-body-secondary">${s.tiene_firma ? 'Ya está guardada: sale en los certificados que firma tu cargo.' : 'Aún no la has puesto. Como eres de la junta, tu firma va en los certificados.'}</div>
           ${s.tiene_firma ? `<img src="/api/socios/firma/${s.id}?v=${Date.now()}" alt="Mi firma" style="max-height:48px;max-width:220px" class="mt-1">` : ''}</div>
           ${W ? `<button class="btn ${s.tiene_firma ? 'btn-outline-primary' : 'btn-primary'}" data-firma><i class="bi bi-pen me-1"></i>${s.tiene_firma ? 'Cambiar firma' : 'Poner mi firma'}</button>` : ''}</div></div>` : ''}
-        ${s.activado_at || d.certificados?.length ? `<div class="col-12" id="lt-certificado"><div class="dw-card" style="border-left:4px solid #17458f"><div class="ro-h mt-0">Mis certificados</div>
-          ${s.activado_at ? `<div class="d-flex align-items-center gap-3 flex-wrap py-2 border-bottom"><i class="bi bi-patch-check-fill fs-3" style="color:#17458f"></i><div class="flex-grow-1"><b>Activación</b><div class="small text-body-secondary">Socio del club desde el ${C.day(s.activado_at)}</div></div><a class="btn btn-sm btn-primary" href="/api/lotuyo/certificado" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a></div>` : ''}
-          ${(d.certificados || []).map((k) => `<div class="d-flex align-items-center gap-3 flex-wrap py-2 border-bottom"><i class="bi ${k.tipo === 'junta' ? 'bi-people-fill' : 'bi-award-fill'} fs-3" style="color:${k.tipo === 'junta' ? '#F7A81B' : '#D41367'}"></i><div class="flex-grow-1"><b>${k.tipo === 'junta' ? `Junta ${k.anio}-${k.anio + 1}` : esc(k.titulo)}</b><div class="small text-body-secondary">${k.tipo === 'junta' ? esc(k.cargo || '') : 'Reconocimiento'} · ${C.day(k.fecha)}</div></div><a class="btn btn-sm btn-outline-primary" href="/api/lotuyo/certificados/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver</a></div>`).join('')}</div></div>` : ''}
+        ${certs.length ? `<div class="col-12" id="lt-certificado"><div class="dw-card" style="border-left:4px solid #17458f"><div class="d-flex align-items-center gap-2"><div class="ro-h mt-0 flex-grow-1">Mis certificados</div><span class="small text-body-secondary">${certs.length} · de todos tus clubes y del distrito</span></div>
+          ${[...new Set(certs.map((k) => k.anio))].sort((a, b) => b - a).map((a) => `<div class="small fw-semibold text-uppercase text-body-secondary mt-2" style="letter-spacing:.08em">Año rotario ${a}-${a + 1}</div>
+            ${certs.filter((k) => k.anio === a).map((k) => { const [ic, col] = CERT[k.tipo] || CERT.reconocimiento; return `<div class="d-flex align-items-center gap-3 flex-wrap py-2 border-bottom"><i class="bi ${ic} fs-3" style="color:${col}"></i>
+              <div class="flex-grow-1 min-w-0"><b>${esc(k.titulo)}</b><div class="small text-body-secondary">${k.cargo ? `${esc(k.cargo)} · ` : ''}${esc(k.de)} · ${C.day(k.fecha)}</div></div>
+              <a class="btn btn-sm ${k.origen === 'distrito' ? 'btn-primary' : 'btn-outline-primary'}" href="/api/lotuyo/mis-certificados/${k.origen}/${k.id}" target="_blank" rel="noopener"><i class="bi bi-download me-1"></i>Ver / PDF</a></div>`; }).join('')}`).join('')}</div></div>` : ''}
       </div>`;
     if (!document.querySelector('nav.ro-club')) {   // botones de sección: llevan a cada bloque de la página
       const SEC = [['yo', 'Resumen', 'bi-person'], ['reuniones', 'Reuniones', 'bi-calendar-event'], ['tareas', 'Tareas', 'bi-kanban'], ['cuotas', 'Cuotas', 'bi-wallet2'], ['certificado', 'Certificado', 'bi-patch-check']];

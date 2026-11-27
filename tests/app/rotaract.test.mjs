@@ -355,6 +355,21 @@ export default async function ({ check, newBusiness, newMember }) {
   const bsD = (await D.app('/api/distrito/bonos')).data.rows.find((x) => x.id === bs.data.id)?.clubes.find((x) => x.club_id === A.id);
   check('Bonos: el club los paga desde la Caja menor; salen en sus obligaciones y el distrito lo ve', pb.status === 201 && rb?.bonos.some((x) => x.id === bs.data.id && x.pagado === 5000) && rb.valor_distrito >= bsA.total && bsD?.pagado_caja === 5000, JSON.stringify(rb));
   check('Bonos: otro distrito no lo paga (404)', (await B.app(`/api/cajas/bonos/${bs.data.id}/pagar`, { method: 'POST', body: { monto: 5000 } })).status === 404);
+  // Equipo distrital y certificados del distrito; le salen a la persona en «Lo tuyo» (por su correo)
+  const mailA = (await A.app('/api/me')).data.user.email, prs = (await D.app('/api/distrito/personas')).data.rows;
+  check('Equipo distrital: el distrito ve los socios de sus clubes para elegir; un club no arma el equipo (403)', prs.some((p) => p.club.startsWith('RTC ')) && !prs.some((p) => p.club.includes('Otro distrito'))
+    && (await A.app('/api/distrito/equipo', { method: 'POST', body: { cargo: 'x', nombre: 'x' } })).status === 403);
+  const eqm = await D.app('/api/distrito/equipo', { method: 'POST', body: { cargo: 'Secretaría distrital', nombre: `Persona Distrito ${vs}`, club: 'RTC Club A', correo: mailA } });
+  const eqs = await D.app('/api/distrito/equipo', { method: 'POST', body: { cargo: 'Representante Distrital (RDR)', socio_id: prs[0].id } });
+  const eql = (await D.app('/api/distrito/equipo')).data;
+  check('Equipo distrital: con cargos del año; el socio elegido trae su club', eqm.status === 201 && eqs.status === 201 && eql.rows.find((m) => m.id === eqs.data.id)?.club === prs[0].club && eql.cargos.length > 5);
+  const kc = await D.app('/api/distrito/certificados', { method: 'POST', body: { miembro_id: eqm.data.id, tipo: 'servicio' } });
+  check('Equipo distrital: certificado de servicio (uno por persona y año)', kc.status === 201 && (await D.app('/api/distrito/certificados', { method: 'POST', body: { miembro_id: eqm.data.id, tipo: 'servicio' } })).status === 409);
+  const misA = (await A.app('/api/lotuyo/mis-certificados')).data.rows;
+  const verKA = await A.app(`/api/lotuyo/mis-certificados/distrito/${kc.data.id}`);
+  check('Lo tuyo: muestra el certificado distrital de la persona y lo abre; otro no lo ve (404)', misA.some((k) => k.origen === 'distrito' && k.id === kc.data.id && k.cargo === 'Secretaría distrital') && verKA.status === 200 && (await B.app(`/api/lotuyo/mis-certificados/distrito/${kc.data.id}`)).status === 404, JSON.stringify(misA.slice(0, 3)));
+  const rec = await D.app('/api/distrito/certificados', { method: 'POST', body: { tipo: 'reconocimiento', titulo: 'Mejor proyecto', socio_id: prs[0].id } });
+  check('Equipo distrital: reconocimiento a un socio de un club; servicio sin estar en el equipo no (400)', rec.status === 201 && (await D.app('/api/distrito/certificados', { method: 'POST', body: { tipo: 'servicio', nombre: 'x' } })).status === 400);
   const mt = await D.app('/api/distrito/metas', { method: 'PUT', body: { anio: tab2.anio, metas: { socios: 500, clubes: 40, horas: '' } } });
   const mg = (await D.app(`/api/distrito/metas?anio=${tab2.anio}`)).data.metas;
   check('Distrito: metas del año rotario', mt.status === 200 && mg.socios === 500 && mg.clubes === 40 && !('horas' in mg), JSON.stringify(mg));

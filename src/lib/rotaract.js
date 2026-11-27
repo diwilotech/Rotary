@@ -326,7 +326,7 @@ export async function logoOficial(c, club) {
 // d = { titulo, nombre, detalle, cuerpo (HTML ya escapado; {club} = nombre del club), firmas: [{ nombre, rol, fecha, img }], codigo }
 async function hojaCertificado(c, d) {
   const biz = await one(c.env, 'SELECT name FROM businesses WHERE id = ?', c.businessId);
-  const club = biz?.name || (await programaDe(c.env, c.businessId)).club, logo = await logoOficial(c, club);
+  const club = d.club || biz?.name || (await programaDe(c.env, c.businessId)).club, logo = await logoOficial(c, club);
   // Franja izquierda moderna: degradado azul Rotary, la rueda oficial grande en blanco muy suave, arcos arándano y oro y una trama de puntos
   let rueda = '';
   try { const r = await c.env.ASSETS.fetch(new Request(new URL('/img/marca/rueda.svg', c.url.origin))); rueda = (/<g[\s\S]*<\/g>/.exec(await r.text()) || [''])[0].replace(/fill="#D41367"/g, 'fill="#FFFFFF"'); } catch (_) { rueda = ''; }
@@ -390,7 +390,8 @@ h1{margin:9mm 0 0;font:700 25pt 'Open Sans',sans-serif;color:var(--gris);letter-
 async function firmasJunta(c, fecha) {
   const junta = await all(c.env, "SELECT id, nombre, cargo, firma_key FROM ro_socios WHERE business_id = ? AND estado = 'activo' AND cargo IS NOT NULL", c.businessId);
   const pres = junta.find((j) => cargoOrden(j.cargo) === 1), sec = junta.find((j) => /secretari/.test(String(j.cargo).toLowerCase()));
-  const f = (j, rol) => ({ nombre: j?.nombre || '', rol, fecha, img: j?.firma_key ? `/api/socios/firma/${j.id}` : null });
+  // c.ajeno: se ve desde otro negocio («Lo tuyo» de otro club): la imagen de la firma solo se sirve en su propio negocio
+  const f = (j, rol) => ({ nombre: j?.nombre || '', rol, fecha, img: j?.firma_key && !c.ajeno ? `/api/socios/firma/${j.id}` : null });
   return [f(pres, 'Presidencia del club'), f(sec, 'Secretaría del club')];
 }
 
@@ -410,6 +411,24 @@ export async function certificadoEspecialHtml(c, socio, k) {
   }
   return hojaCertificado(c, { titulo: `Reconocimiento · ${k.titulo || 'Al servicio'}`, nombre: socio.nombre, detalle: `Otorgado el ${fechaLarga(k.fecha)}`,
     cuerpo: esc(k.texto || 'Por su compromiso con el servicio y su aporte al club.').replace(/\n/g, '<br>'), firmas: await firmasJunta(c, k.fecha), codigo: k.codigo || '' });
+}
+// Certificado del distrito (servicio en un cargo distrital o reconocimiento). c = contexto del negocio del distrito.
+// Firman la Representación distrital y la Secretaría distrital del equipo de ese año.
+export const CARGOS_DISTRITALES = ['Representante Distrital (RDR)', 'RDR electo', 'RDR saliente', 'Secretaría distrital', 'Tesorería distrital', 'Vicerrepresentación distrital',
+  'Coordinación de imagen pública', 'Coordinación de servicio a la comunidad', 'Coordinación de servicio internacional', 'Coordinación de desarrollo profesional',
+  'Coordinación de membresía', 'Coordinación de La Fundación Rotaria', 'Coordinación de proyectos', 'Comité de conferencia distrital', 'Asesoría distrital', 'Gobernación distrital'];
+export async function certificadoDistritoHtml(c, k) {
+  const d = await distritoDe(c.env, c.businessId), P = PROGRAMAS[d.programa] || PROGRAMAS.rotaract, nombreD = `Distrito ${d.codigo}`;
+  const eq = await all(c.env, 'SELECT nombre, cargo FROM ro_distrito_equipo WHERE business_id = ? AND anio = ?', c.businessId, k.anio || anioRotarioDe(k.fecha));
+  const rdr = eq.find((x) => /representante distrital|^rdr$|\(rdr\)|gobernaci/i.test(x.cargo) && !/electo|saliente/i.test(x.cargo)), sec = eq.find((x) => /secretar/i.test(x.cargo));
+  const firmas = [{ nombre: rdr?.nombre || '', rol: rdr?.cargo || 'Representación distrital', fecha: k.fecha }, { nombre: sec?.nombre || '', rol: 'Secretaría distrital', fecha: k.fecha }];
+  const club = `${P.nombre} ${nombreD}`;
+  if (k.tipo === 'servicio') {
+    return hojaCertificado(c, { club, titulo: 'Certificado de servicio distrital', nombre: k.nombre, detalle: `${k.cargo || 'Equipo distrital'} · Año rotario ${k.anio}-${k.anio + 1}${k.club ? ` · ${k.club}` : ''}`,
+      cuerpo: `Por haber servido como <b>${esc(k.cargo || 'miembro del equipo distrital')}</b> del {club} durante el año rotario <b>${k.anio}-${k.anio + 1}</b>, con compromiso, liderazgo y espíritu de servicio.`, firmas, codigo: k.codigo || '' });
+  }
+  return hojaCertificado(c, { club, titulo: `Reconocimiento · ${k.titulo || 'Al servicio'}`, nombre: k.nombre, detalle: `${k.club ? `${k.club} · ` : ''}Otorgado el ${fechaLarga(k.fecha)}`,
+    cuerpo: esc(k.texto || 'Por su compromiso con el servicio y su aporte al distrito.').replace(/\n/g, '<br>'), firmas, codigo: k.codigo || '' });
 }
 // Certificado del club (organización): número del club, fundación y club rotario patrocinador. Datos en ro_club_config.kit.
 export async function certificadoClubHtml(c, k) {
