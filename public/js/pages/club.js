@@ -151,6 +151,12 @@
     .ro-oferta--b{background:rgba(var(--dw-p-rgb),.08);color:inherit}
     .ro-bonos{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ro-bonos>span{display:flex;flex-direction:column;align-items:center;font-size:.7rem;color:var(--bs-secondary-color)}
     .ro-bonos>span b{font-size:1.05rem;color:var(--bs-body-color);font-variant-numeric:tabular-nums}.ro-bonos>span.t{padding:4px 10px;border-radius:10px;background:rgba(var(--dw-p-rgb),.1)}.ro-bonos>span.t b{color:var(--dw-p)}
-    .ro-tcobro td,.ro-tcobro th{font-size:.84rem;font-variant-numeric:tabular-nums}@media (max-width:480px){.ro-pago{flex-direction:column;align-items:stretch}.ro-pago__qr{align-self:center}}</style>`);
+    .ro-tcobro td,.ro-tcobro th{font-size:.84rem;font-variant-numeric:tabular-nums}
+    .ro-vlist{display:grid;gap:8px}.ro-vclub{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;border:1px solid var(--bs-border-color);border-left:5px solid var(--c);background:var(--bs-body-bg)}
+    .ro-vclub__m{flex:1;min-width:0;display:grid;gap:5px}.ro-vbar{height:9px;border-radius:99px;background:color-mix(in srgb,var(--c) 14%,transparent);overflow:hidden}.ro-vbar span{display:block;height:100%;border-radius:99px;background:var(--c)}
+    .ro-tickets{display:inline-flex;gap:1px;color:#D41367;font-size:.95rem;flex-wrap:wrap}
+    .ro-org{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.ro-org__p{padding:10px 12px;border-radius:12px;border:1px solid var(--bs-border-color);display:flex;flex-direction:column;gap:2px}
+    .ro-org__p small{font-size:.74rem;color:var(--bs-secondary-color)}.ro-org__p b{font-size:1.1rem;font-variant-numeric:tabular-nums}.ro-org__p span{font-size:.72rem;font-weight:600}
+    .ro-org__p.ok{border-color:#198754;background:rgba(25,135,84,.07)}.ro-org__p.ok span{color:#157347}.ro-org__p.plan{background:rgba(var(--dw-p-rgb),.05)}.ro-org__p.full span{color:var(--bs-secondary-color)}@media (max-width:480px){.ro-pago{flex-direction:column;align-items:stretch}.ro-pago__qr{align-self:center}}</style>`);
   window.RO = RO;
 })();

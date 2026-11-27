@@ -11,9 +11,13 @@ DW.ready.then(async (me) => {
   const M = me.canManage && !me.business.readOnly;
   const corto = (m) => ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][+m.slice(5)];
   const EST = { pagada: ['ok', 'Pagada'], pendiente: ['soon', 'Pendiente'], vencida: ['bad', 'Vencida'] };
-  let tab = ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
-  document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
-  RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['impacto', 'Impacto', '#impacto', 'bi-globe-americas'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
+  // impacto-distrito.html: la misma página, solo con Impacto (módulo propio en el menú del distrito)
+  const SOLO_IMPACTO = document.querySelector('main')?.dataset.modulo === 'impacto-distrito';
+  if (!SOLO_IMPACTO && location.hash === '#impacto') { location.replace('/staff/impacto-distrito.html'); return; }
+  let tab = SOLO_IMPACTO ? 'impacto' : ['impacto', 'anio', 'metas', 'formatos', 'cuotas', 'bonos', 'equipo', 'cargos', 'orden', 'juegos'].includes(location.hash.slice(1)) ? location.hash.slice(1) : /^#(formato|envio)=/.test(location.hash) ? 'formatos' : 'clubes', anio = null, t = null;
+  if (SOLO_IMPACTO) document.querySelector('[data-h1]').textContent = `Impacto · Distrito ${me.distrito.codigo}`;
+  else document.querySelector('[data-h1]').textContent = `Distrito ${({ rotary: 'Rotary', rotaract: 'Rotaract', interact: 'Interact' })[me.distrito.programa] || ''} ${me.distrito.codigo}`;
+  if (!SOLO_IMPACTO) RO.pills([['clubes', 'Clubes', '#clubes', 'bi-diagram-3'], ['anio', 'Año rotario', '#anio', 'bi-bar-chart'], ['metas', 'Metas', '#metas', 'bi-bullseye'], ['formatos', 'Formatos', '#formatos', 'bi-file-earmark-text'], ['cuotas', 'Cuotas', '#cuotas', 'bi-bank'], ['bonos', 'Bonos', '#bonos', 'bi-ticket-perforated'], ['equipo', 'Equipo distrital', '#equipo', 'bi-people'], ['cargos', 'Cargos de clubes', '#cargos', 'bi-person-badge'], ['orden', 'Orden del día', '#orden', 'bi-list-ol'], ['juegos', 'Juegos', '#juegos', 'bi-controller']], tab, (k) => { tab = k; pintar(); });
 
   const selAnio = () => `<div class="btn-group btn-group-sm ms-auto"><button class="btn btn-light" data-ay="-1" aria-label="Año anterior"><i class="bi bi-chevron-left"></i></button>
     <span class="btn btn-light disabled text-body fw-semibold">${esc(t.nombre_anio)}</span><button class="btn btn-light" data-ay="1" aria-label="Año siguiente"><i class="bi bi-chevron-right"></i></button></div>`;
@@ -80,6 +84,20 @@ DW.ready.then(async (me) => {
   const pct = (n) => `${n}%`;
   const chipsDesc = (ds) => [...(ds?.pronto || []).map((x) => `<span class="ro-dchip"><i class="bi bi-lightning-charge"></i>${pct(x.pct)} si paga todo antes del ${C.day(x.hasta)}</span>`),
     ...(ds?.planes || []).map((x) => `<span class="ro-dchip"><i class="bi bi-calendar3"></i>${x.cuotas} cuotas${x.pct ? ` · ${pct(x.pct)} menos` : ''}</span>`)].join('');
+  // Clubes en vertical: cada uno con su valor, lo pagado (barra de color por estado) y cómo lo paga
+  const COL = { pagada: '#198754', pendiente: '#e0a800', vencida: '#dc3545' };
+  const filaClub = (x, { sub = '', extra = '', boton = '' } = {}) => { const est = x.estado || (x.total && x.pagado >= x.total ? 'pagada' : 'pendiente'), col = COL[est] || '#94a3b8', p = x.total ? Math.min(100, Math.round((x.pagado / x.total) * 100)) : 0;
+    return `<div class="ro-vclub" style="--c:${col}"><span class="ro-av" style="width:38px;height:38px;font-size:14px">${esc(RO.initials(x.club))}</span>
+      <div class="ro-vclub__m"><div class="d-flex align-items-baseline gap-2 flex-wrap"><b class="text-truncate">${esc(x.club)}</b><span class="small text-body-secondary">${sub}</span><span class="ms-auto small fw-semibold" style="color:${col}">${(EST[est] || ['', ''])[1] || (est === 'pagada' ? 'Pagada' : 'Pendiente')}</span></div>
+        <div class="ro-vbar"><span style="width:${p}%"></span></div>
+        <div class="d-flex gap-2 flex-wrap small"><span><b>${C.money(x.pagado)}</b> de ${C.money(x.total)}</span>${extra}<span class="ms-auto text-body-secondary">${x.saldo ? `falta ${C.money(x.saldo)}` : '✓ al día'}</span></div></div>${boton}</div>`; };
+  const organiza = (q) => {
+    const d = q.descuentos || {}, base = q.tipo === 'por_club' ? q.valor_socio : null, rd = (n) => Math.round(n / 100) * 100;
+    const pasos = [...(d.pronto || []).map((x) => ({ f: x.hasta, t: `Pago anual antes del ${C.day(x.hasta)}`, v: base != null ? C.money(rd(base * (1 - x.pct / 100))) : `−${x.pct}%`, k: 'ok', n: `${x.pct}% de descuento` })),
+      ...(d.planes || []).map((x) => ({ f: '', t: `En ${x.cuotas} cuotas mensuales`, v: base != null ? `${x.cuotas} × ${C.money(rd(rd(base * (1 - x.pct / 100)) / x.cuotas))}` : `−${x.pct}%`, k: 'plan', n: x.pct ? `${x.pct}% de descuento` : 'sin descuento' })),
+      { f: q.vence, t: `Completo, vence el ${C.day(q.vence)}`, v: base != null ? C.money(base) : `${C.money(q.valor_socio)} por socio`, k: 'full', n: 'sin descuento' }];
+    return `<div class="ro-org">${pasos.map((x) => `<div class="ro-org__p ${x.k}"><small>${esc(x.t)}</small><b>${x.v}</b><span>${esc(x.n)}</span></div>`).join('')}</div>`;
+  };
   const kpiCobros = (el, rows, tit) => { const tot = rows.reduce((t, q) => t + q.total, 0), pag = rows.reduce((t, q) => t + q.pagado, 0), cl = rows.flatMap((q) => q.clubes);
     C.kpis(el, [[`${tit}: a recaudar`, C.money(tot), `${rows.length} ${rows.length === 1 ? 'cobro' : 'cobros'}`, 'bi-cash-stack'], ['Recaudado', C.money(pag), tot ? `${Math.round((pag / tot) * 100)}% del total` : '—', 'bi-check2-circle'],
       ['Por recaudar', C.money(Math.max(0, tot - pag)), `${cl.filter((x) => x.estado === 'vencida').length} cobros vencidos en clubes`, 'bi-hourglass-split'], ['Clubes', C.num(t.clubes.length), `Distrito ${esc(t.codigo)}`, 'bi-diagram-3']]); };
@@ -97,10 +115,9 @@ DW.ready.then(async (me) => {
           <div class="text-end"><div class="ro-cobro__v">${C.money(q.pagado)}</div><div class="small text-body-secondary">de ${C.money(q.total)}${q.base > q.total ? ` <s>${C.money(q.base)}</s>` : ''}</div><div class="small"><b>${q.pagaron}</b>/${q.clubes.length} clubes pagaron</div></div>
           ${M ? `<div class="d-flex gap-1"><button class="btn btn-sm btn-light" data-ed="${q.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-del="${q.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button></div>` : ''}</div>
         <div class="mt-2">${C.meter(q.pagado, q.total)}</div>
-        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="table-responsive"><table class="table table-sm align-middle mb-0 ro-tcobro"><thead><tr><th>Club</th><th class="text-end">Socios</th><th class="text-end">Valor</th><th class="text-end">A pagar</th><th class="text-end">Pagado</th><th>Plan</th><th>Estado</th></tr></thead>
-          <tbody>${q.clubes.map((x) => `<tr><td class="fw-semibold">${esc(x.club)}</td><td class="text-end">${q.tipo === 'por_club' ? '—' : x.socios}</td><td class="text-end">${C.money(x.base)}</td>
-            <td class="text-end">${C.money(x.total)}${x.descuento ? `<div class="small text-success" title="${esc(x.motivo || '')}">−${C.money(x.descuento)}</div>` : ''}</td><td class="text-end">${C.money(x.pagado)}${x.total ? `<div style="min-width:70px">${C.meter(x.pagado, x.total)}</div>` : ''}</td>
-            <td class="small">${x.plan ? `${x.plan.cuotas} cuotas` : 'Contado'}</td><td>${C.chip(...EST[x.estado])}</td></tr>`).join('') || '<tr><td colspan="7" class="small text-body-secondary">Aún no hay clubes en el distrito.</td></tr>'}</tbody></table></div></div>
+        <div class="small fw-semibold mt-3 mb-1">Cómo se paga</div>${organiza(q)}
+        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="small fw-semibold mb-1">Clubes (${q.clubes.length})</div><div class="ro-vlist">${q.clubes.map((x) => filaClub(x, { sub: q.tipo === 'por_club' ? '' : `${x.socios} socios`,
+            extra: `${x.descuento ? `<span class="text-success" title="${esc(x.motivo || '')}">−${C.money(x.descuento)} (${esc((x.motivo || '').replace(/ \(.*$/, ''))})</span>` : ''}<span class="badge text-bg-light border">${x.plan ? `${x.plan.cuotas} cuotas` : 'Contado'}</span>` })).join('') || '<div class="small text-body-secondary">Aún no hay clubes en el distrito.</div>'}</div></div>
           <div class="col-xl-4">${q.pago ? RO.fichaPago(q.pago, { compacta: true }) : `<div class="ro-pago small text-body-secondary"><i class="bi bi-exclamation-circle me-1"></i>Sin datos de pago: ${M ? 'edita la cuota y agrega el QR, la llave o la cuenta.' : 'el distrito aún no los pone.'}</div>`}</div></div></div>`).join('')
       : `<div class="dw-card">${window.App.empty('bi-bank', 'Aún no hay cuotas distritales.')}</div>`}`;
     if (d.rows.length) kpiCobros(view.querySelector('[data-k]'), d.rows, 'Cuotas');
@@ -220,9 +237,10 @@ DW.ready.then(async (me) => {
           <div class="text-end"><div class="ro-cobro__v">${C.money(b.pagado)}</div><div class="small text-body-secondary">de ${C.money(b.total)}</div><div class="small">${C.num(b.vendidos)}/${C.num(b.asignados)} vendidos</div></div>
           ${M ? `<div class="d-flex gap-1"><button class="btn btn-sm btn-light" data-bed="${b.id}" aria-label="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-light" data-bdel="${b.id}" aria-label="Borrar"><i class="bi bi-trash"></i></button></div>` : ''}</div>
         <div class="mt-2">${C.meter(b.pagado, b.total)}</div>
-        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="table-responsive"><table class="table table-sm align-middle mb-0 ro-tcobro"><thead><tr><th>Club</th><th class="text-end">Bonos</th><th class="text-end">Vendidos</th><th class="text-end">Total</th><th class="text-end">Pagado</th><th></th></tr></thead>
-          <tbody>${b.clubes.map((x) => `<tr><td class="fw-semibold">${esc(x.club)}</td><td class="text-end">${C.num(x.asignados)}${b.reparto === 'por_socio' ? `<div class="small text-body-secondary">${x.socios} socios</div>` : ''}</td><td class="text-end">${C.num(x.vendidos)}</td><td class="text-end">${C.money(x.total)}</td>
-            <td class="text-end">${C.money(x.pagado)}${x.total ? `<div style="min-width:70px">${C.meter(x.pagado, x.total)}</div>` : ''}</td><td class="text-end">${M ? `<button class="btn btn-sm btn-light" data-basig="${b.id}" data-bclub="${esc(x.club_id)}" aria-label="Registrar"><i class="bi bi-pencil"></i></button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>
+        <div class="row g-3 mt-1"><div class="col-xl-8"><div class="small fw-semibold mb-1">Clubes (${b.clubes.length})</div><div class="ro-vlist">${b.clubes.map((x) => filaClub({ ...x, estado: x.total && x.pagado >= x.total ? 'pagada' : b.vence && b.vence < C.todayCo() ? 'vencida' : 'pendiente' }, {
+            sub: `${C.num(x.asignados)} bonos${b.reparto === 'por_socio' ? ` · ${x.socios} socios` : ''}`,
+            extra: x.asignados && x.asignados <= 30 ? `<span class="ro-tickets" title="${C.num(x.vendidos)} vendidos">${Array.from({ length: x.asignados }, (_, i) => `<i class="bi ${i < Math.round((x.pagado / (b.valor || 1))) ? 'bi-ticket-perforated-fill' : 'bi-ticket-perforated'}"></i>`).join('')}</span>` : `<span>${C.num(x.vendidos)} vendidos</span>`,
+            boton: M ? `<button class="btn btn-sm btn-light align-self-center" data-basig="${b.id}" data-bclub="${esc(x.club_id)}" aria-label="Registrar"><i class="bi bi-pencil"></i></button>` : '' })).join('')}</div></div>
           <div class="col-xl-4">${b.pago ? RO.fichaPago(b.pago, { compacta: true }) : '<div class="ro-pago small text-body-secondary"><i class="bi bi-exclamation-circle me-1"></i>Sin datos de pago.</div>'}</div></div></div>`).join('')
       : `<div class="dw-card">${window.App.empty('bi-ticket-perforated', 'Aún no hay bonos del distrito.')}</div>`}`;
     if (bonos.length) kpiCobros(view.querySelector('[data-k]'), bonos.map((b) => ({ ...b, clubes: b.clubes.map((x) => ({ ...x, estado: x.saldo > 0 && b.vence && b.vence < C.todayCo() ? 'vencida' : '' })) })), 'Bonos');
@@ -467,7 +485,7 @@ DW.ready.then(async (me) => {
   const IMP_EST = [['', 'Todos'], ['borrador', 'Borradores'], ['enviado', 'En revisión'], ['devuelto', 'Devueltos'], ['rechazado', 'No aprobados'], ['aprobado', 'Aprobados']];
   const imp = { estado: '', club: '', sel: {}, q: '' };
   async function pintarImpacto() {
-    irH('impacto');
+    irH(SOLO_IMPACTO ? '' : 'impacto');
     view.innerHTML = '<div class="dw-card text-body-secondary">Cargando…</div>';
     let d;
     try { d = await api('/api/distrito/impacto'); } catch (x) { view.innerHTML = `<div class="dw-card">${esc(x.message)}</div>`; return; }
@@ -517,7 +535,7 @@ DW.ready.then(async (me) => {
       borrar: f ? async () => { await api(`/api/distrito/formatos/${f.id}`, { method: 'DELETE' }); toast('Formato borrado'); salir(); } : null,
       volver: salir });
   }
-  let origen = 'formatos';   // a qué pestaña vuelve la solicitud abierta
+  let origen = SOLO_IMPACTO ? 'impacto' : 'formatos';   // a qué pestaña vuelve la solicitud abierta
   async function verEnvio(id, de) {
     if (de) origen = de;
     view.onclick = null; view.oninput = null; view.onchange = null;

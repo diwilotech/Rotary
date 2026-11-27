@@ -51,6 +51,8 @@
     // Perfil del distrito: en vez de «Lo tuyo» (no es socio de un club) tiene «Distrito»; sin carnet.
     const DIST = !!me.distrito?.es_distrito;
     if (DIST) BASE_START[1] = { id: 'distrito', nombre: `Distrito ${me.distrito.codigo}`, icono: 'bi-diagram-3', ruta: '/staff/distrito.html' };
+    // y su módulo Impacto: los proyectos que presentan los clubes (por estado y por clasificación), en su propia pantalla
+    if (DIST && !BASE_START.some((m) => m.id === 'impacto-distrito')) BASE_START.splice(2, 0, { id: 'impacto-distrito', nombre: 'Impacto', icono: 'bi-globe-americas', ruta: '/staff/impacto-distrito.html' });
     // «IA» va abajo, junto a Equipo; «Marca» tiene su propia pantalla en el menú (módulo central de Diwilo Modulos)
     const iaMod = me.modules.find((m) => m.id === 'ai');
     const FOOT = [...BASE_END, ...(iaMod ? [iaMod] : [])];
@@ -123,7 +125,7 @@
     }
 
     // Página de un módulo inactivo o sin permiso: no se muestra su contenido.
-    if (page.modulo && !['inicio', 'equipo', 'lotuyo', 'distrito'].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
+    if (page.modulo && !['inicio', 'equipo', 'lotuyo', 'distrito', 'impacto-distrito'].includes(page.modulo) && !me.modules.some((m) => m.id === page.modulo) && main) {
       main.innerHTML = `<div class="dw-card">${window.App.empty('bi-slash-circle', 'Este módulo no está activo para tu negocio o tu rol no tiene acceso.', '<a class="btn btn-primary" href="/staff/">Ir al inicio</a>')}</div>`;
       if (EMBED) notificar();
       return false;
